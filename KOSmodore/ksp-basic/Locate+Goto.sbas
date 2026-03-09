@@ -1,0 +1,37 @@
+{
+    "items": [
+        {
+            "value": "CLS",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
+        },
+        {
+            "value": "PRINT \"END\"",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
+        },
+        {
+            "value": "PRINT \"WAIT\"",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
+        },
+        {
+            "value": "LOCATE 10 10",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
+        },
+        {
+            "value": "10 PRINT \"WAIT \"",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
+        },
+        {
+            "value": "PRINT \"CLS\"",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
+        },
+        {
+            "value": "WAIT 0.4",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
+        },
+        {
+            "value": "GOTO 10",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
+        }
+    ],
+    "$type": "kOS.Safe.Encapsulation.ListValue"
+}

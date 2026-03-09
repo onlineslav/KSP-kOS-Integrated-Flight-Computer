@@ -1,0 +1,185 @@
+ 
+===== X-10 D AA probe run @ UT 60392556.9 =====
+X-10 D AA probe: start
+AA PROBE: ADDONS:AA available
+ 
+Suffix presence check:
+ MODERATEAOA=True MAXAOA=True MODERATEG=True MAXG=True
+ MODERATESIDESLIP=True MAXSIDESLIP=True MODERATESIDEG=True MAXSIDEG=True
+ PITCHRATELIMIT=True YAWRATELIMIT=True ROLLRATELIMIT=True WINGLEVELER=True
+ FBW=True FLYBYWIRE=True COORDTURN=True ROCKETMODE=True
+ DIRECTOR=True DIRECTION=True DIRECTORSTRENGTH=True
+ CRUISE=True PSEUDOFLC=True HEADING=True ALTITUDE=True VERTSPEED=True
+ FLCMARGIN=True MAXCLIMBANGLE=True WAYPOINT=True SPEEDCONTROL=True SPEED=True
+ 
+STEP 1: snapshot mode states
+  DIRECTOR=False CRUISE=False FBW=False
+STEP 2: mode prep (DIRECTOR ON, CRUISE OFF, FBW OFF)
+ 
+===== X-10 D AA probe run @ UT 60392557.5 =====
+X-10 D AA probe: start
+AA PROBE: ADDONS:AA available
+ 
+Suffix presence check:
+ MODERATEAOA=True MAXAOA=True MODERATEG=True MAXG=True
+ MODERATESIDESLIP=True MAXSIDESLIP=True MODERATESIDEG=True MAXSIDEG=True
+ PITCHRATELIMIT=True YAWRATELIMIT=True ROLLRATELIMIT=True WINGLEVELER=True
+ FBW=True FLYBYWIRE=True COORDTURN=True ROCKETMODE=True
+ DIRECTOR=True DIRECTION=True DIRECTORSTRENGTH=True
+ CRUISE=True PSEUDOFLC=True HEADING=True ALTITUDE=True VERTSPEED=True
+ FLCMARGIN=True MAXCLIMBANGLE=True WAYPOINT=True SPEEDCONTROL=True SPEED=True
+ 
+STEP 1: snapshot mode states
+  DIRECTOR=False CRUISE=False FBW=False
+STEP 2: mode prep (DIRECTOR ON, FBW OFF, CRUISE write skipped)
+  CRUISE SET skipped (known bridge setter failure).
+STEP 3: moderation toggles/scalars
+  MODERATEAOA GET=True
+  MAXAOA GET=15 SET=15.5
+  MODERATEG GET=True
+  MAXG GET=5 SET=5.5
+  MODERATESIDESLIP GET=True
+  MAXSIDESLIP GET=15 SET=15.2
+  MODERATESIDEG GET=True
+  MAXSIDEG GET=15 SET=15.2
+STEP 4: rate limits and wing leveler
+  PITCHRATELIMIT GET=0.699999988079071 SET=0.749999988079071
+  YAWRATELIMIT GET=0.699999988079071 SET=0.749999988079071
+  ROLLRATELIMIT GET=3 SET=3.05
+  WINGLEVELER GET=True
+STEP 5: FBW / alias / turn settings
+  FBW GET=False
+  FLYBYWIRE GET=False
+  COORDTURN GET=False
+  ROCKETMODE GET=False
+STEP 6: director controls
+  DIRECTOR GET=False
+  DIRECTION SET -> HEADING(SHIP:HEADING, 8):VECTOR
+  DIRECTORSTRENGTH GET=0.95 SET=1
+STEP 7: speed control settings
+  SPEEDCONTROL GET=False
+  SPEED GET=100 SET=105
+STEP 8: cruise settings (risky, bridge may fail here)
+  CRUISE GET=False
+  CRUISE SET skipped (known bridge setter failure).
+  PSEUDOFLC GET=True
+  HEADING GET=-1 SET=8.71282963998965E-07
+  ALTITUDE GET=-1 SET=99
+ 
+===== X-10 D AA probe run @ UT 60392557.8 =====
+X-10 D AA probe: start
+AA PROBE: ADDONS:AA available
+ 
+Suffix presence check:
+ MODERATEAOA=True MAXAOA=True MODERATEG=True MAXG=True
+ MODERATESIDESLIP=True MAXSIDESLIP=True MODERATESIDEG=True MAXSIDEG=True
+ PITCHRATELIMIT=True YAWRATELIMIT=True ROLLRATELIMIT=True WINGLEVELER=True
+ FBW=True FLYBYWIRE=True COORDTURN=True ROCKETMODE=True
+ DIRECTOR=True DIRECTION=True DIRECTORSTRENGTH=True
+ CRUISE=True PSEUDOFLC=True HEADING=True ALTITUDE=True VERTSPEED=True
+ FLCMARGIN=True MAXCLIMBANGLE=True WAYPOINT=True SPEEDCONTROL=True SPEED=True
+ 
+STEP 1: snapshot mode states
+  DIRECTOR=False CRUISE=False FBW=False
+STEP 2: mode prep (DIRECTOR ON, FBW OFF, CRUISE write skipped)
+  CRUISE SET skipped (known bridge setter failure).
+STEP 3: moderation toggles/scalars
+  MODERATEAOA GET=True
+  MAXAOA GET=15 SET=15.5
+  MODERATEG GET=True
+  MAXG GET=5 SET=5.5
+  MODERATESIDESLIP GET=True
+  MAXSIDESLIP GET=15 SET=15.2
+  MODERATESIDEG GET=True
+  MAXSIDEG GET=15 SET=15.2
+STEP 4: rate limits and wing leveler
+  PITCHRATELIMIT GET=0.699999988079071 SET=0.749999988079071
+  YAWRATELIMIT GET=0.699999988079071 SET=0.749999988079071
+  ROLLRATELIMIT GET=3 SET=3.05
+  WINGLEVELER GET=True
+STEP 5: FBW / alias / turn settings
+  FBW GET=False
+  FLYBYWIRE GET=False
+  COORDTURN GET=False
+  ROCKETMODE GET=False
+STEP 6: director controls
+  DIRECTOR GET=False
+  DIRECTION SET -> HEADING(SHIP:HEADING, 8):VECTOR
+  DIRECTORSTRENGTH GET=0.95 SET=1
+STEP 7: speed control settings
+  SPEEDCONTROL GET=False
+  SPEED GET=100 SET=105
+STEP 8: cruise settings (risky, bridge may fail here)
+  CRUISE GET=False
+  CRUISE SET skipped (known bridge setter failure).
+  PSEUDOFLC GET=True
+  PSEUDOFLC SET skipped (known cruise-controller setter failure).
+  HEADING GET=-1 SET=1.45908629178848E-07
+  ALTITUDE GET=-1 SET=99
+  ALTITUDE SET skipped (known cruise-controller setter failure).
+ 
+===== X-10 D AA probe run @ UT 60392558.4 =====
+X-10 D AA probe: start
+AA PROBE: ADDONS:AA available
+ 
+Suffix presence check:
+ MODERATEAOA=True MAXAOA=True MODERATEG=True MAXG=True
+ MODERATESIDESLIP=True MAXSIDESLIP=True MODERATESIDEG=True MAXSIDEG=True
+ PITCHRATELIMIT=True YAWRATELIMIT=True ROLLRATELIMIT=True WINGLEVELER=True
+ FBW=True FLYBYWIRE=True COORDTURN=True ROCKETMODE=True
+ DIRECTOR=True DIRECTION=True DIRECTORSTRENGTH=True
+ CRUISE=True PSEUDOFLC=True HEADING=True ALTITUDE=True VERTSPEED=True
+ FLCMARGIN=True MAXCLIMBANGLE=True WAYPOINT=True SPEEDCONTROL=True SPEED=True
+ 
+STEP 1: snapshot mode states
+  DIRECTOR=False CRUISE=False FBW=False
+STEP 2: mode prep (DIRECTOR ON, FBW OFF, CRUISE write skipped)
+  CRUISE SET skipped (known bridge setter failure).
+STEP 3: moderation toggles/scalars
+  MODERATEAOA GET=True
+  MAXAOA GET=15 SET=15.5
+  MODERATEG GET=True
+  MAXG GET=5 SET=5.5
+  MODERATESIDESLIP GET=True
+  MAXSIDESLIP GET=15 SET=15.2
+  MODERATESIDEG GET=True
+  MAXSIDEG GET=15 SET=15.2
+STEP 4: rate limits and wing leveler
+  PITCHRATELIMIT GET=0.699999988079071 SET=0.749999988079071
+  YAWRATELIMIT GET=0.699999988079071 SET=0.749999988079071
+  ROLLRATELIMIT GET=3 SET=3.05
+  WINGLEVELER GET=True
+STEP 5: FBW / alias / turn settings
+  FBW GET=False
+  FLYBYWIRE GET=False
+  COORDTURN GET=False
+  ROCKETMODE GET=False
+STEP 6: director controls
+  DIRECTOR GET=False
+  DIRECTION SET -> HEADING(SHIP:HEADING, 8):VECTOR
+  DIRECTORSTRENGTH GET=0.95 SET=1
+STEP 7: speed control settings
+  SPEEDCONTROL GET=False
+  SPEED GET=100 SET=105
+STEP 8: cruise settings (risky, bridge may fail here)
+  CRUISE GET=False
+  CRUISE SET skipped (known bridge setter failure).
+  PSEUDOFLC GET=True
+  PSEUDOFLC SET skipped (known cruise-controller setter failure).
+  HEADING GET=-1 SET=1.19978585644276E-06
+  ALTITUDE GET=-1 SET=99
+  ALTITUDE SET skipped (known cruise-controller setter failure).
+  VERTSPEED GET skipped (NaN/stack fault on this bridge).
+  VERTSPEED SET skipped (known cruise-controller setter failure).
+  FLCMARGIN GET skipped (unsafe cruise-controller read on this bridge).
+  FLCMARGIN SET skipped (known cruise-controller setter failure).
+  MAXCLIMBANGLE GET skipped (unsafe cruise-controller read on this bridge).
+  MAXCLIMBANGLE SET skipped (known cruise-controller setter failure).
+  WAYPOINT GET skipped (unsafe cruise-controller read on this bridge).
+  WAYPOINT SET skipped (known cruise-controller setter failure).
+STEP 9: restore mode states
+  CRUISE restore skipped (known bridge setter failure).
+AA PROBE PASS
+example test
+Main pipeline: 0:/Vehicles/X_10_D_new.ks
+X-10 D AA probe: end

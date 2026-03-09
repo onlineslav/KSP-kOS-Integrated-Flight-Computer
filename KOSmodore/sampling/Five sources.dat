@@ -1,0 +1,266 @@
+{
+    "items": [
+        {
+            "items": [
+                {
+                    "value": 0,
+                    "$type": "kOS.Safe.Encapsulation.ScalarIntValue"
+                },
+                {
+                    "value": 4,
+                    "$type": "kOS.Safe.Encapsulation.ScalarIntValue"
+                },
+                {
+                    "value": 1,
+                    "$type": "kOS.Safe.Encapsulation.ScalarIntValue"
+                },
+                {
+                    "value": 20,
+                    "$type": "kOS.Safe.Encapsulation.ScalarIntValue"
+                },
+                {
+                    "value": 21,
+                    "$type": "kOS.Safe.Encapsulation.ScalarIntValue"
+                },
+                {
+                    "value": 22,
+                    "$type": "kOS.Safe.Encapsulation.ScalarIntValue"
+                }
+            ],
+            "$type": "kOS.Safe.Encapsulation.ListValue"
+        },
+        {
+            "items": [
+                {
+                    "value": 319543.27722816647,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 2.0624649524688721,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 1.5491291880607605,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 0.00019558121576556141,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": -4.0411933170503289E-05,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 0.000191360621909937,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                }
+            ],
+            "$type": "kOS.Safe.Encapsulation.ListValue"
+        },
+        {
+            "items": [
+                {
+                    "value": 319543.4172281666,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 2.0624649524688721,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 1.5492608547210693,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 0.00018357484843530312,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 7.4670435523671586E-05,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 0.00016770226901355659,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                }
+            ],
+            "$type": "kOS.Safe.Encapsulation.ListValue"
+        },
+        {
+            "items": [
+                {
+                    "value": 319543.53722816671,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 2.0624649524688721,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 1.549342155456543,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 7.9363268876614243E-05,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 2.7709220063343309E-05,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 7.4368861563580357E-05,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                }
+            ],
+            "$type": "kOS.Safe.Encapsulation.ListValue"
+        },
+        {
+            "items": [
+                {
+                    "value": 319543.69722816686,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 2.0624649524688721,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 1.5494760870933533,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 0.00017127932022987589,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": -0.00011930668222248642,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 0.00012289231511966489,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                }
+            ],
+            "$type": "kOS.Safe.Encapsulation.ListValue"
+        },
+        {
+            "items": [
+                {
+                    "value": 319543.857228167,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 2.0624649524688721,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 1.5495537519454956,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 7.9234508213922139E-05,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": -1.8721934026189047E-05,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 7.6990885662855642E-05,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                }
+            ],
+            "$type": "kOS.Safe.Encapsulation.ListValue"
+        },
+        {
+            "items": [
+                {
+                    "value": 319544.01722816715,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 2.0624649524688721,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 1.5496878623962402,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 0.0001068164175971105,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 2.5339796764001221E-05,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 0.00010376724805177889,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                }
+            ],
+            "$type": "kOS.Safe.Encapsulation.ListValue"
+        },
+        {
+            "items": [
+                {
+                    "value": 319544.1772281673,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 2.0624649524688721,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 1.5498466491699219,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 0.000850778017151976,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 0.00084421452683614007,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 0.00010547543396617983,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                }
+            ],
+            "$type": "kOS.Safe.Encapsulation.ListValue"
+        },
+        {
+            "items": [
+                {
+                    "value": 319552.53722817509,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 2.0624649524688721,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 1.5560560822486877,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 0.0004007332830328997,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 0.00038787661837602627,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                },
+                {
+                    "value": 0.00010069207039070781,
+                    "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+                }
+            ],
+            "$type": "kOS.Safe.Encapsulation.ListValue"
+        }
+    ],
+    "$type": "kOS.Safe.Encapsulation.ListValue"
+}

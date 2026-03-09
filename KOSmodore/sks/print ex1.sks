@@ -1,0 +1,17 @@
+{
+    "items": [
+        {
+            "value": "PRINT\"DGDID\".",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
+        },
+        {
+            "value": "WAIT(2).",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
+        },
+        {
+            "value": "PRINT\"FROM\".",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
+        }
+    ],
+    "$type": "kOS.Safe.Encapsulation.ListValue"
+}

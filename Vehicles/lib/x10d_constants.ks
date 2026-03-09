@@ -1,0 +1,95 @@
+@LAZYGLOBAL OFF.
+
+// X-10 D modular library: tunables and phase identifiers.
+GLOBAL X10D_VERSION IS "1.2.1-modular-aaapi-initphase".
+
+// ----------------------------
+// Tunable mission targets
+// ----------------------------
+GLOBAL TARGET_APOAPSIS_ALT IS 90000.
+GLOBAL TARGET_PERIAPSIS_ALT IS 80000.
+GLOBAL APOAPSIS_MARGIN_ALT IS 1000.
+
+// ----------------------------
+// Tunable control mode
+// ----------------------------
+// TRUE  = use ADDONS:AA API if available for atmospheric attitude control.
+// FALSE = never use AA API, use kOS steering ownership logic only.
+GLOBAL USE_AA_API IS TRUE.
+
+// FALSE = kOS attitude control from runway to orbit.
+// TRUE  = AA/pilot in atmosphere, kOS takes attitude later.
+GLOBAL AA_ASSIST_MODE IS TRUE.
+
+// kOS takes attitude control when either condition is met.
+GLOBAL AA_HANDOFF_ALT IS 26000.
+GLOBAL AA_HANDOFF_Q IS 3500.
+GLOBAL AA_HANDOFF_MIN_ALT IS 14000.
+
+// ----------------------------
+// Tunable takeoff / climb
+// ----------------------------
+// -1 means use current heading at start.
+GLOBAL RUNWAY_HEADING_OVERRIDE IS -1.
+GLOBAL PRELAUNCH_SPOOL_SECONDS IS 2.5.
+GLOBAL ROTATE_IAS IS 85.
+GLOBAL ROTATE_TARGET_PITCH IS 10.
+GLOBAL ROTATE_PITCH_RATE IS 3.
+GLOBAL POSITIVE_CLIMB_VS IS 3.
+GLOBAL GEAR_RETRACT_ALT IS 60.
+
+GLOBAL INITIAL_CLIMB_PITCH IS 12.
+GLOBAL INITIAL_CLIMB_EXIT_ALT IS 2500.
+
+GLOBAL LOW_ALT_ACCEL_PITCH IS 8.
+GLOBAL LOW_ALT_ACCEL_EXIT_ALT IS 7500.
+
+GLOBAL TRANS_CLIMB_PITCH IS 9.
+GLOBAL TRANS_CLIMB_MIN_MACH IS 0.95.
+GLOBAL TRANS_CLIMB_EXIT_ALT IS 14500.
+
+GLOBAL HIGH_ALT_ACCEL_PITCH IS 6.
+GLOBAL HIGH_ALT_ACCEL_MIN_MACH IS 2.2.
+GLOBAL HIGH_ALT_ACCEL_EXIT_ALT IS 22000.
+
+GLOBAL PULLUP_TARGET_PITCH IS 18.
+GLOBAL PULLUP_PITCH_RATE IS 1.5.
+
+// ----------------------------
+// Tunable q-management (FAR)
+// ----------------------------
+GLOBAL Q_SOFT_LIMIT IS 45000.
+GLOBAL Q_HARD_LIMIT IS 55000.
+
+// ----------------------------
+// Tunable circularization
+// ----------------------------
+GLOBAL CIRC_BURN_LEAD IS 12.
+GLOBAL CIRC_FINE_DV IS 25.
+GLOBAL CIRC_DONE_DV IS 3.
+GLOBAL CIRC_FINE_THROTTLE IS 0.25.
+GLOBAL CIRC_MAX_THROTTLE IS 1.0.
+
+// ----------------------------
+// Program timing / logging
+// ----------------------------
+GLOBAL LOOP_DT IS 0.1.
+GLOBAL TELEMETRY_PERIOD IS 2.0.
+GLOBAL INIT_PHASE_SECONDS IS 0.5.
+
+// ----------------------------
+// Phase names
+// ----------------------------
+GLOBAL PHASE_INITIALIZING IS "INITIALIZING".
+GLOBAL PHASE_PREFLIGHT IS "PREFLIGHT".
+GLOBAL PHASE_TAKEOFF_ROLL IS "TAKEOFF_ROLL".
+GLOBAL PHASE_ROTATE IS "ROTATE".
+GLOBAL PHASE_INITIAL_CLIMB IS "INITIAL_CLIMB".
+GLOBAL PHASE_LOW_ALT_ACCEL IS "LOW_ALT_ACCEL".
+GLOBAL PHASE_TRANSONIC_CLIMB IS "TRANSONIC_CLIMB".
+GLOBAL PHASE_HIGH_ALT_ACCEL IS "HIGH_ALT_ACCEL".
+GLOBAL PHASE_PULLUP IS "PULLUP_TO_APOAPSIS".
+GLOBAL PHASE_COAST IS "COAST_TO_APOAPSIS".
+GLOBAL PHASE_CIRC IS "CIRCULARIZE".
+GLOBAL PHASE_ORBIT_HOLD IS "ORBIT_HOLD".
+GLOBAL PHASE_DONE IS "DONE".

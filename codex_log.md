@@ -1,0 +1,39 @@
+2026-03-08
+- Reviewed AGENTS.md requirements and FAR/AtmosphereAutopilot integration constraints.
+- Added `x_10_d_boot.ks` as a minimal boot handoff script.
+- Added `X_10_D.ks` with a phase/state machine for takeoff, atmospheric ascent, coast, and circularization.
+- Implemented FAR telemetry wrappers (`ADDONS:FAR:*`) with fallback behavior.
+- Implemented AA-atmosphere / kOS-handoff attitude ownership logic plus q-based throttle limiting.
+- Added transition logging and periodic telemetry prints for tuning/debug.
+- Fixed `@LAZYGLOBAL OFF` scoping by declaring top-level symbols as `GLOBAL ... IS ...` in `Vehicles/X_10_D.ks`.
+- Updated `boot/x_10_d_boot.ks` to run `Vehicles/X_10_D.ks` (with fallback path check).
+- Fixed TinyPG parse error in `debug.ks` (`UNTIL` block now uses valid kOS statement syntax).
+- Fixed `debug.ks` parser error by replacing unsupported `UNLESS` with `IF NOT` and switching `availThrust` from `LOCK` to `SET`.
+- Added `core:part:getmodule("kOSProcessor"):doevent("Open Terminal").` to `boot/x_10_d_boot.ks`.
+- Added a decorative ASCII startup header to `boot/x_10_d_boot.ks` and moved terminal-open before banner prints.
+- Replaced startup header with a larger ASCII splash (console-width-safe) and added `CLEARSCREEN.` before banner output.
+- Removed unsupported `TRY/CATCH` from `Vehicles/X_10_D.ks` `DETECT_FAR()` for kOS 1.5.1 compatibility.
+- Fixed kOS builtin clobber error by renaming local `Q` to `DYNP_Q` in `Vehicles/X_10_D.ks`.
+- Fixed `_LOCK called 'throttle'` error by replacing `SET THROTTLE TO 0.` with `SET SHIP:CONTROL:PILOTMAINTHROTTLE TO 0.`.
+- Fixed ETA suffix error by replacing `SHIP:ETA:APOAPSIS` with helper `GET_ETA_APOAPSIS()` using `SHIP:OBT:ETA:APOAPSIS`.
+- Refactored into modular pipeline: `Vehicles/X_10_D.ks` now loads `Vehicles/lib/*.ks` and `Vehicles/phases/x10d_phases.ks`.
+- Checked `Vehicles/X_10_D.ks` pipeline syntax and module load flow; no direct parser issues found.
+- Added takeoff-start robustness: default startup staging enabled if thrust is zero, plus explicit `BRAKES OFF` during `TAKEOFF_ROLL`.
+- Added API-level AtmosphereAutopilot integration hooks via `ADDONS:AA` (detection, director target updates, ownership handoff, and cleanup).
+- Split entrypoint: copied prior pipeline to `Vehicles/X_10_D_new.ks`; replaced `Vehicles/X_10_D.ks` with AA bridge probe that prints `example test` on pass.
+- Updated AA probe to skip `ADDONS:AA:CRUISE` writes due bridge setter failure; keeps testing DIRECTOR/FBW/DIRECTION paths.
+- Restored failing `CRUISE` setter lines in `Vehicles/X_10_D.ks` as commented-out code immediately before skip notes.
+- Expanded `Vehicles/X_10_D.ks` AA probe to test full listed suffix set (presence + GET/SET attempts), with cruise section ordered late as risky.
+- Added probe logging wrapper so all AA probe output is mirrored to `0:/x10d_aa_probe.log`.
+- Fixed probe logger call syntax for kOS 1.5.1: converted `OUT "..."` to `OUT("...").` and corrected punctuation.
+- Fixed AA probe clobberbuiltins risk in Vehicles/X_10_D.ks by renaming temp locals from CUR_FLAG/CUR_VAL/NEW_VAL to CURRENT_FLAG/CURRENT_VALUE/UPDATED_VALUE; retained dual console+file logging (0:/x10d_aa_probe.log).
+
+- Updated Vehicles/X_10_D.ks probe to skip all live CRUISE writes (step 2, step 8, and restore) while keeping original failing setter lines commented in place for reference; prevents immediate crash on CruiseController.desired_vspeed field mismatch.
+- Hardened Step 8 in Vehicles/X_10_D.ks: kept GET probes for cruise-controller suffixes but commented out live SET calls for PSEUDOFLC/ALTITUDE/VERTSPEED/FLCMARGIN/MAXCLIMBANGLE/WAYPOINT and added explicit skipped messages to avoid runtime crash and allow probe completion.
+- Updated Step 8 AA probe stability: disabled live GET reads for VERTSPEED/FLCMARGIN/MAXCLIMBANGLE/WAYPOINT (kept original lines commented) because cruise-controller reads can return NaN or crash stack on this bridge build; probe now reports explicit GET/SET skipped messages.
+- Probe reached AA PROBE PASS: AA bridge is present and many suffixes work, but CruiseController-related fields are partially broken (CRUISE/PSEUDOFLC/ALTITUDE/VERTSPEED/FLCMARGIN/MAXCLIMBANGLE/WAYPOINT have setter/read instability), confirming integration is incomplete with current mod combo.
+- Restored Vehicles/X_10_D.ks to main modular flight pipeline (from X_10_D_new.ks) and added new PHASE_INITIALIZING entry phase before PREFLIGHT/TAKEOFF with INIT_PHASE_SECONDS tunable and RUN_INITIALIZING handler.
+- Updated RUN_FLIGHT_COMPUTER_INIT in Vehicles/phases/x10d_phases.ks: removed AA MASTER toggle and now only enables FBW/FLYBYWIRE + moderation flags before prompting Execute Takeoff (y/n).
+- Investigated kOS-AtmosphereAutopilot source vs installed AA DLL: cruise bridge uses direct CruiseController field access (e.g., desired_vertspeed/flc_margin/max_climb_angle). Installed AA DLL strings show desired_vertsetpoint (not desired_vertspeed), indicating API/field-name drift causing cruise-mode runtime failures (MissingField/NaN behaviors).
+- Diagnosed cruise failure root cause: installed AtmosphereAutopilot 1.6.1 exposes cruise vertical setpoint as desired_vertsetpoint, while kOS-AtmosphereAutopilot bridge code/DLL expects desired_vertspeed (or desired_vspeed in older builds); CRUISE activation path then throws MissingField at runtime.
+- Compared kOS-AA bridge against current AA ecosystem signals: kOS-AA project/release is from 2020 (alpha 0.2 / dll 0.1.0.0), while AA current line for KSP 1.12.5 is 1.6.1+; bridge cruise path still targets desired_vertspeed-style fields while runtime AA exposes desired_vertsetpoint, explaining cruise setter breakage.

@@ -1,0 +1,45 @@
+{
+    "items": [
+        {
+            "value": "LOCATE 20 9",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
+        },
+        {
+            "value": "AG7",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
+        },
+        {
+            "value": "14 PRINT \"FRIEND\"",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
+        },
+        {
+            "value": "WAIT 0.5",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
+        },
+        {
+            "value": "LOCATE 20 10",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
+        },
+        {
+            "value": "PRINT \"KUWAIT\"",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
+        },
+        {
+            "value": "GOTO 90",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
+        },
+        {
+            "value": "70 SD 55 66",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
+        },
+        {
+            "value": "END",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
+        },
+        {
+            "value": "90 PRINT \"CLS\"",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
+        }
+    ],
+    "$type": "kOS.Safe.Encapsulation.ListValue"
+}

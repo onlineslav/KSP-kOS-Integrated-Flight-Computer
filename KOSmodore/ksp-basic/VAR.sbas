@@ -1,0 +1,13 @@
+{
+    "items": [
+        {
+            "value": "#GLOBAL DGJ TO 7.",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
+        },
+        {
+            "value": "PRINT DGJ",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
+        }
+    ],
+    "$type": "kOS.Safe.Encapsulation.ListValue"
+}

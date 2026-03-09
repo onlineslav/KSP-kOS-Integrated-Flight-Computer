@@ -1,0 +1,18 @@
+{
+    "items": [
+        {
+            "items": [
+                {
+                    "value": "Time: Year 1 Day 8 12:28:48",
+                    "$type": "kOS.Safe.Encapsulation.StringValue"
+                },
+                {
+                    "value": "Place: BODY(\"Kerbin\")",
+                    "$type": "kOS.Safe.Encapsulation.StringValue"
+                }
+            ],
+            "$type": "kOS.Safe.Encapsulation.ListValue"
+        }
+    ],
+    "$type": "kOS.Safe.Encapsulation.ListValue"
+}

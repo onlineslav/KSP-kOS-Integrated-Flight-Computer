@@ -1,0 +1,13 @@
+{
+    "items": [
+        {
+            "value": -0.048674911418653412,
+            "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+        },
+        {
+            "value": -74.7260891166769,
+            "$type": "kOS.Safe.Encapsulation.ScalarDoubleValue"
+        }
+    ],
+    "$type": "kOS.Safe.Encapsulation.ListValue"
+}

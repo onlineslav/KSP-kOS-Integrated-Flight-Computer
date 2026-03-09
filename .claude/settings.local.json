@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p \"c:/Portable Programs/Kerbal Space Program/Ships/Script/Integrated Flight Computer/lib\")",
+      "Bash(mkdir -p \"c:/Portable Programs/Kerbal Space Program/Ships/Script/Integrated Flight Computer/nav\")",
+      "Bash(mkdir -p \"c:/Portable Programs/Kerbal Space Program/Ships/Script/Integrated Flight Computer/aircraft\")",
+      "Bash(mkdir -p \"c:/Portable Programs/Kerbal Space Program/Ships/Script/Integrated Flight Computer/phases\")",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:api.github.com)"
+    ]
+  }
+}
