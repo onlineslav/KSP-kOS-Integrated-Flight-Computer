@@ -23,7 +23,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Vapp: target speed from FAF to flare.
     // Vref: threshold crossing speed (used for display/logging).
     // Reduce Vapp toward Vref during the flare by cutting throttle.
-    "v_app",        82.0,
+    "v_app",        76.0,
     "v_ref",        65.0,
 
     // ── Action groups ─────────────────────────────────────
@@ -54,14 +54,25 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // AGL (m) at which to extend landing gear on approach.
     // Set to 0 to manage gear manually.
     "gear_down_agl", 300,
+    "rollout_brake_max_ias", 30, // m/s max IAS for wheel brakes on rollout
+    "rollout_yaw_assist_ias", 95,
+    "rollout_roll_assist_ias", 90,
+    "rollout_steer_min_blend", 0.25,
+    "rollout_yaw_sign", -1,
 
     // ── Flare ─────────────────────────────────────────────
     // Override the global constants for this specific aircraft.
     // Set to -1 to use the global default from ifc_constants.ks.
-    "flare_agl",    -1,   // m AGL to begin flare  (-1 = use FLARE_AGL_M)
+    "flare_agl",    18,   // m AGL to begin flare  (-1 = use FLARE_AGL_M)
+    "flare_touchdown_vs",      -0.15,
+    "flare_ias_to_vs_gain",     0.01,
+    "flare_balloon_vs_trigger", 0.05,
+    "flare_balloon_fpa_push",   1.2,
+    "flare_pitch_rate_min",     0.8,
+    "flare_pitch_rate_max",     2.0,
 
     // ── Notes ─────────────────────────────────────────────
     // Free-text, shown at startup for crew awareness.
-    "notes",        "Template - fill in before use."
+    "notes",        "Note for TF1-C"
   ).
 }

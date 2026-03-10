@@ -122,15 +122,26 @@ FUNCTION _RUN_ILS_TRACK {
   SET THR_INTEGRAL TO CLAMP(THR_INTEGRAL + spd_err * IFC_LOOP_DT, -THR_INTEGRAL_LIM, THR_INTEGRAL_LIM).
   SET THROTTLE_CMD TO CLAMP(KP_SPD * spd_err + KI_SPD * THR_INTEGRAL, MIN_APPROACH_THR, 1).
 
-  // ── Check for flare trigger ──
+  // ── Check for flare trigger (with hysteresis + debounce) ──
   LOCAL flare_agl IS FLARE_AGL_M.
   IF ACTIVE_AIRCRAFT["flare_agl"] >= 0 { SET flare_agl TO ACTIVE_AIRCRAFT["flare_agl"]. }
+  LOCAL flare_arm_agl IS MAX(flare_agl - FLARE_TRIGGER_HYST_M, 0.5).
+  LOCAL agl_now IS GET_AGL().
 
-  IF GET_AGL() < flare_agl {
-    SET FLARE_PITCH_CMD TO GET_PITCH().          // seed FPA from current attitude
-    SET FLARE_ENTRY_VS  TO SHIP:VERTICALSPEED.   // capture sink rate at entry
-    SET FLARE_ENTRY_AGL TO MAX(GET_AGL(), 1).    // capture AGL (floor 1 to avoid /0)
-    SET_PHASE(PHASE_FLARE).
+  IF agl_now < flare_arm_agl {
+    IF FLARE_TRIGGER_START_UT < 0 { SET FLARE_TRIGGER_START_UT TO TIME:SECONDS. }
+    IF TIME:SECONDS - FLARE_TRIGGER_START_UT >= FLARE_TRIGGER_CONFIRM_S {
+      LOCAL entry_ias IS MAX(GET_IAS(), 10).
+      SET FLARE_PITCH_CMD TO ARCTAN(SHIP:VERTICALSPEED / entry_ias). // seed from current flight path angle
+      SET FLARE_ENTRY_VS  TO CLAMP(SHIP:VERTICALSPEED, FLARE_MIN_ENTRY_SINK_VS, -0.05). // seed to a shallow descending band
+      SET FLARE_ENTRY_AGL TO MAX(agl_now, 1).    // capture AGL (floor 1 to avoid /0)
+      SET FLARE_TRIGGER_START_UT TO -1.
+      SET TOUCHDOWN_CANDIDATE_UT TO -1.
+      SET_PHASE(PHASE_FLARE).
+    }
+  } ELSE IF agl_now > flare_agl {
+    // Fully reset trigger when we climb back above the flare threshold.
+    SET FLARE_TRIGGER_START_UT TO -1.
   }
 }
 

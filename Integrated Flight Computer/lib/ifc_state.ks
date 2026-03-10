@@ -82,6 +82,11 @@ GLOBAL FLAPS_LAST_TARGET_LOGGED IS -1.
 GLOBAL FLARE_PITCH_CMD  IS 0.   // current commanded FPA during flare (deg, smoothed)
 GLOBAL FLARE_ENTRY_VS   IS 0.   // vertical speed at flare trigger (m/s, negative)
 GLOBAL FLARE_ENTRY_AGL  IS 15.  // AGL at flare trigger (m)
+GLOBAL FLARE_TRIGGER_START_UT IS -1. // debounce timer start for entering flare
+GLOBAL TOUCHDOWN_CANDIDATE_UT IS -1. // debounce timer start for entering touchdown
+GLOBAL TOUCHDOWN_INIT_DONE IS FALSE. // one-time touchdown handoff latch
+GLOBAL ROLLOUT_ENTRY_HDG IS 0.  // heading captured at touchdown for blended wheelsteering
+GLOBAL ROLLOUT_YAW_CMD_PREV IS 0. // previous-cycle rudder command for slew limiting
 
 // ----------------------------
 // Init / reset
@@ -119,6 +124,11 @@ FUNCTION IFC_INIT_STATE {
   SET FLARE_PITCH_CMD  TO 0.
   SET FLARE_ENTRY_VS   TO 0.
   SET FLARE_ENTRY_AGL  TO FLARE_AGL_M.
+  SET FLARE_TRIGGER_START_UT TO -1.
+  SET TOUCHDOWN_CANDIDATE_UT TO -1.
+  SET TOUCHDOWN_INIT_DONE TO FALSE.
+  SET ROLLOUT_ENTRY_HDG TO SHIP:HEADING.
+  SET ROLLOUT_YAW_CMD_PREV TO 0.
 
   LOCAL initial_det IS 0.
   LOCAL max_det     IS 3.
@@ -141,7 +151,11 @@ FUNCTION IFC_LOAD_PLATE {
   SET ACTIVE_RWY_HDG  TO GET_BEACON(ACTIVE_ILS_ID)["hdg"].
   SET ACTIVE_GS_ANGLE TO GET_BEACON(ACTIVE_ILS_ID)["gs_angle"].
   SET ACTIVE_THR_ALT  TO GET_BEACON(ACTIVE_ILS_ID)["alt_asl"].
-  SET ACTIVE_V_APP    TO ACTIVE_PLATE["vapp"].
+  IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("v_app") {
+    SET ACTIVE_V_APP  TO ACTIVE_AIRCRAFT["v_app"].
+  } ELSE {
+    SET ACTIVE_V_APP  TO ACTIVE_PLATE["vapp"].
+  }
   SET ACTIVE_FIXES    TO ACTIVE_PLATE["fixes"].
   SET ACTIVE_ALT_AT   TO ACTIVE_PLATE["alt_at"].
   SET FIX_INDEX TO 0.

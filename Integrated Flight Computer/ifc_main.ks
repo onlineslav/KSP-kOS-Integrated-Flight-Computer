@@ -67,7 +67,18 @@ LOCAL _DEFAULT_AIRCRAFT IS LEXICON(
   "flaps_approach_km",   30,
   "flaps_landing_km",     8,
   "gear_down_agl",      300,
+  "rollout_brake_max_ias", 70,
+  "rollout_yaw_assist_ias", 95,
+  "rollout_roll_assist_ias", 95,
+  "rollout_steer_min_blend", -1,
+  "rollout_yaw_sign", -1,
   "flare_agl",           -1,
+  "flare_touchdown_vs",  -1,
+  "flare_ias_to_vs_gain",-1,
+  "flare_balloon_vs_trigger",-1,
+  "flare_balloon_fpa_push",-1,
+  "flare_pitch_rate_min",-1,
+  "flare_pitch_rate_max",-1,
   "notes",              "Default config."
 ).
 
@@ -143,6 +154,7 @@ FUNCTION RUN_IFC {
   IF plate = 0 { PRINT "IFC: abort - no plate for RWY " + rwy_id. RETURN. }
   SET plate["vapp"] TO ACTIVE_AIRCRAFT["v_app"].
   SET ACTIVE_PLATE  TO plate.
+  SET ACTIVE_V_APP  TO ACTIVE_AIRCRAFT["v_app"].
 
   // ── Startup banner ──────────────────────────────────────
   PRINT "╔══════════════════════════════════════╗".
@@ -187,6 +199,7 @@ FUNCTION RUN_IFC {
   IFC_INIT_STATE().
   IFC_LOAD_PLATE().
   AA_INIT().
+  PRINT "IFC: Vapp target armed at " + ROUND(ACTIVE_V_APP, 1) + " m/s (aircraft cfg)".
 
   SAS OFF.
   LOCK THROTTLE TO THROTTLE_CMD.

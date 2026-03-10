@@ -58,6 +58,12 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Set to 0 to manage gear manually.
     "gear_down_agl", 300,
 
+    // ── Rollout ────────────────────────────────────────────
+    // Max IAS to allow wheel brakes during rollout.
+    "rollout_brake_max_ias", 65,
+    "rollout_yaw_assist_ias", 95,
+    "rollout_roll_assist_ias", 95,
+
     // ── Flare ─────────────────────────────────────────────
     // Override the global constants for this specific aircraft.
     // Set to -1 to use the global default from ifc_constants.ks.

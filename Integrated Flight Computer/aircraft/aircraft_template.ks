@@ -55,10 +55,30 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Set to 0 to manage gear manually.
     "gear_down_agl", 300,
 
+    // ── Rollout ────────────────────────────────────────────
+    // Max IAS to allow wheel brakes during rollout.
+    // Lower values reduce high-speed tip-over / swerve risk.
+    "rollout_brake_max_ias", 70,
+    // Speeds below which aerodynamic rollout assists begin to engage.
+    "rollout_yaw_assist_ias", 95,
+    "rollout_roll_assist_ias", 95,
+    // Minimum runway-heading/centerline steering blend at high IAS.
+    // 0 = hold touchdown heading at very high speed, 1 = fully command runway heading.
+    "rollout_steer_min_blend", -1, // (-1 = global)
+    // Rudder assist direction on rollout:
+    // -1 = default IFC sign, 1 = invert sign for this aircraft.
+    "rollout_yaw_sign", -1,
+
     // ── Flare ─────────────────────────────────────────────
     // Override the global constants for this specific aircraft.
     // Set to -1 to use the global default from ifc_constants.ks.
     "flare_agl",    -1,   // m AGL to begin flare  (-1 = use FLARE_AGL_M)
+    "flare_touchdown_vs",      -1, // m/s  (-1 = use TOUCHDOWN_VS)
+    "flare_ias_to_vs_gain",    -1, // sink per m/s above Vref (-1 = global)
+    "flare_balloon_vs_trigger",-1, // m/s trigger balloon recovery (-1 = global)
+    "flare_balloon_fpa_push",  -1, // deg extra nose-down in recovery (-1 = global)
+    "flare_pitch_rate_min",    -1, // deg/s (-1 = global)
+    "flare_pitch_rate_max",    -1, // deg/s (-1 = global)
 
     // ── Notes ─────────────────────────────────────────────
     // Free-text, shown at startup for crew awareness.
