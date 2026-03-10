@@ -25,6 +25,14 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Reduce Vapp toward Vref during the flare by cutting throttle.
     "v_app",        75.0,
     "v_ref",        65.0,
+    // Optional approach-speed schedule shaping (set to -1 to use globals):
+    // Intercept target is derived as:
+    //   Vint = Vapp + clamp((Vapp - Vref) * gain, min_add, max_add)
+    "app_spd_intercept_gain",    -1, // -1 = use APP_SPD_INTERCEPT_GAIN
+    "app_spd_intercept_min_add", -1, // m/s, -1 = use APP_SPD_INTERCEPT_MIN_ADD
+    "app_spd_intercept_max_add", -1, // m/s, -1 = use APP_SPD_INTERCEPT_MAX_ADD
+    "app_short_final_agl",       -1, // m AGL where Vapp blends toward Vref (-1 = global)
+    "app_speed_tgt_slew_per_s",  -1, // m/s/s speed target slew limit (-1 = global)
 
     // ── Action groups ─────────────────────────────────────
     // Set to the action group NUMBER (1-10) that controls each

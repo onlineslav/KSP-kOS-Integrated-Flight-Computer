@@ -20,29 +20,31 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
   RETURN LEXICON(
 
     // ── Identity ──────────────────────────────────────────
-    "name",         "XF1-A",           // shown in telemetry
+    "name",         "X10-F Bigboi",           // shown in telemetry
 
     // ── Approach speeds (m/s IAS) ─────────────────────────
     // Vapp: target speed from FAF to flare.
     // Vref: threshold crossing speed (used for display/logging).
     // Reduce Vapp toward Vref during the flare by cutting throttle.
-    "v_app",        75.0,
-    "v_ref",        65.0,
+    "v_app",        200.0,
+    "v_ref",        170.0,
     // Approach speed schedule shaping:
     // Vint = Vapp + clamp((Vapp - Vref) * gain, min_add, max_add)
-    "app_spd_intercept_gain",    0.60,
-    "app_spd_intercept_min_add", 4.0,
-    "app_spd_intercept_max_add", 8.0,
-    "app_short_final_agl",       50.0,
-    "app_speed_tgt_slew_per_s",  0.9,
+    "app_spd_intercept_gain",    0.50,
+    "app_spd_intercept_min_add", 8.0,
+    "app_spd_intercept_max_add", 16.0,
+    "app_short_final_agl",       120.0,
+    "app_speed_tgt_slew_per_s",  1.3,
 
     // ── Action groups ─────────────────────────────────────
     // Set to the action group NUMBER (1-10) that controls each
     // system, or 0 to disable.
     "ag_flaps_step_up",   9,  // FAR step-up detent (keyboard 9)
     "ag_flaps_step_down", 10, // FAR step-down detent (keyboard 0 / AG10)
-    "ag_spoilers",       0,   // deploy spoilers/airbrakes on touchdown
+    "ag_spoilers",       8,   // deploy spoilers/airbrakes on touchdown
     "ag_thrust_rev",     0,   // reverse thrust on touchdown
+    "ag_drogue",         7,   // deploy drogue chute on touchdown (0 = not equipped)
+
 
     // ── Flap detent schedule ───────────────────────────────
     // 4 detents: 0 up, 1 climb, 2 takeoff/descent, 3 landing.
@@ -53,9 +55,9 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "flaps_detent_approach",2,
     "flaps_detent_landing", 3,
     "flaps_max_detent",     3,
-    "vfe_climb",          150, // m/s max IAS for climb detent
-    "vfe_approach",      120, // m/s max IAS to extend approach flaps
-    "vfe_landing",        95, // m/s max IAS to extend landing flaps
+    "vfe_climb",          250, // m/s max IAS for climb detent
+    "vfe_approach",      170, // m/s max IAS to extend approach flaps
+    "vfe_landing",        160, // m/s max IAS to extend landing flaps
     "flaps_climb_km",      45, // km from threshold to allow climb detent
     "flaps_approach_km",  30, // km from threshold to deploy approach flaps
     "flaps_landing_km",    8, // km from threshold to deploy landing flaps
@@ -67,17 +69,17 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
 
     // ── Rollout ────────────────────────────────────────────
     // Max IAS to allow wheel brakes during rollout.
-    "rollout_brake_max_ias", 65,
-    "rollout_yaw_assist_ias", 95,
-    "rollout_roll_assist_ias", 95,
+    "rollout_brake_max_ias", 160,
+    "rollout_yaw_assist_ias", 120,
+    "rollout_roll_assist_ias", 100,
 
     // ── Flare ─────────────────────────────────────────────
     // Override the global constants for this specific aircraft.
     // Set to -1 to use the global default from ifc_constants.ks.
-    "flare_agl",    -1,   // m AGL to begin flare  (-1 = use FLARE_AGL_M)
+    "flare_agl",    70,   // m AGL to begin flare  (-1 = use FLARE_AGL_M)
 
     // ── Notes ─────────────────────────────────────────────
     // Free-text, shown at startup for crew awareness.
-    "notes",        "Template - fill in before use."
+    "notes",        "X10-F Spaceplane"
   ).
 }

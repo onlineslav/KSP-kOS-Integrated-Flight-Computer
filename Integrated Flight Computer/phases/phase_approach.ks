@@ -23,6 +23,108 @@ FUNCTION RUN_APPROACH {
 }
 
 // ─────────────────────────────────────────────────────────
+// APPROACH SPEED SCHEDULER
+// Keeps the number of aircraft-specific knobs low by deriving
+// intercept speed from existing Vapp/Vref values.
+//
+// Speed modes:
+// - INTERCEPT: before stable LOC/GS capture, target derived Vint.
+// - FINAL: once LOC/GS capture is stable, target Vapp.
+// - SHORT FINAL: blend Vapp -> Vref below APP_SHORT_FINAL_AGL_M.
+// ─────────────────────────────────────────────────────────
+FUNCTION _GET_VREF_TARGET {
+  LOCAL vref IS ACTIVE_V_APP - 10.
+  IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("v_ref") AND ACTIVE_AIRCRAFT["v_ref"] > 0 {
+    SET vref TO ACTIVE_AIRCRAFT["v_ref"].
+  }
+  RETURN CLAMP(vref, 1, ACTIVE_V_APP).
+}
+
+FUNCTION _GET_VINTERCEPT_TARGET {
+  PARAMETER vapp, vref, gain, add_min, add_max.
+  LOCAL add IS (vapp - vref) * gain.
+  SET add TO CLAMP(add, add_min, add_max).
+  RETURN vapp + add.
+}
+
+FUNCTION _UPDATE_APPROACH_SPEED_TARGET {
+  LOCAL vapp IS ACTIVE_V_APP.
+  LOCAL vref IS _GET_VREF_TARGET().
+  LOCAL intercept_gain IS APP_SPD_INTERCEPT_GAIN.
+  LOCAL intercept_min_add IS APP_SPD_INTERCEPT_MIN_ADD.
+  LOCAL intercept_max_add IS APP_SPD_INTERCEPT_MAX_ADD.
+  LOCAL short_final_agl IS APP_SHORT_FINAL_AGL_M.
+  LOCAL speed_tgt_slew_per_s IS APP_SPEED_TGT_SLEW_PER_S.
+
+  // Optional per-aircraft overrides (keep minimal; defaults are robust).
+  IF ACTIVE_AIRCRAFT <> 0 {
+    IF ACTIVE_AIRCRAFT:HASKEY("app_spd_intercept_gain") AND ACTIVE_AIRCRAFT["app_spd_intercept_gain"] >= 0 {
+      SET intercept_gain TO ACTIVE_AIRCRAFT["app_spd_intercept_gain"].
+    }
+    IF ACTIVE_AIRCRAFT:HASKEY("app_spd_intercept_min_add") AND ACTIVE_AIRCRAFT["app_spd_intercept_min_add"] > 0 {
+      SET intercept_min_add TO ACTIVE_AIRCRAFT["app_spd_intercept_min_add"].
+    }
+    IF ACTIVE_AIRCRAFT:HASKEY("app_spd_intercept_max_add") AND ACTIVE_AIRCRAFT["app_spd_intercept_max_add"] > 0 {
+      SET intercept_max_add TO ACTIVE_AIRCRAFT["app_spd_intercept_max_add"].
+    }
+    IF ACTIVE_AIRCRAFT:HASKEY("app_short_final_agl") AND ACTIVE_AIRCRAFT["app_short_final_agl"] > 0 {
+      SET short_final_agl TO ACTIVE_AIRCRAFT["app_short_final_agl"].
+    }
+    IF ACTIVE_AIRCRAFT:HASKEY("app_speed_tgt_slew_per_s") AND ACTIVE_AIRCRAFT["app_speed_tgt_slew_per_s"] > 0 {
+      SET speed_tgt_slew_per_s TO ACTIVE_AIRCRAFT["app_speed_tgt_slew_per_s"].
+    }
+  }
+
+  IF intercept_max_add < intercept_min_add { SET intercept_max_add TO intercept_min_add. }
+  LOCAL vint IS _GET_VINTERCEPT_TARGET(vapp, vref, intercept_gain, intercept_min_add, intercept_max_add).
+  LOCAL base_tgt IS vint.
+
+  // Final-speed mode is only available once ILS tracking is active.
+  IF IFC_SUBPHASE = SUBPHASE_ILS_TRACK {
+    LOCAL loc_cap IS LOC_CAPTURE_M.
+    LOCAL gs_cap IS GS_CAPTURE_M.
+    LOCAL in_capture IS ABS(ILS_LOC_DEV) <= loc_cap AND ABS(ILS_GS_DEV) <= gs_cap.
+
+    IF in_capture {
+      IF APP_FINAL_ARM_UT < 0 { SET APP_FINAL_ARM_UT TO TIME:SECONDS. }
+      IF NOT APP_ON_FINAL AND TIME:SECONDS - APP_FINAL_ARM_UT >= APP_FINAL_CAPTURE_CONFIRM_S {
+        SET APP_ON_FINAL TO TRUE.
+        PRINT "  APP SPD mode -> FINAL  tgt " + ROUND(vapp, 1) + " m/s".
+      }
+    } ELSE {
+      SET APP_FINAL_ARM_UT TO -1.
+      LOCAL loc_rel IS loc_cap * APP_FINAL_RELEASE_FACTOR.
+      LOCAL gs_rel  IS gs_cap * APP_FINAL_RELEASE_FACTOR.
+      IF APP_ON_FINAL AND (ABS(ILS_LOC_DEV) > loc_rel OR ABS(ILS_GS_DEV) > gs_rel) {
+        SET APP_ON_FINAL TO FALSE.
+        PRINT "  APP SPD mode -> INTERCEPT  tgt " + ROUND(vint, 1) + " m/s".
+      }
+    }
+  } ELSE {
+    SET APP_FINAL_ARM_UT TO -1.
+    SET APP_ON_FINAL TO FALSE.
+  }
+
+  IF APP_ON_FINAL {
+    SET base_tgt TO vapp.
+
+    // On short final, bleed from Vapp toward Vref automatically.
+    LOCAL agl IS GET_AGL().
+    IF agl < short_final_agl {
+      LOCAL frac IS CLAMP((short_final_agl - agl) / short_final_agl, 0, 1).
+      SET base_tgt TO vapp + (vref - vapp) * frac.
+    }
+  }
+
+  SET ACTIVE_V_TGT TO MOVE_TOWARD(
+    ACTIVE_V_TGT,
+    base_tgt,
+    speed_tgt_slew_per_s * IFC_ACTUAL_DT
+  ).
+  RETURN ACTIVE_V_TGT.
+}
+
+// ─────────────────────────────────────────────────────────
 // SUB-PHASE: FLY_TO_FIX
 // Navigate toward each fix in the approach sequence.
 // Descend to the target altitude associated with each fix.
@@ -61,8 +163,9 @@ FUNCTION _RUN_FLY_TO_FIX {
   SET TELEM_LOC_CORR   TO 0.
   SET TELEM_GS_CORR    TO 0.
 
-  // Autothrottle PI: hold Vapp.
-  LOCAL spd_err IS ACTIVE_V_APP - GET_IAS().
+  // Autothrottle PI: hold the scheduled approach speed target.
+  LOCAL v_tgt IS _UPDATE_APPROACH_SPEED_TARGET().
+  LOCAL spd_err IS v_tgt - GET_IAS().
   SET THR_INTEGRAL TO CLAMP(THR_INTEGRAL + spd_err * IFC_ACTUAL_DT, -THR_INTEGRAL_LIM, THR_INTEGRAL_LIM).
   SET THROTTLE_CMD TO CLAMP(KP_SPD * spd_err + KI_SPD * THR_INTEGRAL, MIN_APPROACH_THR, 1).
 
@@ -125,8 +228,9 @@ FUNCTION _RUN_ILS_TRACK {
   SET TELEM_LOC_CORR   TO loc_corr.
   SET TELEM_GS_CORR    TO gs_corr.
 
-  // ── Autothrottle PI: hold Vapp ──
-  LOCAL spd_err IS ACTIVE_V_APP - GET_IAS().
+  // ── Autothrottle PI: hold the scheduled approach speed target ──
+  LOCAL v_tgt IS _UPDATE_APPROACH_SPEED_TARGET().
+  LOCAL spd_err IS v_tgt - GET_IAS().
   SET THR_INTEGRAL TO CLAMP(THR_INTEGRAL + spd_err * IFC_ACTUAL_DT, -THR_INTEGRAL_LIM, THR_INTEGRAL_LIM).
   SET THROTTLE_CMD TO CLAMP(KP_SPD * spd_err + KI_SPD * THR_INTEGRAL, MIN_APPROACH_THR, 1).
 

@@ -16,8 +16,8 @@
 //
 // AIR DATA
 //   ias_ms         indicated airspeed (m/s)
-//   vapp_ms        target approach speed (m/s)
-//   spd_err_ms     Vapp - IAS (m/s, +ve = too slow)
+//   vapp_ms        current approach speed target (m/s)
+//   spd_err_ms     speed target - IAS (m/s, +ve = too slow)
 //   agl_m          radar altitude AGL (m)
 //   vs_ms          vertical speed (m/s, -ve = descending)
 //   pitch_deg      nose pitch above horizon (deg)
@@ -104,6 +104,8 @@ FUNCTION LOGGER_WRITE {
   IF NOT LOG_ACTIVE { RETURN. }
 
   LOCAL ias   IS GET_IAS().
+  LOCAL v_tgt IS ACTIVE_V_APP.
+  IF IFC_PHASE = PHASE_APPROACH { SET v_tgt TO ACTIVE_V_TGT. }
   LOCAL bank  IS ROUND(90 - VECTORANGLE(SHIP:FACING:STARVECTOR, SHIP:UP:VECTOR), 3).
 
   LOCAL row IS
@@ -111,8 +113,8 @@ FUNCTION LOGGER_WRITE {
     IFC_PHASE                              + "," +
     IFC_SUBPHASE                           + "," +
     ROUND(ias,                        2)   + "," +
-    ROUND(ACTIVE_V_APP,               2)   + "," +
-    ROUND(ACTIVE_V_APP - ias,         2)   + "," +
+    ROUND(v_tgt,                      2)   + "," +
+    ROUND(v_tgt - ias,                2)   + "," +
     ROUND(GET_AGL(),                  2)   + "," +
     ROUND(SHIP:VERTICALSPEED,         2)   + "," +
     ROUND(GET_PITCH(),                2)   + "," +

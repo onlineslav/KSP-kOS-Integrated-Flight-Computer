@@ -55,6 +55,18 @@ GLOBAL KI_SPD           IS 0.012. // throttle / (m/s*s)  integral
 GLOBAL THR_INTEGRAL_LIM IS 20.    // m/s*s  anti-windup clamp on integral
 GLOBAL MIN_APPROACH_THR IS 0.     // hard throttle floor on approach
 
+// Derived approach speed schedule (minimal tuning):
+// - Pre-capture/intercept: target Vint = Vapp + derived additive.
+// - Final: target Vapp.
+// - Short final: blend Vapp toward Vref.
+GLOBAL APP_SPD_INTERCEPT_GAIN      IS 0.60. // additive = gain * (Vapp - Vref)
+GLOBAL APP_SPD_INTERCEPT_MIN_ADD   IS 4.0.  // m/s minimum additive for intercept phase
+GLOBAL APP_SPD_INTERCEPT_MAX_ADD   IS 9.0.  // m/s maximum additive for intercept phase
+GLOBAL APP_FINAL_CAPTURE_CONFIRM_S IS 1.0.  // s LOC/GS capture must persist before final-speed mode
+GLOBAL APP_FINAL_RELEASE_FACTOR    IS 1.35. // hysteresis factor on LOC/GS capture limits to exit final-speed mode
+GLOBAL APP_SHORT_FINAL_AGL_M       IS 60.0. // m AGL where Vapp -> Vref blend starts
+GLOBAL APP_SPEED_TGT_SLEW_PER_S    IS 0.8.  // m/s/s max speed-target change rate (prevents throttle step jumps)
+
 // ----------------------------
 // Enroute descent to fix
 // ----------------------------

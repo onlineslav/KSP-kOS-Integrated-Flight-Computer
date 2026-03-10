@@ -28,6 +28,7 @@ GLOBAL ACTIVE_RWY_HDG  IS 90.
 GLOBAL ACTIVE_GS_ANGLE IS 3.0.
 GLOBAL ACTIVE_THR_ALT  IS 69.
 GLOBAL ACTIVE_V_APP    IS 80.
+GLOBAL ACTIVE_V_TGT    IS 80. // current dynamic approach speed target (m/s)
 GLOBAL ACTIVE_FIXES    IS LIST().  // ordered list of beacon IDs
 GLOBAL ACTIVE_ALT_AT   IS LEXICON(). // beacon_id -> target altitude (m)
 
@@ -39,6 +40,8 @@ GLOBAL FIX_INDEX IS 0.
 // ----------------------------
 GLOBAL THROTTLE_CMD IS 0.
 GLOBAL THR_INTEGRAL IS 0.   // accumulated speed error for PI autothrottle
+GLOBAL APP_ON_FINAL IS FALSE. // TRUE once LOC/GS capture is stable for final-speed mode
+GLOBAL APP_FINAL_ARM_UT IS -1. // timer used to debounce entry to final-speed mode
 
 // ----------------------------
 // ILS deviation state  (updated each cycle in ILS_TRACK)
@@ -135,12 +138,15 @@ FUNCTION IFC_INIT_STATE {
   SET ACTIVE_GS_ANGLE TO 3.0.
   SET ACTIVE_THR_ALT  TO 69.
   SET ACTIVE_V_APP    TO 80.
+  SET ACTIVE_V_TGT    TO 80.
   SET ACTIVE_FIXES    TO LIST().
   SET ACTIVE_ALT_AT   TO LEXICON().
   SET FIX_INDEX TO 0.
 
   SET THROTTLE_CMD TO 0.
   SET THR_INTEGRAL TO 0.
+  SET APP_ON_FINAL TO FALSE.
+  SET APP_FINAL_ARM_UT TO -1.
 
   SET ILS_LOC_DEV  TO 0.
   SET ILS_GS_DEV   TO 0.
@@ -213,6 +219,9 @@ FUNCTION IFC_LOAD_PLATE {
   } ELSE {
     SET ACTIVE_V_APP  TO ACTIVE_PLATE["vapp"].
   }
+  SET ACTIVE_V_TGT TO ACTIVE_V_APP.
+  SET APP_ON_FINAL TO FALSE.
+  SET APP_FINAL_ARM_UT TO -1.
   SET ACTIVE_FIXES    TO ACTIVE_PLATE["fixes"].
   SET ACTIVE_ALT_AT   TO ACTIVE_PLATE["alt_at"].
   SET FIX_INDEX TO 0.

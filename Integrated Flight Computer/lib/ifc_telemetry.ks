@@ -54,6 +54,8 @@ FUNCTION PRINT_TELEMETRY {
 
   // ── Line 5: runway / approach info ───────────────────────
   IF ACTIVE_ILS_ID <> "" {
-    PRINT "RWY " + ACTIVE_ILS_ID + "  hdg " + ACTIVE_RWY_HDG + "  GS " + ACTIVE_GS_ANGLE + " deg  Vapp " + ACTIVE_V_APP + " m/s" AT (0,4).
+    LOCAL v_tgt IS ACTIVE_V_APP.
+    IF IFC_PHASE = PHASE_APPROACH { SET v_tgt TO ACTIVE_V_TGT. }
+    PRINT "RWY " + ACTIVE_ILS_ID + "  hdg " + ACTIVE_RWY_HDG + "  GS " + ACTIVE_GS_ANGLE + " deg  Vtgt " + ROUND(v_tgt, 1) + " m/s" AT (0,4).
   }
 }
