@@ -207,6 +207,9 @@ GLOBAL TAKEOFF_STAGE_MAX_ATTEMPTS IS 1.    // max auto-stage attempts before giv
 GLOBAL TAKEOFF_STAGE_RETRY_S      IS 1.0.  // s between auto-stage attempts
 GLOBAL TAKEOFF_ENGINE_SPOOL_TIMEOUT_S IS 8.0. // s wait in preflight for thrust before forced rollout
 GLOBAL TAKEOFF_SPOOL_THRUST_FRAC  IS 0.95. // 0..1 min fraction of max available thrust required before brake release
+GLOBAL TAKEOFF_SPOOL_STEADY_DKNPS IS 3.0. // kN/s max |d(available thrust)/dt| considered "steady"
+GLOBAL TAKEOFF_SPOOL_STEADY_HOLD_S IS 0.6. // s thrust must remain steady before brake release
+GLOBAL TAKEOFF_FLAP_SETTLE_S      IS 2.0. // s wait after last takeoff-flap step before brake release
 GLOBAL TAKEOFF_MIN_AVAIL_THRUST   IS 5.0.  // kN threshold to consider engines lit
 GLOBAL KP_TAKEOFF_LOC             IS 0.020. // deg heading correction per meter localizer error
 GLOBAL TAKEOFF_LOC_GUARD_M        IS 120.0. // m cap localizer error used by takeoff steering
@@ -216,12 +219,14 @@ GLOBAL TAKEOFF_YAW_START_IAS      IS 20.0. // m/s IAS where rudder assist starts
 GLOBAL TAKEOFF_YAW_FULL_IAS       IS 90.0. // m/s IAS where rudder assist reaches full gain
 GLOBAL TAKEOFF_YAW_MIN_SCALE      IS 0.25. // 0..1 minimum rudder-assist scale applied from rollout start
 GLOBAL KP_TAKEOFF_YAW             IS 0.025. // rudder command per deg heading error
+GLOBAL KD_TAKEOFF_YAW             IS 0.00. // rudder command per deg/s heading-rate error (damping)
 GLOBAL TAKEOFF_YAW_MAX_CMD        IS 0.30. // max rudder command magnitude
 GLOBAL TAKEOFF_YAW_SLEW_PER_S     IS 2.0.  // control units/s max rudder command slew
 GLOBAL TAKEOFF_CLIMB_MIN_THR      IS 0.78. // throttle floor in climb to avoid sink-back
 GLOBAL TAKEOFF_CLIMB_SPD_THR_GAIN IS 0.010. // throttle trim per m/s (V2-IAS) in climb
 GLOBAL TAKEOFF_CLIMB_FPA_SPD_GAIN IS 0.08. // deg FPA reduction per m/s below V2
 GLOBAL TAKEOFF_CLIMB_FPA_MIN      IS 3.0.  // deg minimum climb FPA when speed-protecting
+GLOBAL TAKEOFF_CLIMB_FPA_SLEW_DPS IS 1.6.  // deg/s max FPA change rate for rotate->climb handoff
 
 // ----------------------------
 // Beacon type tags

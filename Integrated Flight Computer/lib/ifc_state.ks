@@ -131,6 +131,10 @@ GLOBAL TO_STAGE_ATTEMPTS   IS 0.   // auto-stage attempts used during takeoff
 GLOBAL TO_LAST_STAGE_UT    IS -9999. // UT of last auto-stage attempt
 GLOBAL TO_YAW_CMD_PREV     IS 0.   // previous-cycle takeoff yaw cmd for slew limiting
 GLOBAL TO_PITCH_CMD_PREV   IS 0.   // previous-cycle takeoff pitch cmd for slew limiting
+GLOBAL TO_HDG_PREV         IS 0.   // previous-cycle heading for yaw-rate damping in takeoff rollout
+GLOBAL TO_CLIMB_FPA_CMD    IS 0.   // slewed climb FPA command (deg) for rotate->climb transition
+GLOBAL TO_SPOOL_PREV_AVAIL IS 0.   // previous-cycle available thrust during preflight spool gate (kN)
+GLOBAL TO_SPOOL_STABLE_UT  IS -1.  // UT when thrust first entered steady-state window
 
 // ----------------------------
 // Autoland phase state
@@ -253,6 +257,10 @@ FUNCTION IFC_INIT_STATE {
   SET TO_LAST_STAGE_UT    TO -9999.
   SET TO_YAW_CMD_PREV     TO 0.
   SET TO_PITCH_CMD_PREV   TO 0.
+  SET TO_HDG_PREV         TO GET_COMPASS_HDG().
+  SET TO_CLIMB_FPA_CMD    TO 0.
+  SET TO_SPOOL_PREV_AVAIL TO SHIP:AVAILABLETHRUST.
+  SET TO_SPOOL_STABLE_UT  TO -1.
 }
 
 // Called once after ACTIVE_PLATE and ACTIVE_AIRCRAFT are set.

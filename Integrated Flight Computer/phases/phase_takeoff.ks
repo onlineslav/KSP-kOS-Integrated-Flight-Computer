@@ -73,7 +73,10 @@ FUNCTION _TO_RUN_GROUND_CENTERLINE {
   LOCK WHEELSTEERING TO steer_hdg.
   SET TELEM_STEER_BLEND TO 1.
 
-  LOCAL hdg_err IS WRAP_180(GET_COMPASS_HDG() - steer_hdg).
+  LOCAL hdg_now IS GET_COMPASS_HDG().
+  LOCAL hdg_rate IS WRAP_180(hdg_now - TO_HDG_PREV) / MAX(IFC_ACTUAL_DT, 0.01).
+  SET TO_HDG_PREV TO hdg_now.
+  LOCAL hdg_err IS WRAP_180(hdg_now - steer_hdg).
   SET TELEM_RO_HDG_ERR TO hdg_err.
 
   LOCAL ias IS GET_IAS().
@@ -81,6 +84,7 @@ FUNCTION _TO_RUN_GROUND_CENTERLINE {
   LOCAL yaw_full  IS AC_PARAM("takeoff_yaw_full_ias", TAKEOFF_YAW_FULL_IAS, 0.001).
   LOCAL yaw_min_scale IS CLAMP(AC_PARAM("takeoff_yaw_min_scale", TAKEOFF_YAW_MIN_SCALE, 0), 0, 1).
   LOCAL yaw_kp    IS AC_PARAM("takeoff_yaw_kp", KP_TAKEOFF_YAW, 0).
+  LOCAL yaw_kd    IS AC_PARAM("takeoff_yaw_kd", KD_TAKEOFF_YAW, 0).
   LOCAL yaw_max   IS MIN(AC_PARAM("takeoff_yaw_max_cmd", TAKEOFF_YAW_MAX_CMD, 0), 1).
   LOCAL yaw_slew  IS AC_PARAM("takeoff_yaw_slew_per_s", TAKEOFF_YAW_SLEW_PER_S, 0.001).
   LOCAL yaw_sign  IS _TO_GET_YAW_SIGN().
@@ -99,7 +103,8 @@ FUNCTION _TO_RUN_GROUND_CENTERLINE {
         // Keep some rudder authority available from rollout start.
         SET yaw_scale TO yaw_min_scale.
       }
-      SET yaw_tgt TO (hdg_err * yaw_kp * yaw_sign) * yaw_scale.
+      LOCAL yaw_err IS hdg_err * yaw_kp + hdg_rate * yaw_kd.
+      SET yaw_tgt TO (yaw_err * yaw_sign) * yaw_scale.
     } ELSE {
       SET yaw_gate TO 2.
     }
@@ -145,8 +150,8 @@ FUNCTION _TO_TRY_AUTO_STAGE {
 
 FUNCTION _RUN_TO_PREFLIGHT {
   LOCAL first_tick IS PHASE_ELAPSED() <= IFC_ACTUAL_DT * 1.5.
-  LOCAL det_clmb IS ROUND(AC_PARAM("flaps_detent_climb", 1, 0)).
-  SET FLAPS_TARGET_DETENT TO det_clmb.
+  LOCAL det_to IS ROUND(AC_PARAM("flaps_detent_takeoff", AC_PARAM("flaps_detent_approach", 2, 0), 0)).
+  SET FLAPS_TARGET_DETENT TO det_to.
   _CHECK_TAKEOFF_FLAPS().
 
   BRAKES ON.
@@ -163,6 +168,10 @@ FUNCTION _RUN_TO_PREFLIGHT {
     SET SHIP:CONTROL:PITCH TO 0.
     SET TO_YAW_CMD_PREV TO 0.
     SET TO_PITCH_CMD_PREV TO 0.
+    SET TO_HDG_PREV TO GET_COMPASS_HDG().
+    SET TO_CLIMB_FPA_CMD TO 0.
+    SET TO_SPOOL_PREV_AVAIL TO SHIP:AVAILABLETHRUST.
+    SET TO_SPOOL_STABLE_UT TO -1.
     LOCK WHEELSTEERING TO TO_RWY_HDG.
 
     SET TELEM_AA_HDG_CMD TO TO_RWY_HDG.
@@ -186,19 +195,44 @@ FUNCTION _RUN_TO_PREFLIGHT {
   LOCAL min_avail IS AC_PARAM("takeoff_min_avail_thrust", TAKEOFF_MIN_AVAIL_THRUST, 0).
   LOCAL spool_timeout_s IS AC_PARAM("takeoff_engine_spool_timeout_s", TAKEOFF_ENGINE_SPOOL_TIMEOUT_S, 0).
   LOCAL spool_frac IS CLAMP(AC_PARAM("takeoff_spool_thrust_frac", TAKEOFF_SPOOL_THRUST_FRAC, 0), 0, 1).
+  LOCAL steady_dknps IS AC_PARAM("takeoff_spool_steady_dknps", TAKEOFF_SPOOL_STEADY_DKNPS, 0).
+  LOCAL steady_hold_s IS AC_PARAM("takeoff_spool_steady_hold_s", TAKEOFF_SPOOL_STEADY_HOLD_S, 0.001).
+  LOCAL flap_settle_s IS AC_PARAM("takeoff_flap_settle_s", TAKEOFF_FLAP_SETTLE_S, 0).
 
   LOCAL req_avail IS min_avail.
   IF SHIP:MAXTHRUST > 0 {
     SET req_avail TO MAX(req_avail, SHIP:MAXTHRUST * spool_frac * to_thr).
   }
 
-  LOCAL throttle_ready IS to_thr <= 0 OR THROTTLE_CMD >= to_thr - 0.01.
-  LOCAL thrust_ready IS SHIP:AVAILABLETHRUST >= req_avail.
+  LOCAL avail_now IS SHIP:AVAILABLETHRUST.
+  LOCAL avail_rate IS ABS(avail_now - TO_SPOOL_PREV_AVAIL) / MAX(IFC_ACTUAL_DT, 0.01).
+  SET TO_SPOOL_PREV_AVAIL TO avail_now.
 
-  IF (throttle_ready AND thrust_ready) OR PHASE_ELAPSED() >= spool_timeout_s {
+  LOCAL throttle_ready IS to_thr <= 0 OR THROTTLE_CMD >= to_thr - 0.01.
+  LOCAL thrust_stable_now IS avail_rate <= steady_dknps.
+  IF throttle_ready AND thrust_stable_now {
+    IF TO_SPOOL_STABLE_UT < 0 { SET TO_SPOOL_STABLE_UT TO TIME:SECONDS. }
+  } ELSE {
+    SET TO_SPOOL_STABLE_UT TO -1.
+  }
+  LOCAL thrust_stable IS TO_SPOOL_STABLE_UT >= 0 AND
+                       TIME:SECONDS - TO_SPOOL_STABLE_UT >= steady_hold_s.
+  LOCAL thrust_ready IS avail_now >= req_avail AND thrust_stable.
+  LOCAL flaps_ready IS TRUE.
+  IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("ag_flaps_step_up")
+      AND ACTIVE_AIRCRAFT:HASKEY("ag_flaps_step_down")
+      AND ACTIVE_AIRCRAFT["ag_flaps_step_up"] > 0
+      AND ACTIVE_AIRCRAFT["ag_flaps_step_down"] > 0 {
+    SET flaps_ready TO FLAPS_CURRENT_DETENT = FLAPS_TARGET_DETENT AND
+      TIME:SECONDS - FLAPS_LAST_STEP_UT >= flap_settle_s.
+  }
+
+  IF ((throttle_ready AND thrust_ready) OR PHASE_ELAPSED() >= spool_timeout_s)
+      AND flaps_ready {
     IF NOT thrust_ready {
-      PRINT "  TO warning: spool timeout, avail " + ROUND(SHIP:AVAILABLETHRUST, 1) +
-            " kN < req " + ROUND(req_avail, 1) + " kN. Continuing.".
+      PRINT "  TO warning: spool timeout, avail " + ROUND(avail_now, 1) +
+            " kN (req " + ROUND(req_avail, 1) + ", dT " + ROUND(avail_rate, 1) +
+            " kN/s). Continuing.".
     }
     SET THROTTLE_CMD TO to_thr.
     BRAKES OFF.
@@ -223,6 +257,7 @@ FUNCTION _RUN_TO_GROUND_ROLL {
     SET TO_ROTATE_PITCH_CMD TO GET_PITCH().
     SET TO_AIRBORNE_UT TO -1.
     SET TO_PITCH_CMD_PREV TO 0.
+    SET TO_HDG_PREV TO GET_COMPASS_HDG().
     SET SHIP:CONTROL:YAW TO 0.
     SET TO_YAW_CMD_PREV TO 0.
     SET_SUBPHASE(SUBPHASE_TO_ROTATE).
@@ -297,6 +332,8 @@ FUNCTION _RUN_TO_ROTATE {
     IF TIME:SECONDS - TO_AIRBORNE_UT >= TAKEOFF_AIRBORNE_CONFIRM_S {
       UNLOCK WHEELSTEERING.
       GEAR OFF.
+      LOCAL ias_now IS MAX(GET_IAS(), 1).
+      SET TO_CLIMB_FPA_CMD TO ARCTAN(SHIP:VERTICALSPEED / ias_now).
       SET SHIP:CONTROL:PITCH TO 0.
       SET TO_PITCH_CMD_PREV TO 0.
       SET_SUBPHASE(SUBPHASE_TO_CLIMB).
@@ -324,16 +361,22 @@ FUNCTION _RUN_TO_CLIMB {
   LOCAL climb_fpa_base IS AC_PARAM("takeoff_climb_fpa", TAKEOFF_CLIMB_FPA, 0.001).
   LOCAL fpa_spd_gain IS AC_PARAM("takeoff_climb_fpa_spd_gain", TAKEOFF_CLIMB_FPA_SPD_GAIN, 0).
   LOCAL fpa_min IS AC_PARAM("takeoff_climb_fpa_min", TAKEOFF_CLIMB_FPA_MIN, 0.001).
-  LOCAL climb_fpa_cmd IS climb_fpa_base.
+  LOCAL climb_fpa_tgt IS climb_fpa_base.
   IF spd_err > 0 {
-    SET climb_fpa_cmd TO MAX(climb_fpa_base - spd_err * fpa_spd_gain, fpa_min).
+    SET climb_fpa_tgt TO MAX(climb_fpa_base - spd_err * fpa_spd_gain, fpa_min).
   }
+  LOCAL climb_fpa_slew IS AC_PARAM("takeoff_climb_fpa_slew_dps", TAKEOFF_CLIMB_FPA_SLEW_DPS, 0.001).
+  SET TO_CLIMB_FPA_CMD TO MOVE_TOWARD(
+    TO_CLIMB_FPA_CMD,
+    climb_fpa_tgt,
+    climb_fpa_slew * IFC_ACTUAL_DT
+  ).
 
   UNLOCK WHEELSTEERING.
   LOCAL hdg_cmd IS TO_RWY_HDG.
-  AA_SET_DIRECTOR(hdg_cmd, climb_fpa_cmd).
+  AA_SET_DIRECTOR(hdg_cmd, TO_CLIMB_FPA_CMD).
   SET TELEM_AA_HDG_CMD TO hdg_cmd.
-  SET TELEM_AA_FPA_CMD TO climb_fpa_cmd.
+  SET TELEM_AA_FPA_CMD TO TO_CLIMB_FPA_CMD.
 
   SET SHIP:CONTROL:YAW TO 0.
   SET TO_YAW_CMD_PREV TO 0.
@@ -365,11 +408,20 @@ FUNCTION _CHECK_TAKEOFF_FLAPS {
   LOCAL max_det  IS ROUND(AC_PARAM("flaps_max_detent", 3, 0)).
   LOCAL det_up   IS ROUND(AC_PARAM("flaps_detent_up", 0, 0)).
   LOCAL det_clmb IS ROUND(AC_PARAM("flaps_detent_climb", 1, 0)).
+  LOCAL det_to   IS det_clmb.
+  IF ac:HASKEY("flaps_detent_takeoff") {
+    SET det_to TO ROUND(ac["flaps_detent_takeoff"]).
+  } ELSE IF ac:HASKEY("flaps_detent_approach") {
+    SET det_to TO ROUND(ac["flaps_detent_approach"]).
+  }
   LOCAL vfe_clmb IS AC_PARAM("vfe_climb", 160, 0.001).
 
-  LOCAL target_det IS det_clmb.
-  IF IFC_SUBPHASE = SUBPHASE_TO_CLIMB AND GET_IAS() > vfe_clmb {
-    SET target_det TO det_up.
+  LOCAL target_det IS det_to.
+  IF IFC_SUBPHASE = SUBPHASE_TO_CLIMB {
+    SET target_det TO det_clmb.
+    IF GET_IAS() > vfe_clmb {
+      SET target_det TO det_up.
+    }
   }
   SET FLAPS_TARGET_DETENT TO CLAMP(target_det, det_up, max_det).
 

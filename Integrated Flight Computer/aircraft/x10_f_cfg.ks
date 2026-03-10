@@ -53,6 +53,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "flaps_initial_detent", 0, // expected detent at IFC engage
     "flaps_detent_up",      0,
     "flaps_detent_climb",   1,
+    "flaps_detent_takeoff", 2,
     "flaps_detent_approach",2,
     "flaps_detent_landing", 3,
     "flaps_max_detent",     3,
@@ -106,10 +107,10 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // -- Takeoff --------------------------------------------
     "v_r",                160.0,  // m/s  rotate speed
     "v2",                176.0,  // m/s  V2 climb speed
-    "takeoff_pitch_tgt",  10.0,  // deg  pitch target at rotation
-    "takeoff_rotate_pitch_kp", 0.09, // pitch cmd per deg pitch error while on wheels
-    "takeoff_rotate_pitch_max_cmd", 0.42, // max pitch cmd while on wheels
-    "takeoff_rotate_pitch_slew_per_s", 1.8, // pitch cmd slew while on wheels
+    "takeoff_pitch_tgt",  11.5,  // deg  pitch target at rotation
+    "takeoff_rotate_pitch_kp", 0.13, // pitch cmd per deg pitch error while on wheels
+    "takeoff_rotate_pitch_max_cmd", 0.72, //PREV 0.42 // max pitch cmd while on wheels
+    "takeoff_rotate_pitch_slew_per_s", 2.6, // pitch cmd slew while on wheels
     "takeoff_climb_fpa",   8.0,  // deg  climb FPA for climb-out
     "takeoff_throttle",    1.0,  // 0..1 takeoff throttle setting
     "takeoff_done_agl",  300.0,  // m AGL to end takeoff phase
@@ -118,17 +119,21 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "takeoff_autostage",      1,   // 1=auto STAGE attempts if no thrust
     "takeoff_stage_max_attempts", 1, // max autostage attempts
     "takeoff_stage_retry_s",   1.0, // s between autostage attempts
-    "takeoff_engine_spool_timeout_s", 8.0, // s wait in preflight for thrust
-    "takeoff_spool_thrust_frac", 0.98, // 0..1 fraction of max thrust required before brake release
+    "takeoff_engine_spool_timeout_s", 16.0, // s wait in preflight for thrust
+    "takeoff_spool_thrust_frac", 0.995, // 0..1 fraction of max thrust required before brake release
+    "takeoff_spool_steady_dknps", 1.0, // kN/s |d(available thrust)/dt| threshold for steady-state gate
+    "takeoff_spool_steady_hold_s", 2.0, // s thrust must remain steady before brake release
+    "takeoff_flap_settle_s", 8.0, // s hold after final takeoff-flap step before brake release
     "takeoff_min_avail_thrust", 5.0, // kN considered "engines lit"
-    "takeoff_loc_kp",          0.040, // deg/m centerline correction gain
+    "takeoff_loc_kp",          0.050, // deg/m centerline correction gain
     "takeoff_loc_guard_m",   140.0, // m loc error clamp for steering
     "takeoff_steer_max_corr", 10.0, // deg max wheelsteering heading correction
     "takeoff_dir_max_corr",    6.0, // deg max director heading correction
     "takeoff_yaw_start_ias",   0.0, // m/s IAS where yaw assist starts
     "takeoff_yaw_full_ias",   45.0, // m/s IAS where yaw assist reaches full gain
     "takeoff_yaw_min_scale",   0.55, // 0..1 rudder authority floor from rollout start
-    "takeoff_yaw_kp",          0.050, // rudder cmd per deg heading error
+    "takeoff_yaw_kp",          0.055, // rudder cmd per deg heading error
+    "takeoff_yaw_kd",          0.012, // rudder cmd per deg/s heading-rate error (damping)
     "takeoff_yaw_max_cmd",     0.65, // max rudder cmd magnitude
     "takeoff_yaw_slew_per_s",  4.0, // rudder cmd slew rate
     "takeoff_yaw_sign",       -1,   // command sign for your control layout
@@ -136,6 +141,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "takeoff_climb_spd_thr_gain", 0.010, // throttle trim gain vs (V2-IAS)
     "takeoff_climb_fpa_spd_gain", 0.08, // deg FPA reduction per m/s below V2
     "takeoff_climb_fpa_min",   3.0, // deg minimum climb FPA under speed protection
+    "takeoff_climb_fpa_slew_dps", 1.4, // deg/s FPA slew for rotate->climb handoff
 
     // ── AA Moderators ─────────────────────────────────────
     // Per-aircraft overrides for AtmosphereAutopilot FBW limits.
