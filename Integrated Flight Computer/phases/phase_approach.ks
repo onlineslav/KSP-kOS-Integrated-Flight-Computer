@@ -63,7 +63,7 @@ FUNCTION _RUN_FLY_TO_FIX {
 
   // Autothrottle PI: hold Vapp.
   LOCAL spd_err IS ACTIVE_V_APP - GET_IAS().
-  SET THR_INTEGRAL TO CLAMP(THR_INTEGRAL + spd_err * IFC_LOOP_DT, -THR_INTEGRAL_LIM, THR_INTEGRAL_LIM).
+  SET THR_INTEGRAL TO CLAMP(THR_INTEGRAL + spd_err * IFC_ACTUAL_DT, -THR_INTEGRAL_LIM, THR_INTEGRAL_LIM).
   SET THROTTLE_CMD TO CLAMP(KP_SPD * spd_err + KI_SPD * THR_INTEGRAL, MIN_APPROACH_THR, 1).
 
   // Extend gear if aircraft config specifies a gear-down AGL.
@@ -104,8 +104,8 @@ FUNCTION _RUN_ILS_TRACK {
   SET ILS_DIST_M  TO dev["dist"].
 
   // Derivative (rate of change over one loop cycle).
-  LOCAL d_loc IS (loc_m - PREV_LOC_DEV) / IFC_LOOP_DT.
-  LOCAL d_gs  IS (gs_m  - PREV_GS_DEV)  / IFC_LOOP_DT.
+  LOCAL d_loc IS (loc_m - PREV_LOC_DEV) / IFC_ACTUAL_DT.
+  LOCAL d_gs  IS (gs_m  - PREV_GS_DEV)  / IFC_ACTUAL_DT.
   SET PREV_LOC_DEV TO loc_m.
   SET PREV_GS_DEV  TO gs_m.
 
@@ -127,7 +127,7 @@ FUNCTION _RUN_ILS_TRACK {
 
   // ── Autothrottle PI: hold Vapp ──
   LOCAL spd_err IS ACTIVE_V_APP - GET_IAS().
-  SET THR_INTEGRAL TO CLAMP(THR_INTEGRAL + spd_err * IFC_LOOP_DT, -THR_INTEGRAL_LIM, THR_INTEGRAL_LIM).
+  SET THR_INTEGRAL TO CLAMP(THR_INTEGRAL + spd_err * IFC_ACTUAL_DT, -THR_INTEGRAL_LIM, THR_INTEGRAL_LIM).
   SET THROTTLE_CMD TO CLAMP(KP_SPD * spd_err + KI_SPD * THR_INTEGRAL, MIN_APPROACH_THR, 1).
 
   // ── Check for flare trigger (with hysteresis + debounce) ──

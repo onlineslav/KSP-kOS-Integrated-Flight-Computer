@@ -81,7 +81,7 @@ GLOBAL FLARE_PITCH_RATE_MAX IS 1.8. // deg/s flare response at high IAS
 GLOBAL FLARE_RATE_LOW_IAS   IS 40.  // m/s low-speed end of flare-rate schedule
 GLOBAL FLARE_RATE_HIGH_IAS  IS 95.  // m/s high-speed end of flare-rate schedule
 GLOBAL TOUCHDOWN_VS     IS -0.3. // m/s target sink rate at wheel contact
-GLOBAL FLARE_MIN_ENTRY_SINK_VS IS -0.5. // m/s shallowest sink used to seed flare profile
+GLOBAL FLARE_MIN_ENTRY_SINK_VS IS -6.0. // m/s deepest sink accepted to seed flare profile (entries worse than this are clamped)
 GLOBAL FLARE_MAX_SINK_VS IS -2.5. // m/s strongest sink command allowed in flare
 GLOBAL FLARE_IAS_TO_VS_GAIN IS 0.02. // extra sink per m/s above Vref during flare
 GLOBAL FLARE_BALLOON_VS_TRIGGER IS 0.15. // m/s trigger balloon recovery when climbing

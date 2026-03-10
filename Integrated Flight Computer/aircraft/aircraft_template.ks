@@ -33,6 +33,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "ag_flaps_step_down", 0,  // FAR flap detent step-down action group
     "ag_spoilers",       0,   // deploy spoilers/airbrakes on touchdown
     "ag_thrust_rev",     0,   // reverse thrust on touchdown
+    "ag_drogue",         0,   // deploy drogue chute on touchdown (0 = not equipped)
 
     // ── Flap detent schedule ───────────────────────────────
     // IFC tracks current/target detent and steps one notch at a time.

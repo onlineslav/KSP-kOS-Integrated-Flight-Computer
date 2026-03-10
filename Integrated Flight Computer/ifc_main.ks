@@ -55,6 +55,7 @@ LOCAL _DEFAULT_AIRCRAFT IS LEXICON(
   "ag_flaps_step_down", 0,
   "ag_spoilers",        0,
   "ag_thrust_rev",      0,
+  "ag_drogue",          0,
   "flaps_initial_detent", 0,
   "flaps_detent_up",      0,
   "flaps_detent_climb",   1,
@@ -216,6 +217,10 @@ FUNCTION RUN_IFC {
 
   // ── Main loop ───────────────────────────────────────────
   UNTIL IFC_PHASE = PHASE_DONE {
+
+    LOCAL actual_dt IS TIME:SECONDS - IFC_CYCLE_UT.
+    SET IFC_CYCLE_UT  TO TIME:SECONDS.
+    SET IFC_ACTUAL_DT TO CLAMP(actual_dt, 0.01, 0.5).
 
     IF IFC_PHASE = PHASE_APPROACH {
       RUN_APPROACH().

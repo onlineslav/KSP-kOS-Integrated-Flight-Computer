@@ -64,6 +64,12 @@ GLOBAL AA_FBW_ON       IS FALSE.
 GLOBAL FAR_AVAILABLE IS FALSE.
 
 // ----------------------------
+// Loop timing
+// ----------------------------
+GLOBAL IFC_CYCLE_UT  IS 0.    // TIME:SECONDS at start of last cycle (for real dt)
+GLOBAL IFC_ACTUAL_DT IS 0.05. // measured elapsed time of the most recent loop cycle (s)
+
+// ----------------------------
 // Telemetry
 // ----------------------------
 GLOBAL LAST_TELEM_UT IS 0.
@@ -138,6 +144,8 @@ FUNCTION IFC_INIT_STATE {
   SET FAR_AVAILABLE  TO FALSE.
 
   SET LAST_TELEM_UT TO TIME:SECONDS.
+  SET IFC_CYCLE_UT  TO TIME:SECONDS.
+  SET IFC_ACTUAL_DT TO IFC_LOOP_DT.
   SET FLARE_PITCH_CMD  TO 0.
   SET FLARE_ENTRY_VS   TO 0.
   SET FLARE_ENTRY_AGL  TO FLARE_AGL_M.

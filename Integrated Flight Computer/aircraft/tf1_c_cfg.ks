@@ -31,8 +31,9 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // system, or 0 to disable.
     "ag_flaps_step_up",   9,  // FAR flap detent step-up action group
     "ag_flaps_step_down", 10,  // FAR flap detent step-down action group
-    "ag_spoilers",       0,   // deploy spoilers/airbrakes on touchdown
+    "ag_spoilers",       8,   // deploy spoilers/airbrakes on touchdown
     "ag_thrust_rev",     0,   // reverse thrust on touchdown
+    "ag_drogue",         0,   // deploy drogue chute on touchdown (0 = not equipped)
 
     // ── Flap detent schedule ───────────────────────────────
     // IFC tracks current/target detent and steps one notch at a time.
@@ -61,8 +62,8 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // the global defaults from ifc_constants.ks.
     "rollout_brake_max_ias",    30,   // only apply wheel brakes below this IAS
                                       // (high-speed braking causes instability)
-    "rollout_yaw_assist_ias",   95,   // begin rudder heading-hold below this IAS
-    "rollout_roll_assist_ias",  90,   // begin aileron wings-level assist below this IAS
+    "rollout_yaw_assist_ias",   50,   // begin rudder heading-hold below this IAS
+    "rollout_roll_assist_ias",  0,    // begin aileron wings-level assist below this IAS (0 = AA FBW handles roll)
     "rollout_steer_min_blend",  0.25, // minimum wheelsteering blend toward runway heading
                                       // (0 = pure touchdown heading, 1 = immediate runway heading)
     "rollout_yaw_sign",        -1,    // +1 or -1: flip if rudder corrects the wrong way
@@ -71,7 +72,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // ── Flare ─────────────────────────────────────────────
     // Override the global constants for this specific aircraft.
     // Set to -1 to use the global default from ifc_constants.ks.
-    "flare_agl",               18,   // m AGL to trigger flare
+    "flare_agl",               25,   // m AGL to trigger flare
     "flare_touchdown_vs",      -0.1, // m/s target sink rate at wheel contact (neg = descending)
     "flare_ias_to_vs_gain",     0.01,// extra sink commanded per m/s above Vref (energy bleed)
     "flare_balloon_vs_trigger", 0.05,// m/s: if VS rises above this during flare, push nose down

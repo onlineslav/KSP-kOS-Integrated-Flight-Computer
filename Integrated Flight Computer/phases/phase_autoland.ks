@@ -104,7 +104,7 @@ FUNCTION _RUN_FLARE {
   // Smooth the FPA transition at flare_rate deg/s.
   SET FLARE_PITCH_CMD TO MOVE_TOWARD(
     FLARE_PITCH_CMD, tgt_fpa,
-    flare_rate * IFC_LOOP_DT
+    flare_rate * IFC_ACTUAL_DT
   ).
 
   AA_SET_DIRECTOR(ACTIVE_RWY_HDG, FLARE_PITCH_CMD).
@@ -147,6 +147,10 @@ FUNCTION _RUN_TOUCHDOWN {
     // Reverse thrust (action group from aircraft config).
     LOCAL ag_tr IS ACTIVE_AIRCRAFT["ag_thrust_rev"].
     IF ag_tr > 0 { TRIGGER_AG(ag_tr, TRUE). }
+
+    // Drogue chute (action group from aircraft config).
+    LOCAL ag_dr IS ACTIVE_AIRCRAFT["ag_drogue"].
+    IF ag_dr > 0 { TRIGGER_AG(ag_dr, TRUE). }
 
     BRAKES OFF.
 
@@ -292,7 +296,7 @@ FUNCTION _RUN_ROLLOUT {
   LOCAL yaw_cmd IS MOVE_TOWARD(
     ROLLOUT_YAW_CMD_PREV,
     yaw_cmd_target,
-    ROLLOUT_YAW_SLEW_PER_S * IFC_LOOP_DT
+    ROLLOUT_YAW_SLEW_PER_S * IFC_ACTUAL_DT
   ).
   SET ROLLOUT_YAW_CMD_PREV TO yaw_cmd.
   SET SHIP:CONTROL:YAW TO yaw_cmd.
