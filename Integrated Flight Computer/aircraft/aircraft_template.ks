@@ -61,7 +61,14 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Lower values reduce high-speed tip-over / swerve risk.
     "rollout_brake_max_ias", 70,
     // Speeds below which aerodynamic rollout assists begin to engage.
+    // rollout_roll_assist_ias:
+    // 95 = assist starts below 95 m/s, 0 = disable IFC roll assist.
+    // With AA FBW active, keeping this at 0 is usually best.
     "rollout_yaw_assist_ias", 95,
+    "rollout_yaw_kp", -1,         // -1 = use KP_ROLLOUT_YAW global constant
+    "rollout_yaw_slew_per_s", -1, // -1 = use ROLLOUT_YAW_SLEW_PER_S global constant
+    "rollout_yaw_fade_ias", -1,   // -1 = use ROLLOUT_YAW_FADE_IAS global constant
+    "rollout_yaw_max_cmd", -1,    // -1 = use ROLLOUT_YAW_MAX_CMD global constant
     "rollout_roll_assist_ias", 95,
     // Minimum runway-heading/centerline steering blend at high IAS.
     // 0 = hold touchdown heading at very high speed, 1 = fully command runway heading.
@@ -69,6 +76,12 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Rudder assist direction on rollout:
     // -1 = default IFC sign, 1 = invert sign for this aircraft.
     "rollout_yaw_sign", -1,
+    // Nose-wheel protection:
+    // small pitch hold after touchdown, faded out by rollout_nose_release_ias.
+    // If it pushes the nose the wrong way, invert the sign.
+    "rollout_nose_hold_cmd", 0,    // 0 = disabled
+    "rollout_nose_release_ias", -1, // -1 = use global
+    "rollout_pitch_slew_per_s", -1, // -1 = use global
 
     // ── Flare ─────────────────────────────────────────────
     // Override the global constants for this specific aircraft.
@@ -76,6 +89,8 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "flare_agl",    -1,   // m AGL to begin flare  (-1 = use FLARE_AGL_M)
     "flare_touchdown_vs",      -1, // m/s  (-1 = use TOUCHDOWN_VS)
     "flare_ias_to_vs_gain",    -1, // sink per m/s above Vref (-1 = global)
+    "flare_roundout_agl",      -1, // m AGL roundout zone (-1 = global)
+    "flare_roundout_strength", -1, // 0..1 blend in roundout zone (-1 = global)
     "flare_balloon_vs_trigger",-1, // m/s trigger balloon recovery (-1 = global)
     "flare_balloon_fpa_push",  -1, // deg extra nose-down in recovery (-1 = global)
     "flare_pitch_rate_min",    -1, // deg/s (-1 = global)

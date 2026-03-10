@@ -58,27 +58,37 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
 
     // ── Rollout ───────────────────────────────────────────
     // Controls ground roll behaviour after touchdown.
-    // All IAS values in m/s.  Set a key to 0 (or omit) to use
-    // the global defaults from ifc_constants.ks.
-    "rollout_brake_max_ias",    30,   // only apply wheel brakes below this IAS
+    // All IAS values in m/s.
+    // For rollout_roll_assist_ias specifically: 0 disables IFC roll assist.
+    "rollout_brake_max_ias",    60,   // only apply wheel brakes below this IAS
                                       // (high-speed braking causes instability)
-    "rollout_yaw_assist_ias",   50,   // begin rudder heading-hold below this IAS
+    "rollout_yaw_assist_ias",   70,   // begin rudder heading-hold below this IAS
+    "rollout_yaw_kp",         0.025,  // rollout rudder gain (deg heading error -> yaw cmd)
+    "rollout_yaw_slew_per_s", 1.5,    // max yaw command rate change per second
+    "rollout_yaw_fade_ias",   22,     // fade rudder assist down below this IAS
+    "rollout_yaw_max_cmd",    0.35,   // clamp max rudder command magnitude
     "rollout_roll_assist_ias",  0,    // begin aileron wings-level assist below this IAS (0 = AA FBW handles roll)
-    "rollout_steer_min_blend",  0.25, // minimum wheelsteering blend toward runway heading
+    "rollout_steer_min_blend",  0.08, // minimum wheelsteering blend toward runway heading
                                       // (0 = pure touchdown heading, 1 = immediate runway heading)
+    "rollout_nose_hold_cmd",    0.10, // small aft-stick hold to keep nose wheel light after main gear touchdown
+    "rollout_nose_release_ias", 28,   // fade nose-hold toward zero by this IAS
+    "rollout_nose_hold_min_s",  1.2,  // keep full nose-hold for this long before IAS-based release starts
+    "rollout_pitch_slew_per_s", 0.8,  // smooth pitch-command rate limit on rollout
     "rollout_yaw_sign",        -1,    // +1 or -1: flip if rudder corrects the wrong way
                                       // (depends on aircraft control axis convention)
 
     // ── Flare ─────────────────────────────────────────────
     // Override the global constants for this specific aircraft.
     // Set to -1 to use the global default from ifc_constants.ks.
-    "flare_agl",               25,   // m AGL to trigger flare
-    "flare_touchdown_vs",      -0.1, // m/s target sink rate at wheel contact (neg = descending)
-    "flare_ias_to_vs_gain",     0.01,// extra sink commanded per m/s above Vref (energy bleed)
+    "flare_agl",               35,   // m AGL to trigger flare
+    "flare_touchdown_vs",      -0.05,// m/s target sink rate at wheel contact (neg = descending)
+    "flare_ias_to_vs_gain",     0.006,// extra sink commanded per m/s above Vref (energy bleed)
+    "flare_roundout_agl",       5.0, // m AGL where final roundout blend begins
+    "flare_roundout_strength",  1.0, // 0..1 blend strength toward touchdown VS in roundout zone
     "flare_balloon_vs_trigger", 0.05,// m/s: if VS rises above this during flare, push nose down
     "flare_balloon_fpa_push",   1.2, // deg extra nose-down FPA added when balloon recovery fires
-    "flare_pitch_rate_min",     0.8, // deg/s slowest FPA change rate (at low IAS)
-    "flare_pitch_rate_max",     2.0, // deg/s fastest FPA change rate (at high IAS)
+    "flare_pitch_rate_min",     1.2, // deg/s slowest FPA change rate (at low IAS)
+    "flare_pitch_rate_max",     2.8, // deg/s fastest FPA change rate (at high IAS)
 
     // ── Notes ─────────────────────────────────────────────
     // Free-text, shown at startup for crew awareness.

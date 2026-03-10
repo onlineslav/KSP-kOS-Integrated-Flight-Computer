@@ -55,8 +55,12 @@
 //   ro_loc_corr_d  heading correction from ILS centreline (deg)
 //   ro_hdg_err_deg actual heading minus steer target (deg)
 //   ro_yaw_tgt     yaw command target before slew rate limit
+//   ro_yaw_scale   yaw assist blend factor (0-1)
+//   ro_yaw_gate    0=active, 1=speed-gated, 2=guard-gated, 3=not landed
 //   yaw_cmd        raw rudder output to SHIP:CONTROL:YAW
 //   roll_cmd       raw aileron output to SHIP:CONTROL:ROLL
+//   pitch_cmd      raw pitch input to SHIP:CONTROL:PITCH
+//   ro_roll_asst   1 when IFC rollout roll assist is active, else 0
 //
 // FLAP STATE
 //   flaps_cur      current flap detent index
@@ -74,10 +78,20 @@ FUNCTION LOGGER_INIT {
   LOCAL log_dir IS "0:/Integrated Flight Computer/logs".
   IF NOT EXISTS(log_dir) { CREATEDIR(log_dir). }
 
-  LOCAL ts IS ROUND(MOD(TIME:SECONDS, 100000), 0).
-  SET LOG_FILE TO log_dir + "/ifc_log_" + ts + ".csv".
+  // Build a unique logfile name every run.
+  // Use centiseconds to reduce collisions, then add a numeric suffix
+  // if a file with the same name already exists (e.g. after quickload).
+  LOCAL ts IS ROUND(MOD(TIME:SECONDS * 100, 10000000), 0).
+  LOCAL base_name IS "ifc_log_" + ts.
+  LOCAL candidate IS log_dir + "/" + base_name + ".csv".
+  LOCAL suffix IS 0.
+  UNTIL NOT EXISTS(candidate) {
+    SET suffix TO suffix + 1.
+    SET candidate TO log_dir + "/" + base_name + "_" + suffix + ".csv".
+  }
+  SET LOG_FILE TO candidate.
 
-  LOG "t_s,phase,subphase,ias_ms,vapp_ms,spd_err_ms,agl_m,vs_ms,pitch_deg,aoa_deg,hdg_deg,bank_deg,thr_cmd,thr_intg,aa_hdg_cmd_deg,aa_fpa_cmd_deg,ils_loc_m,ils_gs_m,ils_dist_km,loc_corr_deg,gs_corr_deg,flare_fpa_cmd,flare_tgt_vs,flare_frac,steer_hdg_deg,steer_blend,ro_loc_corr_deg,ro_hdg_err_deg,ro_yaw_tgt,yaw_cmd,roll_cmd,flaps_cur,flaps_tgt,phase_el_s,status" TO LOG_FILE.
+  LOG "t_s,phase,subphase,ias_ms,vapp_ms,spd_err_ms,agl_m,vs_ms,pitch_deg,aoa_deg,hdg_deg,bank_deg,thr_cmd,thr_intg,aa_hdg_cmd_deg,aa_fpa_cmd_deg,ils_loc_m,ils_gs_m,ils_dist_km,loc_corr_deg,gs_corr_deg,flare_fpa_cmd,flare_tgt_vs,flare_frac,steer_hdg_deg,steer_blend,ro_loc_corr_deg,ro_hdg_err_deg,ro_yaw_tgt,ro_yaw_scale,ro_yaw_gate,yaw_cmd,roll_cmd,pitch_cmd,ro_roll_assist,flaps_cur,flaps_tgt,phase_el_s,status" TO LOG_FILE.
 
   SET LOG_ACTIVE TO TRUE.
   PRINT "IFC: logging -> " + LOG_FILE.
@@ -119,8 +133,12 @@ FUNCTION LOGGER_WRITE {
     ROUND(TELEM_RO_LOC_CORR,          3)   + "," +
     ROUND(TELEM_RO_HDG_ERR,           3)   + "," +
     ROUND(TELEM_RO_YAW_TGT,           4)   + "," +
+    ROUND(TELEM_RO_YAW_SCALE,         3)   + "," +
+    ROUND(TELEM_RO_YAW_GATE,          0)   + "," +
     ROUND(SHIP:CONTROL:YAW,           4)   + "," +
     ROUND(SHIP:CONTROL:ROLL,          4)   + "," +
+    ROUND(SHIP:CONTROL:PITCH,         4)   + "," +
+    ROUND(TELEM_RO_ROLL_ASSIST,       0)   + "," +
     FLAPS_CURRENT_DETENT                   + "," +
     FLAPS_TARGET_DETENT                    + "," +
     ROUND(PHASE_ELAPSED(),            2)   + "," +

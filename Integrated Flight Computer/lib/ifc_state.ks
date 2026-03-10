@@ -89,6 +89,9 @@ GLOBAL TELEM_STEER_BLEND   IS 0.  // rollout wheelsteering blend factor (0-1)
 GLOBAL TELEM_RO_HDG_ERR    IS 0.  // rollout: actual hdg minus steer target (deg)
 GLOBAL TELEM_RO_YAW_TGT    IS 0.  // rollout: yaw command target before slew rate
 GLOBAL TELEM_RO_LOC_CORR   IS 0.  // rollout: heading correction from localizer (deg)
+GLOBAL TELEM_RO_ROLL_ASSIST IS 0. // rollout: 1 when IFC roll assist is active, else 0
+GLOBAL TELEM_RO_YAW_SCALE  IS 0.  // rollout: yaw assist blend factor (0-1)
+GLOBAL TELEM_RO_YAW_GATE   IS 0.  // rollout yaw gate: 0=active,1=speed,2=guard
 
 // ----------------------------
 // Flap detent state
@@ -109,6 +112,7 @@ GLOBAL TOUCHDOWN_CANDIDATE_UT IS -1. // debounce timer start for entering touchd
 GLOBAL TOUCHDOWN_INIT_DONE IS FALSE. // one-time touchdown handoff latch
 GLOBAL ROLLOUT_ENTRY_HDG IS 0.  // heading captured at touchdown for blended wheelsteering
 GLOBAL ROLLOUT_YAW_CMD_PREV IS 0. // previous-cycle rudder command for slew limiting
+GLOBAL ROLLOUT_PITCH_CMD_PREV IS 0. // previous-cycle pitch command for slew limiting
 GLOBAL ROLLOUT_STEER_HDG IS 0. // computed wheelsteering target (logged for telemetry)
 
 // ----------------------------
@@ -154,6 +158,7 @@ FUNCTION IFC_INIT_STATE {
   SET TOUCHDOWN_INIT_DONE TO FALSE.
   SET ROLLOUT_ENTRY_HDG   TO GET_COMPASS_HDG().
   SET ROLLOUT_YAW_CMD_PREV TO 0.
+  SET ROLLOUT_PITCH_CMD_PREV TO 0.
   SET ROLLOUT_STEER_HDG   TO GET_COMPASS_HDG().
 
   SET TELEM_AA_HDG_CMD   TO 0.
@@ -166,6 +171,9 @@ FUNCTION IFC_INIT_STATE {
   SET TELEM_RO_HDG_ERR   TO 0.
   SET TELEM_RO_YAW_TGT   TO 0.
   SET TELEM_RO_LOC_CORR  TO 0.
+  SET TELEM_RO_ROLL_ASSIST TO 0.
+  SET TELEM_RO_YAW_SCALE TO 0.
+  SET TELEM_RO_YAW_GATE TO 0.
 
   LOCAL initial_det IS 0.
   LOCAL max_det     IS 3.

@@ -84,6 +84,8 @@ GLOBAL TOUCHDOWN_VS     IS -0.3. // m/s target sink rate at wheel contact
 GLOBAL FLARE_MIN_ENTRY_SINK_VS IS -6.0. // m/s deepest sink accepted to seed flare profile (entries worse than this are clamped)
 GLOBAL FLARE_MAX_SINK_VS IS -2.5. // m/s strongest sink command allowed in flare
 GLOBAL FLARE_IAS_TO_VS_GAIN IS 0.02. // extra sink per m/s above Vref during flare
+GLOBAL FLARE_ROUNDOUT_AGL_M IS 0.0. // m AGL final roundout blend toward touchdown target (0 = disabled)
+GLOBAL FLARE_ROUNDOUT_STRENGTH IS 1.0. // 0..1 blend strength toward flare_touchdown_vs in roundout zone
 GLOBAL FLARE_BALLOON_VS_TRIGGER IS 0.15. // m/s trigger balloon recovery when climbing
 GLOBAL FLARE_BALLOON_FPA_PUSH IS 1.0. // deg additional nose-down when ballooning
 GLOBAL MAX_FLARE_AOA    IS 10.   // deg AoA ceiling (FAR) — freeze pitch-up if exceeded
@@ -113,8 +115,14 @@ GLOBAL ROLLOUT_STEER_MIN_BLEND IS 0.10. // minimum blend toward runway/centerlin
 GLOBAL ROLLOUT_YAW_ASSIST_IAS  IS 95.  // m/s start applying rudder assist below this speed
 GLOBAL ROLLOUT_ROLL_ASSIST_IAS IS 95.  // m/s start applying roll assist below this speed
 GLOBAL ROLLOUT_YAW_ERR_GUARD_DEG IS 45. // deg disable rudder assist when heading error is unrealistically large
+GLOBAL ROLLOUT_YAW_FADE_IAS    IS 20.  // m/s fade yaw assist toward zero below this speed
+GLOBAL ROLLOUT_YAW_MAX_CMD     IS 0.50. // max magnitude of yaw command target
 GLOBAL ROLLOUT_BRAKE_DELAY_S   IS 0.7. // s delay after touchdown before enabling wheel brakes
 GLOBAL ROLLOUT_BRAKE_MAX_IAS   IS 70.  // m/s wheel brakes enabled only below this speed
+GLOBAL ROLLOUT_NOSE_HOLD_CMD    IS 0.0. // pitch command to hold nose up on rollout (0 = disabled)
+GLOBAL ROLLOUT_NOSE_RELEASE_IAS IS 35.  // m/s fade nose-hold command to zero by this IAS
+GLOBAL ROLLOUT_NOSE_HOLD_MIN_S  IS 1.0. // s keep full nose-hold after rollout entry before releasing by IAS
+GLOBAL ROLLOUT_PITCH_SLEW_PER_S IS 1.2. // control units/s max pitch command rate change on rollout
 
 // ----------------------------
 // AA limits (set on FBW init)
