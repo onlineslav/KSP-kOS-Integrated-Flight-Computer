@@ -70,10 +70,16 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "rollout_roll_assist_ias",  0,    // begin aileron wings-level assist below this IAS (0 = AA FBW handles roll)
     "rollout_steer_min_blend",  0.08, // minimum wheelsteering blend toward runway heading
                                       // (0 = pure touchdown heading, 1 = immediate runway heading)
-    "rollout_nose_hold_cmd",    0.10, // small aft-stick hold to keep nose wheel light after main gear touchdown
-    "rollout_nose_release_ias", 28,   // fade nose-hold toward zero by this IAS
-    "rollout_nose_hold_min_s",  1.2,  // keep full nose-hold for this long before IAS-based release starts
-    "rollout_pitch_slew_per_s", 0.8,  // smooth pitch-command rate limit on rollout
+    "rollout_nose_hold_cmd",    0.12, // moderate aft-stick hold to resist touchdown nose-drop impulse
+    "rollout_nose_release_ias", 24,   // only start releasing nose hold after more deceleration
+    "rollout_nose_hold_min_s",  1.8,  // keep full nose-hold through the initial touchdown transient
+    "rollout_nose_min_ref_deg", 3.0,  // minimum touchdown pitch reference to hold after mains contact
+    "rollout_nose_target_pitch_deg", 0.0, // final rollout pitch target once nose lowering is allowed
+    "rollout_nose_target_slew_dps", 0.55, // deg/s max rate for lowering pitch target
+    "rollout_pitch_hold_kp",    0.09, // closed-loop pitch hold gain (cmd per deg error)
+    "rollout_pitch_max_cmd",    0.38, // clamp for closed-loop pitch hold command
+    "rollout_pitch_slew_per_s", 2.0,  // allow responsive but not aggressive touchdown correction
+    "rollout_touchdown_settle_s", 0.45, // keep TOUCHDOWN phase longer before entering rollout
     "rollout_yaw_sign",        -1,    // +1 or -1: flip if rudder corrects the wrong way
                                       // (depends on aircraft control axis convention)
 

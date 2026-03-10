@@ -122,6 +122,11 @@ GLOBAL ROLLOUT_BRAKE_MAX_IAS   IS 70.  // m/s wheel brakes enabled only below th
 GLOBAL ROLLOUT_NOSE_HOLD_CMD    IS 0.0. // pitch command to hold nose up on rollout (0 = disabled)
 GLOBAL ROLLOUT_NOSE_RELEASE_IAS IS 35.  // m/s fade nose-hold command to zero by this IAS
 GLOBAL ROLLOUT_NOSE_HOLD_MIN_S  IS 1.0. // s keep full nose-hold after rollout entry before releasing by IAS
+GLOBAL ROLLOUT_NOSE_MIN_REF_DEG IS 2.0. // deg minimum touchdown pitch reference to hold after mains contact
+GLOBAL ROLLOUT_NOSE_TARGET_PITCH_DEG IS 0.0. // deg final rollout pitch target once nose is lowered
+GLOBAL ROLLOUT_NOSE_TARGET_SLEW_DPS IS 1.2. // deg/s max target attitude change while lowering nose
+GLOBAL ROLLOUT_PITCH_HOLD_KP    IS 0.08. // pitch command per deg of (target - actual) pitch attitude error
+GLOBAL ROLLOUT_PITCH_MAX_CMD    IS 0.35. // max magnitude of closed-loop rollout pitch command
 GLOBAL ROLLOUT_PITCH_SLEW_PER_S IS 1.2. // control units/s max pitch command rate change on rollout
 
 // ----------------------------

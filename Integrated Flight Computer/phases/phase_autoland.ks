@@ -34,6 +34,9 @@ FUNCTION _RUN_FLARE {
   SET TELEM_RO_ROLL_ASSIST TO 0.
   SET TELEM_RO_YAW_SCALE TO 0.
   SET TELEM_RO_YAW_GATE TO 0.
+  SET TELEM_RO_PITCH_TGT TO 0.
+  SET TELEM_RO_PITCH_ERR TO 0.
+  SET TELEM_RO_PITCH_FF TO 0.
   LOCAL ac  IS ACTIVE_AIRCRAFT.
   LOCAL agl IS GET_AGL().
   LOCAL ias IS MAX(GET_IAS(), 10).  // floor prevents divide-by-zero at very low speed
@@ -140,6 +143,9 @@ FUNCTION _RUN_FLARE {
   IF SHIP:STATUS = "LANDED" OR td_fallback {
     IF TOUCHDOWN_CANDIDATE_UT < 0 { SET TOUCHDOWN_CANDIDATE_UT TO TIME:SECONDS. }
     IF TIME:SECONDS - TOUCHDOWN_CANDIDATE_UT >= TOUCHDOWN_CONFIRM_S {
+      // Capture pre-impact pitch while still in flare; this is a better
+      // nose-hold reference than waiting until touchdown transients begin.
+      SET TOUCHDOWN_CAPTURE_PITCH_DEG TO GET_PITCH().
       SET TOUCHDOWN_INIT_DONE TO FALSE.
       SET TOUCHDOWN_CANDIDATE_UT TO -1.
       SET_PHASE(PHASE_TOUCHDOWN).
@@ -160,12 +166,28 @@ FUNCTION _RUN_TOUCHDOWN {
   SET TELEM_RO_YAW_GATE TO 0.
   SET THROTTLE_CMD TO 0.
   LOCAL nose_hold_cmd IS ROLLOUT_NOSE_HOLD_CMD.
+  LOCAL nose_min_ref_deg IS ROLLOUT_NOSE_MIN_REF_DEG.
+  LOCAL rollout_pitch_hold_kp IS ROLLOUT_PITCH_HOLD_KP.
+  LOCAL rollout_pitch_max_cmd IS ROLLOUT_PITCH_MAX_CMD.
   LOCAL rollout_pitch_slew_per_s IS ROLLOUT_PITCH_SLEW_PER_S.
+  LOCAL touchdown_settle_s IS TOUCHDOWN_SETTLE_S.
   IF ACTIVE_AIRCRAFT:HASKEY("rollout_nose_hold_cmd") {
     SET nose_hold_cmd TO ACTIVE_AIRCRAFT["rollout_nose_hold_cmd"].
   }
+  IF ACTIVE_AIRCRAFT:HASKEY("rollout_nose_min_ref_deg") AND ACTIVE_AIRCRAFT["rollout_nose_min_ref_deg"] >= 0 {
+    SET nose_min_ref_deg TO ACTIVE_AIRCRAFT["rollout_nose_min_ref_deg"].
+  }
+  IF ACTIVE_AIRCRAFT:HASKEY("rollout_pitch_hold_kp") AND ACTIVE_AIRCRAFT["rollout_pitch_hold_kp"] >= 0 {
+    SET rollout_pitch_hold_kp TO ACTIVE_AIRCRAFT["rollout_pitch_hold_kp"].
+  }
+  IF ACTIVE_AIRCRAFT:HASKEY("rollout_pitch_max_cmd") AND ACTIVE_AIRCRAFT["rollout_pitch_max_cmd"] > 0 {
+    SET rollout_pitch_max_cmd TO CLAMP(ACTIVE_AIRCRAFT["rollout_pitch_max_cmd"], 0, 1).
+  }
   IF ACTIVE_AIRCRAFT:HASKEY("rollout_pitch_slew_per_s") AND ACTIVE_AIRCRAFT["rollout_pitch_slew_per_s"] > 0 {
     SET rollout_pitch_slew_per_s TO ACTIVE_AIRCRAFT["rollout_pitch_slew_per_s"].
+  }
+  IF ACTIVE_AIRCRAFT:HASKEY("rollout_touchdown_settle_s") AND ACTIVE_AIRCRAFT["rollout_touchdown_settle_s"] > 0 {
+    SET touchdown_settle_s TO ACTIVE_AIRCRAFT["rollout_touchdown_settle_s"].
   }
 
   // One-time touchdown handoff work.
@@ -194,21 +216,29 @@ FUNCTION _RUN_TOUCHDOWN {
     SET SHIP:CONTROL:PITCH TO 0.
     SET ROLLOUT_YAW_CMD_PREV TO 0.
     SET ROLLOUT_PITCH_CMD_PREV TO 0.
+    LOCAL captured_pitch IS TOUCHDOWN_CAPTURE_PITCH_DEG.
+    IF captured_pitch = 0 { SET captured_pitch TO GET_PITCH(). }
+    SET ROLLOUT_PITCH_REF_DEG TO MAX(captured_pitch, nose_min_ref_deg).
+    SET ROLLOUT_PITCH_TGT_DEG TO ROLLOUT_PITCH_REF_DEG.
 
     // Capture touchdown heading and start wheelsteering from that heading.
     // We'll blend from touchdown heading -> runway heading as speed decays.
     SET ROLLOUT_ENTRY_HDG TO GET_COMPASS_HDG().
     LOCK WHEELSTEERING TO ROLLOUT_ENTRY_HDG.
     PRINT "  ROLLOUT armed: hdg " + ROUND(ROLLOUT_ENTRY_HDG, 1)
-        + " deg, IAS " + ROUND(GET_IAS(), 1) + " m/s".
+        + " deg, IAS " + ROUND(GET_IAS(), 1) + " m/s"
+        + ", pitch_ref " + ROUND(ROLLOUT_PITCH_REF_DEG, 2) + " deg".
 
     SET TOUCHDOWN_INIT_DONE TO TRUE.
   }
 
-  // Hold a small pitch command through initial wheel-contact transients.
-  // Apply nose-hold immediately in TOUCHDOWN so we do not drop the nose
-  // during the short handoff from flare director -> ground-roll control.
-  LOCAL td_pitch_target IS nose_hold_cmd.
+  // Closed-loop touchdown pitch hold:
+  // hold sampled pitch attitude with a small feedforward up-command.
+  LOCAL pitch_now IS GET_PITCH().
+  LOCAL pitch_err IS ROLLOUT_PITCH_REF_DEG - pitch_now.
+  LOCAL td_pitch_ff IS nose_hold_cmd.
+  LOCAL td_pitch_target IS td_pitch_ff + pitch_err * rollout_pitch_hold_kp.
+  SET td_pitch_target TO CLAMP(td_pitch_target, -rollout_pitch_max_cmd, rollout_pitch_max_cmd).
   LOCAL td_pitch_cmd IS MOVE_TOWARD(
     ROLLOUT_PITCH_CMD_PREV,
     td_pitch_target,
@@ -216,6 +246,9 @@ FUNCTION _RUN_TOUCHDOWN {
   ).
   SET ROLLOUT_PITCH_CMD_PREV TO td_pitch_cmd.
   SET SHIP:CONTROL:PITCH TO td_pitch_cmd.
+  SET TELEM_RO_PITCH_TGT TO ROLLOUT_PITCH_REF_DEG.
+  SET TELEM_RO_PITCH_ERR TO pitch_err.
+  SET TELEM_RO_PITCH_FF TO td_pitch_ff.
 
   // If we were not really on the wheels, return to flare.
   LOCAL agl IS GET_AGL().
@@ -224,7 +257,14 @@ FUNCTION _RUN_TOUCHDOWN {
     UNLOCK WHEELSTEERING.
     SET TOUCHDOWN_INIT_DONE TO FALSE.
     SET TOUCHDOWN_CANDIDATE_UT TO -1.
+    SET TOUCHDOWN_CAPTURE_PITCH_DEG TO 0.
     SET ROLLOUT_PITCH_CMD_PREV TO 0.
+    SET ROLLOUT_PITCH_REF_DEG TO GET_PITCH().
+    SET ROLLOUT_PITCH_TGT_DEG TO GET_PITCH().
+    // Clear any leftover manual inputs before re-entering flare director mode.
+    SET SHIP:CONTROL:YAW TO 0.
+    SET SHIP:CONTROL:ROLL TO 0.
+    SET SHIP:CONTROL:PITCH TO 0.
     LOCAL entry_ias IS MAX(GET_IAS(), 10).
     SET FLARE_PITCH_CMD TO ARCTAN(SHIP:VERTICALSPEED / entry_ias).
     SET FLARE_ENTRY_VS  TO CLAMP(SHIP:VERTICALSPEED, FLARE_MIN_ENTRY_SINK_VS, -0.05).
@@ -234,9 +274,10 @@ FUNCTION _RUN_TOUCHDOWN {
   }
 
   // Hold briefly in TOUCHDOWN to absorb contact transients before rollout.
-  IF PHASE_ELAPSED() >= TOUCHDOWN_SETTLE_S {
+  IF PHASE_ELAPSED() >= touchdown_settle_s {
     SET TOUCHDOWN_INIT_DONE TO FALSE.
     SET TOUCHDOWN_CANDIDATE_UT TO -1.
+    SET TOUCHDOWN_CAPTURE_PITCH_DEG TO 0.
     SET_PHASE(PHASE_ROLLOUT).
   }
 }
@@ -264,6 +305,10 @@ FUNCTION _RUN_ROLLOUT {
   LOCAL nose_hold_cmd IS ROLLOUT_NOSE_HOLD_CMD.
   LOCAL nose_release_ias IS ROLLOUT_NOSE_RELEASE_IAS.
   LOCAL nose_hold_min_s IS ROLLOUT_NOSE_HOLD_MIN_S.
+  LOCAL rollout_nose_target_pitch_deg IS ROLLOUT_NOSE_TARGET_PITCH_DEG.
+  LOCAL rollout_nose_target_slew_dps IS ROLLOUT_NOSE_TARGET_SLEW_DPS.
+  LOCAL rollout_pitch_hold_kp IS ROLLOUT_PITCH_HOLD_KP.
+  LOCAL rollout_pitch_max_cmd IS ROLLOUT_PITCH_MAX_CMD.
   LOCAL rollout_pitch_slew_per_s IS ROLLOUT_PITCH_SLEW_PER_S.
   LOCAL yaw_sign IS -1.
   IF ACTIVE_AIRCRAFT:HASKEY("rollout_brake_max_ias") AND ACTIVE_AIRCRAFT["rollout_brake_max_ias"] > 0 {
@@ -300,6 +345,18 @@ FUNCTION _RUN_ROLLOUT {
   IF ACTIVE_AIRCRAFT:HASKEY("rollout_nose_hold_min_s") AND ACTIVE_AIRCRAFT["rollout_nose_hold_min_s"] >= 0 {
     SET nose_hold_min_s TO ACTIVE_AIRCRAFT["rollout_nose_hold_min_s"].
   }
+  IF ACTIVE_AIRCRAFT:HASKEY("rollout_nose_target_pitch_deg") {
+    SET rollout_nose_target_pitch_deg TO ACTIVE_AIRCRAFT["rollout_nose_target_pitch_deg"].
+  }
+  IF ACTIVE_AIRCRAFT:HASKEY("rollout_nose_target_slew_dps") AND ACTIVE_AIRCRAFT["rollout_nose_target_slew_dps"] > 0 {
+    SET rollout_nose_target_slew_dps TO ACTIVE_AIRCRAFT["rollout_nose_target_slew_dps"].
+  }
+  IF ACTIVE_AIRCRAFT:HASKEY("rollout_pitch_hold_kp") AND ACTIVE_AIRCRAFT["rollout_pitch_hold_kp"] >= 0 {
+    SET rollout_pitch_hold_kp TO ACTIVE_AIRCRAFT["rollout_pitch_hold_kp"].
+  }
+  IF ACTIVE_AIRCRAFT:HASKEY("rollout_pitch_max_cmd") AND ACTIVE_AIRCRAFT["rollout_pitch_max_cmd"] > 0 {
+    SET rollout_pitch_max_cmd TO CLAMP(ACTIVE_AIRCRAFT["rollout_pitch_max_cmd"], 0, 1).
+  }
   IF ACTIVE_AIRCRAFT:HASKEY("rollout_pitch_slew_per_s") AND ACTIVE_AIRCRAFT["rollout_pitch_slew_per_s"] > 0 {
     SET rollout_pitch_slew_per_s TO ACTIVE_AIRCRAFT["rollout_pitch_slew_per_s"].
   }
@@ -312,7 +369,14 @@ FUNCTION _RUN_ROLLOUT {
     BRAKES OFF.
     UNLOCK WHEELSTEERING.
     SET TOUCHDOWN_CANDIDATE_UT TO -1.
+    SET TOUCHDOWN_CAPTURE_PITCH_DEG TO 0.
     SET ROLLOUT_PITCH_CMD_PREV TO 0.
+    SET ROLLOUT_PITCH_REF_DEG TO GET_PITCH().
+    SET ROLLOUT_PITCH_TGT_DEG TO GET_PITCH().
+    // Clear any leftover manual inputs before re-entering flare director mode.
+    SET SHIP:CONTROL:YAW TO 0.
+    SET SHIP:CONTROL:ROLL TO 0.
+    SET SHIP:CONTROL:PITCH TO 0.
     LOCAL entry_ias IS MAX(GET_IAS(), 10).
     SET FLARE_PITCH_CMD TO ARCTAN(SHIP:VERTICALSPEED / entry_ias).
     SET FLARE_ENTRY_VS  TO CLAMP(SHIP:VERTICALSPEED, FLARE_MIN_ENTRY_SINK_VS, -0.05).
@@ -396,18 +460,34 @@ FUNCTION _RUN_ROLLOUT {
   SET ROLLOUT_YAW_CMD_PREV TO yaw_cmd.
   SET SHIP:CONTROL:YAW TO yaw_cmd.
 
-  // Nose gear protection: hold a small pitch command after touchdown and
-  // fade it out smoothly as speed decays.
-  LOCAL pitch_cmd_target IS 0.
+  // Nose gear protection:
+  // 1) Hold touchdown pitch attitude with feedback right after landing.
+  // 2) Once stable and slow enough, ramp target pitch down gradually.
+  LOCAL desired_pitch_deg IS ROLLOUT_PITCH_REF_DEG.
+  IF SHIP:STATUS = "LANDED" AND PHASE_ELAPSED() >= nose_hold_min_s AND ias <= nose_release_ias {
+    SET desired_pitch_deg TO rollout_nose_target_pitch_deg.
+  }
+  SET ROLLOUT_PITCH_TGT_DEG TO MOVE_TOWARD(
+    ROLLOUT_PITCH_TGT_DEG,
+    desired_pitch_deg,
+    rollout_nose_target_slew_dps * IFC_ACTUAL_DT
+  ).
+
+  LOCAL pitch_cmd_ff IS 0.
   IF SHIP:STATUS = "LANDED" AND ABS(nose_hold_cmd) > 0 {
-    IF PHASE_ELAPSED() < nose_hold_min_s {
-      SET pitch_cmd_target TO nose_hold_cmd.
+    IF PHASE_ELAPSED() < nose_hold_min_s OR ias > nose_release_ias {
+      SET pitch_cmd_ff TO nose_hold_cmd.
     } ELSE {
       LOCAL nose_span IS MAX(nose_release_ias - ROLLOUT_DONE_IAS, 1).
       LOCAL nose_scale IS CLAMP((ias - ROLLOUT_DONE_IAS) / nose_span, 0, 1).
-      SET pitch_cmd_target TO nose_hold_cmd * nose_scale.
+      SET pitch_cmd_ff TO nose_hold_cmd * nose_scale.
     }
   }
+
+  LOCAL pitch_now IS GET_PITCH().
+  LOCAL pitch_err IS ROLLOUT_PITCH_TGT_DEG - pitch_now.
+  LOCAL pitch_cmd_target IS pitch_cmd_ff + pitch_err * rollout_pitch_hold_kp.
+  SET pitch_cmd_target TO CLAMP(pitch_cmd_target, -rollout_pitch_max_cmd, rollout_pitch_max_cmd).
   LOCAL pitch_cmd IS MOVE_TOWARD(
     ROLLOUT_PITCH_CMD_PREV,
     pitch_cmd_target,
@@ -415,6 +495,9 @@ FUNCTION _RUN_ROLLOUT {
   ).
   SET ROLLOUT_PITCH_CMD_PREV TO pitch_cmd.
   SET SHIP:CONTROL:PITCH TO pitch_cmd.
+  SET TELEM_RO_PITCH_TGT TO ROLLOUT_PITCH_TGT_DEG.
+  SET TELEM_RO_PITCH_ERR TO pitch_err.
+  SET TELEM_RO_PITCH_FF TO pitch_cmd_ff.
 
   // Roll assist: keep wings level during rollout (also speed-scaled).
   // If AA FBW is active, do not inject roll input from IFC to avoid
@@ -436,6 +519,9 @@ FUNCTION _RUN_ROLLOUT {
     SET SHIP:CONTROL:NEUTRALIZE TO TRUE.
     SET ROLLOUT_YAW_CMD_PREV TO 0.
     SET ROLLOUT_PITCH_CMD_PREV TO 0.
+    SET TOUCHDOWN_CAPTURE_PITCH_DEG TO 0.
+    SET ROLLOUT_PITCH_REF_DEG TO GET_PITCH().
+    SET ROLLOUT_PITCH_TGT_DEG TO GET_PITCH().
     UNLOCK WHEELSTEERING.
     UNLOCK THROTTLE.
     SET_PHASE(PHASE_DONE).

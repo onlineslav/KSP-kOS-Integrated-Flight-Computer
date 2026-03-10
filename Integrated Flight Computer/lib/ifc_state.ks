@@ -91,7 +91,10 @@ GLOBAL TELEM_RO_YAW_TGT    IS 0.  // rollout: yaw command target before slew rat
 GLOBAL TELEM_RO_LOC_CORR   IS 0.  // rollout: heading correction from localizer (deg)
 GLOBAL TELEM_RO_ROLL_ASSIST IS 0. // rollout: 1 when IFC roll assist is active, else 0
 GLOBAL TELEM_RO_YAW_SCALE  IS 0.  // rollout: yaw assist blend factor (0-1)
-GLOBAL TELEM_RO_YAW_GATE   IS 0.  // rollout yaw gate: 0=active,1=speed,2=guard
+GLOBAL TELEM_RO_YAW_GATE   IS 0.  // rollout yaw gate: 0=active,1=speed,2=guard,3=not landed
+GLOBAL TELEM_RO_PITCH_TGT  IS 0.  // rollout: target pitch attitude (deg)
+GLOBAL TELEM_RO_PITCH_ERR  IS 0.  // rollout: pitch attitude error (deg)
+GLOBAL TELEM_RO_PITCH_FF   IS 0.  // rollout: feedforward pitch command bias
 
 // ----------------------------
 // Flap detent state
@@ -110,9 +113,12 @@ GLOBAL FLARE_ENTRY_AGL  IS 15.  // AGL at flare trigger (m)
 GLOBAL FLARE_TRIGGER_START_UT IS -1. // debounce timer start for entering flare
 GLOBAL TOUCHDOWN_CANDIDATE_UT IS -1. // debounce timer start for entering touchdown
 GLOBAL TOUCHDOWN_INIT_DONE IS FALSE. // one-time touchdown handoff latch
+GLOBAL TOUCHDOWN_CAPTURE_PITCH_DEG IS 0. // pitch snapshot captured at flare->touchdown transition
 GLOBAL ROLLOUT_ENTRY_HDG IS 0.  // heading captured at touchdown for blended wheelsteering
 GLOBAL ROLLOUT_YAW_CMD_PREV IS 0. // previous-cycle rudder command for slew limiting
 GLOBAL ROLLOUT_PITCH_CMD_PREV IS 0. // previous-cycle pitch command for slew limiting
+GLOBAL ROLLOUT_PITCH_REF_DEG IS 0. // touchdown-captured pitch attitude reference (deg)
+GLOBAL ROLLOUT_PITCH_TGT_DEG IS 0. // time-evolving pitch target for rollout nose lowering (deg)
 GLOBAL ROLLOUT_STEER_HDG IS 0. // computed wheelsteering target (logged for telemetry)
 
 // ----------------------------
@@ -156,9 +162,12 @@ FUNCTION IFC_INIT_STATE {
   SET FLARE_TRIGGER_START_UT TO -1.
   SET TOUCHDOWN_CANDIDATE_UT TO -1.
   SET TOUCHDOWN_INIT_DONE TO FALSE.
+  SET TOUCHDOWN_CAPTURE_PITCH_DEG TO 0.
   SET ROLLOUT_ENTRY_HDG   TO GET_COMPASS_HDG().
   SET ROLLOUT_YAW_CMD_PREV TO 0.
   SET ROLLOUT_PITCH_CMD_PREV TO 0.
+  SET ROLLOUT_PITCH_REF_DEG TO GET_PITCH().
+  SET ROLLOUT_PITCH_TGT_DEG TO GET_PITCH().
   SET ROLLOUT_STEER_HDG   TO GET_COMPASS_HDG().
 
   SET TELEM_AA_HDG_CMD   TO 0.
@@ -174,6 +183,9 @@ FUNCTION IFC_INIT_STATE {
   SET TELEM_RO_ROLL_ASSIST TO 0.
   SET TELEM_RO_YAW_SCALE TO 0.
   SET TELEM_RO_YAW_GATE TO 0.
+  SET TELEM_RO_PITCH_TGT TO 0.
+  SET TELEM_RO_PITCH_ERR TO 0.
+  SET TELEM_RO_PITCH_FF TO 0.
 
   LOCAL initial_det IS 0.
   LOCAL max_det     IS 3.

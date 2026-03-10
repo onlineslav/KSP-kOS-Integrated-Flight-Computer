@@ -60,6 +60,9 @@
 //   yaw_cmd        raw rudder output to SHIP:CONTROL:YAW
 //   roll_cmd       raw aileron output to SHIP:CONTROL:ROLL
 //   pitch_cmd      raw pitch input to SHIP:CONTROL:PITCH
+//   ro_pitch_tgt   rollout pitch attitude target (deg)
+//   ro_pitch_err   rollout pitch attitude error (deg)
+//   ro_pitch_ff    rollout pitch feedforward bias command
 //   ro_roll_asst   1 when IFC rollout roll assist is active, else 0
 //
 // FLAP STATE
@@ -91,7 +94,7 @@ FUNCTION LOGGER_INIT {
   }
   SET LOG_FILE TO candidate.
 
-  LOG "t_s,phase,subphase,ias_ms,vapp_ms,spd_err_ms,agl_m,vs_ms,pitch_deg,aoa_deg,hdg_deg,bank_deg,thr_cmd,thr_intg,aa_hdg_cmd_deg,aa_fpa_cmd_deg,ils_loc_m,ils_gs_m,ils_dist_km,loc_corr_deg,gs_corr_deg,flare_fpa_cmd,flare_tgt_vs,flare_frac,steer_hdg_deg,steer_blend,ro_loc_corr_deg,ro_hdg_err_deg,ro_yaw_tgt,ro_yaw_scale,ro_yaw_gate,yaw_cmd,roll_cmd,pitch_cmd,ro_roll_assist,flaps_cur,flaps_tgt,phase_el_s,status" TO LOG_FILE.
+  LOG "t_s,phase,subphase,ias_ms,vapp_ms,spd_err_ms,agl_m,vs_ms,pitch_deg,aoa_deg,hdg_deg,bank_deg,thr_cmd,thr_intg,aa_hdg_cmd_deg,aa_fpa_cmd_deg,ils_loc_m,ils_gs_m,ils_dist_km,loc_corr_deg,gs_corr_deg,flare_fpa_cmd,flare_tgt_vs,flare_frac,steer_hdg_deg,steer_blend,ro_loc_corr_deg,ro_hdg_err_deg,ro_yaw_tgt,ro_yaw_scale,ro_yaw_gate,yaw_cmd,roll_cmd,pitch_cmd,ro_pitch_tgt_deg,ro_pitch_err_deg,ro_pitch_ff,ro_roll_assist,flaps_cur,flaps_tgt,phase_el_s,status" TO LOG_FILE.
 
   SET LOG_ACTIVE TO TRUE.
   PRINT "IFC: logging -> " + LOG_FILE.
@@ -138,6 +141,9 @@ FUNCTION LOGGER_WRITE {
     ROUND(SHIP:CONTROL:YAW,           4)   + "," +
     ROUND(SHIP:CONTROL:ROLL,          4)   + "," +
     ROUND(SHIP:CONTROL:PITCH,         4)   + "," +
+    ROUND(TELEM_RO_PITCH_TGT,         3)   + "," +
+    ROUND(TELEM_RO_PITCH_ERR,         3)   + "," +
+    ROUND(TELEM_RO_PITCH_FF,          4)   + "," +
     ROUND(TELEM_RO_ROLL_ASSIST,       0)   + "," +
     FLAPS_CURRENT_DETENT                   + "," +
     FLAPS_TARGET_DETENT                    + "," +
