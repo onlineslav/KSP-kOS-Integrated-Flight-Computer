@@ -29,8 +29,19 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // ── Action groups ─────────────────────────────────────
     // Set to the action group NUMBER (1-10) that controls each
     // system, or 0 to disable.
-    "ag_spoilers",  0,    // deploy spoilers/airbrakes on touchdown
-    "ag_thrust_rev",0,    // reverse thrust on touchdown
+    "ag_flaps_approach", 0,   // approach flap setting  (partial deflection)
+    "ag_flaps_landing",  0,   // landing flap setting   (full deflection)
+    "ag_spoilers",       0,   // deploy spoilers/airbrakes on touchdown
+    "ag_thrust_rev",     0,   // reverse thrust on touchdown
+
+    // ── Flap deployment triggers ───────────────────────────
+    // Flaps extend automatically when within the specified distance
+    // from the threshold AND below the Vfe IAS limit.
+    // Set ag_flaps_* to 0 to skip automatic deployment entirely.
+    "vfe_approach",      120, // m/s max IAS to extend approach flaps
+    "vfe_landing",        95, // m/s max IAS to extend landing flaps
+    "flaps_approach_km",  30, // km from threshold to deploy approach flaps
+    "flaps_landing_km",    8, // km from threshold to deploy landing flaps
 
     // ── Gear ──────────────────────────────────────────────
     // AGL (m) at which to extend landing gear on approach.

@@ -83,3 +83,22 @@ FUNCTION GET_AOA {
 FUNCTION GET_PITCH {
   RETURN 90 - VECTORANGLE(SHIP:FACING:FOREVECTOR, SHIP:UP:VECTOR).
 }
+
+// ----------------------------
+// Action group trigger
+// ----------------------------
+// kOS action groups AG1-AG10 are named variables, not indexable by number.
+// Pass enable = TRUE to activate, FALSE to deactivate.
+FUNCTION TRIGGER_AG {
+  PARAMETER num, enable.
+  IF      num = 1  { SET AG1  TO enable. }
+  ELSE IF num = 2  { SET AG2  TO enable. }
+  ELSE IF num = 3  { SET AG3  TO enable. }
+  ELSE IF num = 4  { SET AG4  TO enable. }
+  ELSE IF num = 5  { SET AG5  TO enable. }
+  ELSE IF num = 6  { SET AG6  TO enable. }
+  ELSE IF num = 7  { SET AG7  TO enable. }
+  ELSE IF num = 8  { SET AG8  TO enable. }
+  ELSE IF num = 9  { SET AG9  TO enable. }
+  ELSE IF num = 10 { SET AG10 TO enable. }
+}

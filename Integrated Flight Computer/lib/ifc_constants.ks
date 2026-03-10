@@ -48,10 +48,12 @@ GLOBAL MAX_GS_CORR_DN IS 4.0. // deg  max extra nose-down beyond nominal GS
 GLOBAL MAX_GS_CORR_UP IS 3.0. // deg  max nose-up relief above nominal GS
 
 // ----------------------------
-// Speed control (autothrottle)
+// Speed control (autothrottle PI)
 // ----------------------------
-GLOBAL KP_SPD       IS 0.04.  // throttle / (m/s)  proportional
-GLOBAL MIN_APPROACH_THR IS 0. // hard throttle floor on approach
+GLOBAL KP_SPD           IS 0.04.  // throttle / (m/s)   proportional
+GLOBAL KI_SPD           IS 0.008. // throttle / (m/s*s)  integral
+GLOBAL THR_INTEGRAL_LIM IS 15.    // m/s*s  anti-windup clamp on integral
+GLOBAL MIN_APPROACH_THR IS 0.     // hard throttle floor on approach
 
 // ----------------------------
 // Enroute descent to fix

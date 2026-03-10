@@ -63,11 +63,11 @@ FUNCTION _RUN_TOUCHDOWN {
 
   // Spoilers (action group from aircraft config).
   LOCAL ag_sp IS ACTIVE_AIRCRAFT["ag_spoilers"].
-  IF ag_sp > 0 { SHIP:DOACTION("AG" + ag_sp, TRUE). }
+  IF ag_sp > 0 { TRIGGER_AG(ag_sp, TRUE). }
 
   // Reverse thrust (action group from aircraft config).
   LOCAL ag_tr IS ACTIVE_AIRCRAFT["ag_thrust_rev"].
-  IF ag_tr > 0 { SHIP:DOACTION("AG" + ag_tr, TRUE). }
+  IF ag_tr > 0 { TRIGGER_AG(ag_tr, TRUE). }
 
   // Brakes.
   BRAKES ON.

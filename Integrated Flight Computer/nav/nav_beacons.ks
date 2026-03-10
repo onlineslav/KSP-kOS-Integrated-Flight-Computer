@@ -27,15 +27,15 @@
 // ----------------------------
 // type  : one of the BTYPE_* constants from ifc_constants.ks
 // ll    : LATLNG object
-// alt   : elevation in metres MSL
-// data  : LEXICON of type-specific extra fields
+// alt_asl : elevation in metres above mean sea level
+// data    : LEXICON of type-specific extra fields
 FUNCTION MAKE_BEACON {
-  PARAMETER id, type, ll, alt, data.
+  PARAMETER id, type, ll, alt_asl, data.
   LOCAL b IS LEXICON(
-    "id",   id,
-    "type", type,
-    "ll",   ll,
-    "alt",  alt
+    "id",      id,
+    "type",    type,
+    "ll",      ll,
+    "alt_asl", alt_asl
   ).
   FOR k IN data:KEYS { SET b[k] TO data[k]. }
   RETURN b.

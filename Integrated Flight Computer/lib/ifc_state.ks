@@ -38,6 +38,7 @@ GLOBAL FIX_INDEX IS 0.
 // Throttle command
 // ----------------------------
 GLOBAL THROTTLE_CMD IS 0.
+GLOBAL THR_INTEGRAL IS 0.   // accumulated speed error for PI autothrottle
 
 // ----------------------------
 // ILS deviation state  (updated each cycle in ILS_TRACK)
@@ -68,6 +69,12 @@ GLOBAL FAR_AVAILABLE IS FALSE.
 GLOBAL LAST_TELEM_UT IS 0.
 
 // ----------------------------
+// Flap deployment state
+// ----------------------------
+GLOBAL FLAPS_APPROACH_DEPLOYED IS FALSE.
+GLOBAL FLAPS_LANDING_DEPLOYED  IS FALSE.
+
+// ----------------------------
 // Autoland phase state
 // ----------------------------
 GLOBAL FLARE_PITCH_CMD IS 0.   // current commanded pitch during flare (ramped up)
@@ -91,6 +98,7 @@ FUNCTION IFC_INIT_STATE {
   SET FIX_INDEX TO 0.
 
   SET THROTTLE_CMD TO 0.
+  SET THR_INTEGRAL TO 0.
 
   SET ILS_LOC_DEV  TO 0.
   SET ILS_GS_DEV   TO 0.
@@ -105,6 +113,9 @@ FUNCTION IFC_INIT_STATE {
 
   SET LAST_TELEM_UT TO TIME:SECONDS.
   SET FLARE_PITCH_CMD TO 0.
+
+  SET FLAPS_APPROACH_DEPLOYED TO FALSE.
+  SET FLAPS_LANDING_DEPLOYED  TO FALSE.
 }
 
 // Called once after ACTIVE_PLATE and ACTIVE_AIRCRAFT are set.
@@ -112,7 +123,7 @@ FUNCTION IFC_LOAD_PLATE {
   SET ACTIVE_ILS_ID   TO ACTIVE_PLATE["ils_id"].
   SET ACTIVE_RWY_HDG  TO GET_BEACON(ACTIVE_ILS_ID)["hdg"].
   SET ACTIVE_GS_ANGLE TO GET_BEACON(ACTIVE_ILS_ID)["gs_angle"].
-  SET ACTIVE_THR_ALT  TO GET_BEACON(ACTIVE_ILS_ID)["alt"].
+  SET ACTIVE_THR_ALT  TO GET_BEACON(ACTIVE_ILS_ID)["alt_asl"].
   SET ACTIVE_V_APP    TO ACTIVE_PLATE["vapp"].
   SET ACTIVE_FIXES    TO ACTIVE_PLATE["fixes"].
   SET ACTIVE_ALT_AT   TO ACTIVE_PLATE["alt_at"].

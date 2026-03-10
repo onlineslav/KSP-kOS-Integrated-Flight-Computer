@@ -14,6 +14,9 @@ FUNCTION AA_INIT {
   SET AA_AVAILABLE  TO ADDONS:AVAILABLE("AA").
   SET FAR_AVAILABLE TO ADDONS:AVAILABLE("FAR").
 
+  // Allow kOS to take control even if another autopilot (SAS etc.) was active.
+  SET CONFIG:SUPPRESSAUTOPILOT TO FALSE.
+
   IF AA_AVAILABLE {
     // Enable Fly-By-Wire for stability augmentation.
     SET ADDONS:AA:FBW TO TRUE.

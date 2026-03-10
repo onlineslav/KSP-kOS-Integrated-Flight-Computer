@@ -1,6 +1,8 @@
 @LAZYGLOBAL OFF.
 
+
 core:part:getmodule("kOSProcessor"):doevent("Open Terminal").
+set terminal:charheight to 20.
 PRINT "+-----------------------------------------------+".
 PRINT "|       INTEGRATED FLIGHT COMPUTER  v1.0        |".
 PRINT "+-----------------------------------------------+".

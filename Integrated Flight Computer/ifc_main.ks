@@ -47,16 +47,49 @@ RUNONCEPATH(ifc_root + "phases/phase_autoland.ks").
 // ── Default aircraft config (if not set externally) ───────
 // Matches aircraft_template.ks structure; safe defaults only.
 LOCAL _DEFAULT_AIRCRAFT IS LEXICON(
-  "name",          "Unknown",
-  "v_app",         75.0,
-  "v_ref",         65.0,
-  "ag_spoilers",   0,
-  "ag_thrust_rev", 0,
-  "gear_down_agl", 300,
-  "flare_agl",     -1,
-  "flare_pitch",   -1,
-  "notes",         "Default config."
+  "name",               "Unknown",
+  "v_app",              75.0,
+  "v_ref",              65.0,
+  "ag_flaps_approach",  0,
+  "ag_flaps_landing",   0,
+  "ag_spoilers",        0,
+  "ag_thrust_rev",      0,
+  "vfe_approach",       120,
+  "vfe_landing",         95,
+  "flaps_approach_km",   30,
+  "flaps_landing_km",     8,
+  "gear_down_agl",      300,
+  "flare_agl",           -1,
+  "flare_pitch",         -1,
+  "notes",              "Default config."
 ).
+
+// ── Interactive startup (called when file is run directly) ──
+FUNCTION _IFC_INTERACTIVE_START {
+  CLEARSCREEN.
+  PRINT "╔══════════════════════════════════════╗".
+  PRINT "║   Integrated Flight Computer  v1.0  ║".
+  PRINT "╚══════════════════════════════════════╝".
+  PRINT " ".
+  PRINT "Select runway:".
+  PRINT "  1 = KSC RWY 09  (full, 60 km)".
+  PRINT "  2 = KSC RWY 09  (short, 30 km)".
+  PRINT "  3 = KSC RWY 27  (full, 60 km)".
+  PRINT "  4 = KSC RWY 27  (short, 30 km)".
+  PRINT " ".
+
+  LOCAL sel IS "".
+  UNTIL sel = "1" OR sel = "2" OR sel = "3" OR sel = "4" {
+    SET sel TO TERMINAL:INPUT:GETCHAR().
+  }
+
+  IF      sel = "1" { RUN_IFC("09", FALSE). }
+  ELSE IF sel = "2" { RUN_IFC("09", TRUE).  }
+  ELSE IF sel = "3" { RUN_IFC("27", FALSE). }
+  ELSE IF sel = "4" { RUN_IFC("27", TRUE).  }
+}
+
+_IFC_INTERACTIVE_START().
 
 // ── Main entry point ──────────────────────────────────────
 FUNCTION RUN_IFC {

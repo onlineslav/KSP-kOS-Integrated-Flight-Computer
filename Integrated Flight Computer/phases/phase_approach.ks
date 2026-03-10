@@ -14,6 +14,7 @@
 
 // ── Public entry point ────────────────────────────────────
 FUNCTION RUN_APPROACH {
+  _CHECK_FLAP_DEPLOYMENT().
   IF IFC_SUBPHASE = SUBPHASE_FLY_TO_FIX {
     _RUN_FLY_TO_FIX().
   } ELSE IF IFC_SUBPHASE = SUBPHASE_ILS_TRACK {
@@ -56,9 +57,10 @@ FUNCTION _RUN_FLY_TO_FIX {
 
   AA_SET_DIRECTOR(brg, fpa_cmd).
 
-  // Autothrottle: hold Vapp during transit.
-  SET THROTTLE_CMD TO CLAMP(KP_SPD * (ACTIVE_V_APP - GET_IAS()), MIN_APPROACH_THR, 1).
-  LOCK THROTTLE TO THROTTLE_CMD.
+  // Autothrottle PI: hold Vapp.
+  LOCAL spd_err IS ACTIVE_V_APP - GET_IAS().
+  SET THR_INTEGRAL TO CLAMP(THR_INTEGRAL + spd_err * IFC_LOOP_DT, -THR_INTEGRAL_LIM, THR_INTEGRAL_LIM).
+  SET THROTTLE_CMD TO CLAMP(KP_SPD * spd_err + KI_SPD * THR_INTEGRAL, MIN_APPROACH_THR, 1).
 
   // Extend gear if aircraft config specifies a gear-down AGL.
   LOCAL gear_agl IS ACTIVE_AIRCRAFT["gear_down_agl"].
@@ -115,9 +117,10 @@ FUNCTION _RUN_ILS_TRACK {
 
   AA_SET_DIRECTOR(hdg_cmd, fpa_cmd).
 
-  // ── Autothrottle ──
-  SET THROTTLE_CMD TO CLAMP(KP_SPD * (ACTIVE_V_APP - GET_IAS()), MIN_APPROACH_THR, 1).
-  LOCK THROTTLE TO THROTTLE_CMD.
+  // ── Autothrottle PI: hold Vapp ──
+  LOCAL spd_err IS ACTIVE_V_APP - GET_IAS().
+  SET THR_INTEGRAL TO CLAMP(THR_INTEGRAL + spd_err * IFC_LOOP_DT, -THR_INTEGRAL_LIM, THR_INTEGRAL_LIM).
+  SET THROTTLE_CMD TO CLAMP(KP_SPD * spd_err + KI_SPD * THR_INTEGRAL, MIN_APPROACH_THR, 1).
 
   // ── Check for flare trigger ──
   LOCAL flare_agl IS FLARE_AGL_M.
@@ -130,6 +133,35 @@ FUNCTION _RUN_ILS_TRACK {
 }
 
 // ─────────────────────────────────────────────────────────
+// FLAP DEPLOYMENT
+// Checks distance from threshold each cycle and deploys flaps
+// when within range and below the Vfe limit.
+// Runs in both FLY_TO_FIX and ILS_TRACK sub-phases.
+// ─────────────────────────────────────────────────────────
+FUNCTION _CHECK_FLAP_DEPLOYMENT {
+  LOCAL ac   IS ACTIVE_AIRCRAFT.
+  LOCAL ils  IS GET_BEACON(ACTIVE_ILS_ID).
+  LOCAL dist_km IS GEO_DISTANCE(SHIP:GEOPOSITION, ils["ll"]) / 1000.
+  LOCAL ias  IS GET_IAS().
+
+  IF NOT FLAPS_APPROACH_DEPLOYED AND ac["ag_flaps_approach"] > 0 {
+    IF dist_km < ac["flaps_approach_km"] AND ias <= ac["vfe_approach"] {
+      TRIGGER_AG(ac["ag_flaps_approach"], TRUE).
+      SET FLAPS_APPROACH_DEPLOYED TO TRUE.
+      PRINT "  FLAPS: approach  (AG" + ac["ag_flaps_approach"] + ")".
+    }
+  }
+
+  IF NOT FLAPS_LANDING_DEPLOYED AND ac["ag_flaps_landing"] > 0 {
+    IF dist_km < ac["flaps_landing_km"] AND ias <= ac["vfe_landing"] {
+      TRIGGER_AG(ac["ag_flaps_landing"], TRUE).
+      SET FLAPS_LANDING_DEPLOYED TO TRUE.
+      PRINT "  FLAPS: landing   (AG" + ac["ag_flaps_landing"] + ")".
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────
 // ILS deviation computation
 // Returns a LEXICON: "loc" (m), "gs" (m), "dist" (m from thr)
 // ─────────────────────────────────────────────────────────
@@ -137,7 +169,7 @@ FUNCTION _COMPUTE_ILS_DEVIATIONS {
   LOCAL ils IS GET_BEACON(ACTIVE_ILS_ID).
 
   // Threshold world-space position.
-  LOCAL thr_pos IS ils["ll"]:ALTITUDEPOSITION(ils["alt"]).
+  LOCAL thr_pos IS ils["ll"]:ALTITUDEPOSITION(ils["alt_asl"]).
 
   // Unit vectors along and perpendicular to the runway (horizontal).
   // HEADING(hdg, 0):FOREVECTOR gives the horizontal surface direction.
@@ -155,7 +187,7 @@ FUNCTION _COMPUTE_ILS_DEVIATIONS {
   LOCAL loc_m IS VDOT(disp, rwy_right).
 
   // Nominal glideslope altitude at this distance from threshold.
-  LOCAL gs_nom_alt IS ils["alt"] + dist_m * TAN(ils["gs_angle"]).
+  LOCAL gs_nom_alt IS ils["alt_asl"] + dist_m * TAN(ils["gs_angle"]).
   LOCAL gs_m       IS SHIP:ALTITUDE - gs_nom_alt.  // positive = above GS
 
   RETURN LEXICON("loc", loc_m, "gs", gs_m, "dist", dist_m).
