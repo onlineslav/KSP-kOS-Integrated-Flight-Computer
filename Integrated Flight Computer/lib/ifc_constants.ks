@@ -64,17 +64,26 @@ GLOBAL MAX_DESC_FPA IS -6.0.  // deg  steepest descent allowed enroute
 GLOBAL MAX_CLIMB_FPA IS 5.0.  // deg  steepest climb allowed enroute
 
 // ----------------------------
+// Flap detent stepping
+// ----------------------------
+GLOBAL FLAP_STEP_INTERVAL IS 0.35. // s minimum time between flap detent steps
+GLOBAL FLAP_VFE_HYST      IS 2.0.  // m/s hold margin before forced retract
+
+// ----------------------------
 // Flare
 // ----------------------------
-GLOBAL FLARE_AGL_M    IS 15.   // m radar AGL to trigger flare
-GLOBAL FLARE_PITCH    IS 3.0.  // deg nose-up pitch target in flare
-GLOBAL FLARE_PITCH_RATE IS 0.8.// deg/s pitch-up rate during flare
+GLOBAL FLARE_AGL_M      IS 25.   // m radar AGL to trigger flare
+GLOBAL FLARE_PITCH_RATE IS 0.8.  // deg/s max rate of FPA change during flare
+GLOBAL TOUCHDOWN_VS     IS -0.3. // m/s target sink rate at wheel contact
+GLOBAL MAX_FLARE_AOA    IS 10.   // deg AoA ceiling (FAR) — freeze pitch-up if exceeded
 
 // ----------------------------
 // Touchdown / rollout
 // ----------------------------
-GLOBAL TOUCHDOWN_AGL_M  IS 2.  // m AGL considered touchdown (radar alt)
-GLOBAL ROLLOUT_DONE_IAS IS 3.  // m/s IAS to declare rollout complete
+GLOBAL TOUCHDOWN_AGL_M  IS 2.    // m AGL considered touchdown (radar alt)
+GLOBAL ROLLOUT_DONE_IAS IS 3.    // m/s IAS to declare rollout complete
+GLOBAL KP_ROLLOUT_ROLL  IS 0.12. // aileron authority per deg of bank (wings level)
+GLOBAL KP_ROLLOUT_YAW   IS 0.03. // rudder authority per deg of heading error
 
 // ----------------------------
 // AA limits (set on FBW init)

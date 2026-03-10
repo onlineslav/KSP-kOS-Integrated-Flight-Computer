@@ -50,19 +50,49 @@ LOCAL _DEFAULT_AIRCRAFT IS LEXICON(
   "name",               "Unknown",
   "v_app",              75.0,
   "v_ref",              65.0,
-  "ag_flaps_approach",  0,
-  "ag_flaps_landing",   0,
+  "ag_flaps_step_up",   0,
+  "ag_flaps_step_down", 0,
   "ag_spoilers",        0,
   "ag_thrust_rev",      0,
+  "flaps_initial_detent", 0,
+  "flaps_detent_up",      0,
+  "flaps_detent_climb",   1,
+  "flaps_detent_approach",2,
+  "flaps_detent_landing", 3,
+  "flaps_max_detent",     3,
+  "vfe_climb",          160,
   "vfe_approach",       120,
   "vfe_landing",         95,
+  "flaps_climb_km",      45,
   "flaps_approach_km",   30,
   "flaps_landing_km",     8,
   "gear_down_agl",      300,
   "flare_agl",           -1,
-  "flare_pitch",         -1,
   "notes",              "Default config."
 ).
+
+// ── Auto aircraft config loader ───────────────────────────
+// Normalises SHIP:NAME to a filename, then looks for a matching
+// config in aircraft/.  Returns TRUE if a config was loaded.
+// Mapping example: "XF1-A" → "xf1_a_cfg.ks"
+FUNCTION _TRY_LOAD_AIRCRAFT_CONFIG {
+  LOCAL vessel_name_key IS SHIP:NAME:TOLOWER
+    :REPLACE(" ", "_")
+    :REPLACE("-", "_")
+    :REPLACE(".", "_").
+  LOCAL cfg IS ifc_root + "aircraft/" + vessel_name_key + "_cfg.ks".
+
+  IF EXISTS(cfg) {
+    RUNONCEPATH(cfg).
+    SET ACTIVE_AIRCRAFT TO BUILD_AIRCRAFT_CONFIG().
+    PRINT "IFC: loaded aircraft config for '" + SHIP:NAME + "'".
+    RETURN TRUE.
+  }
+
+  PRINT "IFC: no config found for '" + SHIP:NAME + "' — using defaults.".
+  PRINT "     (expected: " + cfg + ")".
+  RETURN FALSE.
+}
 
 // ── Interactive startup (called when file is run directly) ──
 FUNCTION _IFC_INTERACTIVE_START {
@@ -97,9 +127,14 @@ FUNCTION RUN_IFC {
 
   CLEARSCREEN.
 
-  // Use externally-set ACTIVE_AIRCRAFT, or fall back to default.
+  // Resolve aircraft config (highest priority wins):
+  //   1. Externally set before calling RUN_IFC (manual override)
+  //   2. Auto-loaded from aircraft/<vessel_name>_cfg.ks
+  //   3. Built-in defaults
   IF ACTIVE_AIRCRAFT = 0 {
-    SET ACTIVE_AIRCRAFT TO _DEFAULT_AIRCRAFT.
+    IF NOT _TRY_LOAD_AIRCRAFT_CONFIG() {
+      SET ACTIVE_AIRCRAFT TO _DEFAULT_AIRCRAFT.
+    }
   }
 
   // Override Vapp from aircraft config into the plate.

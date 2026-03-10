@@ -127,38 +127,114 @@ FUNCTION _RUN_ILS_TRACK {
   IF ACTIVE_AIRCRAFT["flare_agl"] >= 0 { SET flare_agl TO ACTIVE_AIRCRAFT["flare_agl"]. }
 
   IF GET_AGL() < flare_agl {
+    SET FLARE_PITCH_CMD TO GET_PITCH().          // seed FPA from current attitude
+    SET FLARE_ENTRY_VS  TO SHIP:VERTICALSPEED.   // capture sink rate at entry
+    SET FLARE_ENTRY_AGL TO MAX(GET_AGL(), 1).    // capture AGL (floor 1 to avoid /0)
     SET_PHASE(PHASE_FLARE).
-    SET FLARE_PITCH_CMD TO GET_PITCH().  // start flare from current pitch
   }
 }
 
 // ─────────────────────────────────────────────────────────
-// FLAP DEPLOYMENT
-// Checks distance from threshold each cycle and deploys flaps
-// when within range and below the Vfe limit.
+// FLAP DETENT MANAGER
+// FAR-style stepped flaps:
+// - computes distance-based desired detent
+// - limits by IAS/Vfe safety detent
+// - steps one notch at a time using action-group pulses
 // Runs in both FLY_TO_FIX and ILS_TRACK sub-phases.
 // ─────────────────────────────────────────────────────────
 FUNCTION _CHECK_FLAP_DEPLOYMENT {
-  LOCAL ac   IS ACTIVE_AIRCRAFT.
-  LOCAL ils  IS GET_BEACON(ACTIVE_ILS_ID).
+  LOCAL ac IS ACTIVE_AIRCRAFT.
+  IF ac = 0 { RETURN. }
+  IF NOT ac:HASKEY("ag_flaps_step_up") OR NOT ac:HASKEY("ag_flaps_step_down") { RETURN. }
+
+  LOCAL ag_step_up IS ac["ag_flaps_step_up"].
+  LOCAL ag_step_dn IS ac["ag_flaps_step_down"].
+  IF ag_step_up <= 0 OR ag_step_dn <= 0 { RETURN. }
+
+  LOCAL ils IS GET_BEACON(ACTIVE_ILS_ID).
+  IF NOT ils:HASKEY("ll") { RETURN. }
+
   LOCAL dist_km IS GEO_DISTANCE(SHIP:GEOPOSITION, ils["ll"]) / 1000.
-  LOCAL ias  IS GET_IAS().
+  LOCAL ias     IS GET_IAS().
 
-  IF NOT FLAPS_APPROACH_DEPLOYED AND ac["ag_flaps_approach"] > 0 {
-    IF dist_km < ac["flaps_approach_km"] AND ias <= ac["vfe_approach"] {
-      TRIGGER_AG(ac["ag_flaps_approach"], TRUE).
-      SET FLAPS_APPROACH_DEPLOYED TO TRUE.
-      PRINT "  FLAPS: approach  (AG" + ac["ag_flaps_approach"] + ")".
-    }
+  LOCAL max_det IS 3.
+  IF ac:HASKEY("flaps_max_detent") {
+    SET max_det TO MAX(0, ROUND(ac["flaps_max_detent"], 0)).
   }
 
-  IF NOT FLAPS_LANDING_DEPLOYED AND ac["ag_flaps_landing"] > 0 {
-    IF dist_km < ac["flaps_landing_km"] AND ias <= ac["vfe_landing"] {
-      TRIGGER_AG(ac["ag_flaps_landing"], TRUE).
-      SET FLAPS_LANDING_DEPLOYED TO TRUE.
-      PRINT "  FLAPS: landing   (AG" + ac["ag_flaps_landing"] + ")".
-    }
+  LOCAL det_up   IS 0.
+  LOCAL det_clmb IS 1.
+  LOCAL det_app  IS 2.
+  LOCAL det_land IS 3.
+  IF ac:HASKEY("flaps_detent_up")       { SET det_up   TO ROUND(ac["flaps_detent_up"], 0). }
+  IF ac:HASKEY("flaps_detent_climb")    { SET det_clmb TO ROUND(ac["flaps_detent_climb"], 0). }
+  IF ac:HASKEY("flaps_detent_approach") { SET det_app  TO ROUND(ac["flaps_detent_approach"], 0). }
+  IF ac:HASKEY("flaps_detent_landing")  { SET det_land TO ROUND(ac["flaps_detent_landing"], 0). }
+
+  SET det_up   TO CLAMP(det_up,   0, max_det).
+  SET det_clmb TO CLAMP(det_clmb, 0, max_det).
+  SET det_app  TO CLAMP(det_app,  0, max_det).
+  SET det_land TO CLAMP(det_land, 0, max_det).
+
+  LOCAL climb_km IS 45.
+  LOCAL app_km   IS 30.
+  LOCAL land_km  IS 8.
+  IF ac:HASKEY("flaps_climb_km")    { SET climb_km TO ac["flaps_climb_km"]. }
+  IF ac:HASKEY("flaps_approach_km") { SET app_km   TO ac["flaps_approach_km"]. }
+  IF ac:HASKEY("flaps_landing_km")  { SET land_km  TO ac["flaps_landing_km"]. }
+
+  LOCAL vfe_clmb IS 160.
+  LOCAL vfe_app  IS 120.
+  LOCAL vfe_land IS 95.
+  IF ac:HASKEY("vfe_climb")    { SET vfe_clmb TO ac["vfe_climb"]. }
+  IF ac:HASKEY("vfe_approach") { SET vfe_app  TO ac["vfe_approach"]. }
+  IF ac:HASKEY("vfe_landing")  { SET vfe_land TO ac["vfe_landing"]. }
+
+  // Desired detent from range to threshold (far -> near).
+  LOCAL desired_det IS det_up.
+  IF dist_km < climb_km { SET desired_det TO det_clmb. }
+  IF dist_km < app_km   { SET desired_det TO det_app. }
+  IF dist_km < land_km  { SET desired_det TO det_land. }
+
+  // Max detent allowed for extension at current IAS.
+  LOCAL speed_extend_det IS det_up.
+  IF ias <= vfe_clmb { SET speed_extend_det TO det_clmb. }
+  IF ias <= vfe_app  { SET speed_extend_det TO det_app. }
+  IF ias <= vfe_land { SET speed_extend_det TO det_land. }
+
+  // Slightly larger limit for "hold" to reduce step chatter near Vfe.
+  LOCAL speed_hold_det IS det_up.
+  IF ias <= (vfe_clmb + FLAP_VFE_HYST) { SET speed_hold_det TO det_clmb. }
+  IF ias <= (vfe_app  + FLAP_VFE_HYST) { SET speed_hold_det TO det_app. }
+  IF ias <= (vfe_land + FLAP_VFE_HYST) { SET speed_hold_det TO det_land. }
+
+  LOCAL target_det IS MIN(desired_det, speed_extend_det).
+  IF FLAPS_CURRENT_DETENT > speed_hold_det {
+    SET target_det TO speed_hold_det.
   }
+  SET target_det TO CLAMP(target_det, det_up, max_det).
+  SET FLAPS_TARGET_DETENT TO target_det.
+
+  IF FLAPS_TARGET_DETENT <> FLAPS_LAST_TARGET_LOGGED {
+    PRINT "  FLAPS target detent " + FLAPS_TARGET_DETENT
+        + " (IAS " + ROUND(ias, 1) + " m/s, D " + ROUND(dist_km, 1) + " km)".
+    SET FLAPS_LAST_TARGET_LOGGED TO FLAPS_TARGET_DETENT.
+  }
+
+  IF FLAPS_CURRENT_DETENT = FLAPS_TARGET_DETENT { RETURN. }
+  IF TIME:SECONDS - FLAPS_LAST_STEP_UT < FLAP_STEP_INTERVAL { RETURN. }
+
+  IF FLAPS_CURRENT_DETENT < FLAPS_TARGET_DETENT {
+    PULSE_AG(ag_step_up).
+    SET FLAPS_CURRENT_DETENT TO CLAMP(FLAPS_CURRENT_DETENT + 1, 0, max_det).
+    PRINT "  FLAPS step UP -> detent " + FLAPS_CURRENT_DETENT.
+  } ELSE {
+    PULSE_AG(ag_step_dn).
+    SET FLAPS_CURRENT_DETENT TO CLAMP(FLAPS_CURRENT_DETENT - 1, 0, max_det).
+    PRINT "  FLAPS step DN -> detent " + FLAPS_CURRENT_DETENT.
+  }
+
+  SET FLAPS_LAST_STEP_UT TO TIME:SECONDS.
 }
 
 // ─────────────────────────────────────────────────────────

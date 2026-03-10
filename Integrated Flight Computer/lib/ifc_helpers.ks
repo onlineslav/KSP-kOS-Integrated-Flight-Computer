@@ -102,3 +102,19 @@ FUNCTION TRIGGER_AG {
   ELSE IF num = 9  { SET AG9  TO enable. }
   ELSE IF num = 10 { SET AG10 TO enable. }
 }
+
+// Toggle an action group state once to generate a "pulse" event.
+// Useful for FAR flap increment/decrement bindings.
+FUNCTION PULSE_AG {
+  PARAMETER num.
+  IF      num = 1  { SET AG1  TO NOT AG1. }
+  ELSE IF num = 2  { SET AG2  TO NOT AG2. }
+  ELSE IF num = 3  { SET AG3  TO NOT AG3. }
+  ELSE IF num = 4  { SET AG4  TO NOT AG4. }
+  ELSE IF num = 5  { SET AG5  TO NOT AG5. }
+  ELSE IF num = 6  { SET AG6  TO NOT AG6. }
+  ELSE IF num = 7  { SET AG7  TO NOT AG7. }
+  ELSE IF num = 8  { SET AG8  TO NOT AG8. }
+  ELSE IF num = 9  { SET AG9  TO NOT AG9. }
+  ELSE IF num = 10 { SET AG10 TO NOT AG10. }
+}

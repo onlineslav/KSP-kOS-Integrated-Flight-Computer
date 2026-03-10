@@ -69,15 +69,19 @@ GLOBAL FAR_AVAILABLE IS FALSE.
 GLOBAL LAST_TELEM_UT IS 0.
 
 // ----------------------------
-// Flap deployment state
+// Flap detent state
 // ----------------------------
-GLOBAL FLAPS_APPROACH_DEPLOYED IS FALSE.
-GLOBAL FLAPS_LANDING_DEPLOYED  IS FALSE.
+GLOBAL FLAPS_CURRENT_DETENT    IS 0.
+GLOBAL FLAPS_TARGET_DETENT     IS 0.
+GLOBAL FLAPS_LAST_STEP_UT      IS 0.
+GLOBAL FLAPS_LAST_TARGET_LOGGED IS -1.
 
 // ----------------------------
 // Autoland phase state
 // ----------------------------
-GLOBAL FLARE_PITCH_CMD IS 0.   // current commanded pitch during flare (ramped up)
+GLOBAL FLARE_PITCH_CMD  IS 0.   // current commanded FPA during flare (deg, smoothed)
+GLOBAL FLARE_ENTRY_VS   IS 0.   // vertical speed at flare trigger (m/s, negative)
+GLOBAL FLARE_ENTRY_AGL  IS 15.  // AGL at flare trigger (m)
 
 // ----------------------------
 // Init / reset
@@ -112,10 +116,23 @@ FUNCTION IFC_INIT_STATE {
   SET FAR_AVAILABLE  TO FALSE.
 
   SET LAST_TELEM_UT TO TIME:SECONDS.
-  SET FLARE_PITCH_CMD TO 0.
+  SET FLARE_PITCH_CMD  TO 0.
+  SET FLARE_ENTRY_VS   TO 0.
+  SET FLARE_ENTRY_AGL  TO FLARE_AGL_M.
 
-  SET FLAPS_APPROACH_DEPLOYED TO FALSE.
-  SET FLAPS_LANDING_DEPLOYED  TO FALSE.
+  LOCAL initial_det IS 0.
+  LOCAL max_det     IS 3.
+  IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("flaps_max_detent") {
+    SET max_det TO MAX(0, ROUND(ACTIVE_AIRCRAFT["flaps_max_detent"], 0)).
+  }
+  IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("flaps_initial_detent") {
+    SET initial_det TO CLAMP(ROUND(ACTIVE_AIRCRAFT["flaps_initial_detent"], 0), 0, max_det).
+  }
+
+  SET FLAPS_CURRENT_DETENT     TO initial_det.
+  SET FLAPS_TARGET_DETENT      TO initial_det.
+  SET FLAPS_LAST_STEP_UT       TO TIME:SECONDS.
+  SET FLAPS_LAST_TARGET_LOGGED TO -1.
 }
 
 // Called once after ACTIVE_PLATE and ACTIVE_AIRCRAFT are set.

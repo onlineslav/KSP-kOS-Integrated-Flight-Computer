@@ -17,20 +17,20 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
   RETURN LEXICON(
 
     // ── Identity ──────────────────────────────────────────
-    "name",         "My Aircraft",     // shown in telemetry
+    "name",         "TF1-C",     // shown in telemetry
 
     // ── Approach speeds (m/s IAS) ─────────────────────────
     // Vapp: target speed from FAF to flare.
     // Vref: threshold crossing speed (used for display/logging).
     // Reduce Vapp toward Vref during the flare by cutting throttle.
-    "v_app",        75.0,
+    "v_app",        82.0,
     "v_ref",        65.0,
 
     // ── Action groups ─────────────────────────────────────
     // Set to the action group NUMBER (1-10) that controls each
     // system, or 0 to disable.
-    "ag_flaps_step_up",   0,  // FAR flap detent step-up action group
-    "ag_flaps_step_down", 0,  // FAR flap detent step-down action group
+    "ag_flaps_step_up",   9,  // FAR flap detent step-up action group
+    "ag_flaps_step_down", 10,  // FAR flap detent step-down action group
     "ag_spoilers",       0,   // deploy spoilers/airbrakes on touchdown
     "ag_thrust_rev",     0,   // reverse thrust on touchdown
 
@@ -40,9 +40,9 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "flaps_initial_detent", 0, // estimated detent when IFC starts
     "flaps_detent_up",      0, // fully retracted
     "flaps_detent_climb",   1, // climb / maneuver detent
-    "flaps_detent_approach",2, // takeoff/descent detent
-    "flaps_detent_landing", 3, // full landing detent
-    "flaps_max_detent",     3, // highest valid detent index
+    "flaps_detent_approach",1, // takeoff/descent detent
+    "flaps_detent_landing", 1, // full landing detent
+    "flaps_max_detent",     1, // highest valid detent index
     "vfe_climb",          160, // m/s max IAS for climb detent
     "vfe_approach",      120, // m/s max IAS to extend approach flaps
     "vfe_landing",        95, // m/s max IAS to extend landing flaps

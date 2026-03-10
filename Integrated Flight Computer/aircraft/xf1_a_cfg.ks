@@ -20,7 +20,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
   RETURN LEXICON(
 
     // ── Identity ──────────────────────────────────────────
-    "name",         "My Aircraft",     // shown in telemetry
+    "name",         "XF1-A",           // shown in telemetry
 
     // ── Approach speeds (m/s IAS) ─────────────────────────
     // Vapp: target speed from FAF to flare.
@@ -32,15 +32,24 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // ── Action groups ─────────────────────────────────────
     // Set to the action group NUMBER (1-10) that controls each
     // system, or 0 to disable.
-    "ag_flaps_approach", 0,   // approach flap setting  (partial deflection)
-    "ag_flaps_landing",  0,   // landing flap setting   (full deflection)
+    "ag_flaps_step_up",   9,  // FAR step-up detent (keyboard 9)
+    "ag_flaps_step_down", 10, // FAR step-down detent (keyboard 0 / AG10)
     "ag_spoilers",       0,   // deploy spoilers/airbrakes on touchdown
     "ag_thrust_rev",     0,   // reverse thrust on touchdown
 
-    // ── Flap deployment triggers ───────────────────────────
-    // stall no-flap ~72 m/s - fill in Vfe values once flaps are tested.
+    // ── Flap detent schedule ───────────────────────────────
+    // 4 detents: 0 up, 1 climb, 2 takeoff/descent, 3 landing.
+    // stall no-flap ~72 m/s - tune Vfe values from test data.
+    "flaps_initial_detent", 0, // expected detent at IFC engage
+    "flaps_detent_up",      0,
+    "flaps_detent_climb",   1,
+    "flaps_detent_approach",2,
+    "flaps_detent_landing", 3,
+    "flaps_max_detent",     3,
+    "vfe_climb",          150, // m/s max IAS for climb detent
     "vfe_approach",      120, // m/s max IAS to extend approach flaps
     "vfe_landing",        95, // m/s max IAS to extend landing flaps
+    "flaps_climb_km",      45, // km from threshold to allow climb detent
     "flaps_approach_km",  30, // km from threshold to deploy approach flaps
     "flaps_landing_km",    8, // km from threshold to deploy landing flaps
 
@@ -53,7 +62,6 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Override the global constants for this specific aircraft.
     // Set to -1 to use the global default from ifc_constants.ks.
     "flare_agl",    -1,   // m AGL to begin flare  (-1 = use FLARE_AGL_M)
-    "flare_pitch",  -1,   // deg nose-up target     (-1 = use FLARE_PITCH)
 
     // ── Notes ─────────────────────────────────────────────
     // Free-text, shown at startup for crew awareness.

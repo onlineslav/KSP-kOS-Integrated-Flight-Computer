@@ -23,7 +23,8 @@ FUNCTION PRINT_TELEMETRY {
   PRINT "IFC T+" + t + "  [" + IFC_PHASE + " / " + IFC_SUBPHASE + "]" AT (0,0).
 
   // ── Line 2: air data ─────────────────────────────────────
-  PRINT "IAS " + ias + " m/s   AGL " + agl + " m   VS " + vs + " m/s   THR " + thr AT (0,1).
+  PRINT "IAS " + ias + " m/s   AGL " + agl + " m   VS " + vs + " m/s   THR " + thr
+      + "   FLP " + FLAPS_CURRENT_DETENT + "->" + FLAPS_TARGET_DETENT AT (0,1).
 
   // ── Line 3: attitude ─────────────────────────────────────
   PRINT "HDG " + hdg + " deg   PITCH " + pitch + " deg                    " AT (0,2).
