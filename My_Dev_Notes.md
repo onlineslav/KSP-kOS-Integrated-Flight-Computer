@@ -19,3 +19,10 @@ Usually a bit below Vref, but still safely above stall
 
 Vfe: maximum flap extension speed
 
+---
+
+Would be nice:
+fine tune spoiler deflection and fine tune braking
+- maybe by changing the deflection angle in real time?
+
+set moderate aoa value to just below 

@@ -26,8 +26,8 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Vapp: target speed from FAF to flare.
     // Vref: threshold crossing speed (used for display/logging).
     // Reduce Vapp toward Vref during the flare by cutting throttle.
-    "v_app",        200.0,
-    "v_ref",        170.0,
+    "v_app",        140.0,  // prev: 140,175,200  // we want ~10-15deg aoa (150 gives 10deg aoa) (140 gives 13.8deg aoa)
+    "v_ref",        120.0,  // prev: 130,130,150,170
     // Approach speed schedule shaping:
     // Vint = Vapp + clamp((Vapp - Vref) * gain, min_add, max_add)
     "app_spd_intercept_gain",    0.45,
@@ -57,8 +57,8 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "flaps_detent_landing", 3,
     "flaps_max_detent",     3,
     "vfe_climb",          250, // m/s max IAS for climb detent
-    "vfe_approach",      170, // m/s max IAS to extend approach flaps
-    "vfe_landing",        160, // m/s max IAS to extend landing flaps
+    "vfe_approach",      220, // m/s max IAS to extend approach flaps
+    "vfe_landing",        210, // m/s max IAS to extend landing flaps
     "flaps_climb_km",      45, // km from threshold to allow climb detent
     "flaps_approach_km",  30, // km from threshold to deploy approach flaps
     "flaps_landing_km",    8, // km from threshold to deploy landing flaps
@@ -70,14 +70,14 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
 
     // ── Rollout ────────────────────────────────────────────
     // Max IAS to allow wheel brakes during rollout.
-    "rollout_brake_max_ias",    95,    // avoid high-speed wheel-brake instability
-    "rollout_yaw_assist_ias",  110,
+    "rollout_brake_max_ias",    165,    // avoid high-speed wheel-brake instability
+    "rollout_yaw_assist_ias",  210,    // above Vref so rudder assist is active from touchdown
     "rollout_yaw_kp",         0.018,
     "rollout_yaw_slew_per_s",  1.0,
     "rollout_yaw_fade_ias",     35,
     "rollout_yaw_max_cmd",    0.22,
     "rollout_roll_assist_ias",   0,    // let AA FBW own roll damping
-    "rollout_steer_min_blend", 0.04,
+    "rollout_steer_min_blend", 0.15,  // was 0.04; low value left aircraft with ~zero steering at high speed
     "rollout_yaw_sign",        -1,
     "rollout_touchdown_settle_s", 0.55,
     "bounce_recovery_agl_m",   3.5,
@@ -95,11 +95,19 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "rollout_pitch_max_down_cmd", 0.12,
     "rollout_pitch_slew_per_s", 1.4,
 
+    // ── AA Moderators ─────────────────────────────────────
+    // Per-aircraft overrides for AtmosphereAutopilot FBW limits.
+    // Set to -1 to use the global default from ifc_constants.ks.
+    "aa_max_aoa",      20,   // deg max AoA  (global: 12)
+    "aa_max_g",        -1,   // G   max G    (global: 3.5)
+    "aa_max_sideslip", -1,   // deg max sideslip (global: 5)
+    "aa_max_side_g",   -1,   // G   max lateral G (global: 1.5)
+
     // ── Flare ─────────────────────────────────────────────
     // Override the global constants for this specific aircraft.
     // Set to -1 to use the global default from ifc_constants.ks.
-    "flare_agl",               85,   // m AGL to begin flare  (-1 = use FLARE_AGL_M)
-    "flare_touchdown_vs",     -0.10, // m/s target sink rate at wheel contact
+    "flare_agl",               130,  // m AGL to begin flare; was 85 but terrain rise near KSC causes ~60m effective trigger
+    "flare_touchdown_vs",     -0.05, // m/s target sink rate at wheel contact
     "flare_ias_to_vs_gain",    0.010,// extra sink per m/s above Vref during flare
     "flare_roundout_agl",      8.0,  // m AGL final sink blend zone
     "flare_roundout_strength", 1.0,  // full roundout blend

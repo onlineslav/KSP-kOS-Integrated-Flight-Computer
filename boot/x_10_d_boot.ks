@@ -1,13 +1,17 @@
 @LAZYGLOBAL OFF.
 
 // Keep boot logic minimal and robust.
-core:part:getmodule("kOSProcessor"):doevent("Open Terminal").
+LOCAL auto_open_terminal IS FALSE.
+IF auto_open_terminal {
+  core:part:getmodule("kOSProcessor"):doevent("Open Terminal").
+}
 PRINT "+-----------------------------------------------+".
 PRINT "|             X-10 D FLIGHT COMPUTER            |".
 PRINT "|                 Version 1.0                   |".
 PRINT "+-----------------------------------------------+".
 PRINT "".
 PRINT "X-10 D boot: init".
+PRINT "X-10 D boot on core: " + CORE:PART.
 
 // Conservative defaults before main handoff.
 SAS OFF.

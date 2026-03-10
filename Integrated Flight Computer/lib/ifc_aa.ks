@@ -22,18 +22,30 @@ FUNCTION AA_INIT {
     SET ADDONS:AA:FBW TO TRUE.
     SET AA_FBW_ON TO TRUE.
 
+    // Resolve moderator limits: aircraft config overrides global constants.
+    LOCAL lim_aoa      IS AA_MAX_AOA.
+    LOCAL lim_g        IS AA_MAX_G.
+    LOCAL lim_sideslip IS AA_MAX_SIDESLIP.
+    LOCAL lim_side_g   IS AA_MAX_SIDE_G.
+    IF ACTIVE_AIRCRAFT <> 0 {
+      IF ACTIVE_AIRCRAFT:HASKEY("aa_max_aoa")      AND ACTIVE_AIRCRAFT["aa_max_aoa"]      > 0 { SET lim_aoa      TO ACTIVE_AIRCRAFT["aa_max_aoa"].      }
+      IF ACTIVE_AIRCRAFT:HASKEY("aa_max_g")        AND ACTIVE_AIRCRAFT["aa_max_g"]        > 0 { SET lim_g        TO ACTIVE_AIRCRAFT["aa_max_g"].        }
+      IF ACTIVE_AIRCRAFT:HASKEY("aa_max_sideslip") AND ACTIVE_AIRCRAFT["aa_max_sideslip"] > 0 { SET lim_sideslip TO ACTIVE_AIRCRAFT["aa_max_sideslip"]. }
+      IF ACTIVE_AIRCRAFT:HASKEY("aa_max_side_g")   AND ACTIVE_AIRCRAFT["aa_max_side_g"]   > 0 { SET lim_side_g   TO ACTIVE_AIRCRAFT["aa_max_side_g"].   }
+    }
+
     // Apply structural / comfort limits.
     IF ADDONS:AA:HASSUFFIX("MODERATEAOA")     { SET ADDONS:AA:MODERATEAOA     TO TRUE. }
-    IF ADDONS:AA:HASSUFFIX("MAXAOA")          { SET ADDONS:AA:MAXAOA          TO AA_MAX_AOA. }
+    IF ADDONS:AA:HASSUFFIX("MAXAOA")          { SET ADDONS:AA:MAXAOA          TO lim_aoa. }
     IF ADDONS:AA:HASSUFFIX("MODERATEG")       { SET ADDONS:AA:MODERATEG       TO TRUE. }
-    IF ADDONS:AA:HASSUFFIX("MAXG")            { SET ADDONS:AA:MAXG            TO AA_MAX_G. }
+    IF ADDONS:AA:HASSUFFIX("MAXG")            { SET ADDONS:AA:MAXG            TO lim_g. }
     IF ADDONS:AA:HASSUFFIX("MODERATESIDESLIP"){ SET ADDONS:AA:MODERATESIDESLIP TO TRUE. }
-    IF ADDONS:AA:HASSUFFIX("MAXSIDESLIP")     { SET ADDONS:AA:MAXSIDESLIP     TO AA_MAX_SIDESLIP. }
+    IF ADDONS:AA:HASSUFFIX("MAXSIDESLIP")     { SET ADDONS:AA:MAXSIDESLIP     TO lim_sideslip. }
     IF ADDONS:AA:HASSUFFIX("MODERATESIDEG")   { SET ADDONS:AA:MODERATESIDEG   TO TRUE. }
-    IF ADDONS:AA:HASSUFFIX("MAXSIDEG")        { SET ADDONS:AA:MAXSIDEG        TO AA_MAX_SIDE_G. }
+    IF ADDONS:AA:HASSUFFIX("MAXSIDEG")        { SET ADDONS:AA:MAXSIDEG        TO lim_side_g. }
     IF ADDONS:AA:HASSUFFIX("COORDTURN")       { SET ADDONS:AA:COORDTURN       TO TRUE. }
 
-    PRINT "AA: FBW enabled with limits.".
+    PRINT "AA: FBW enabled  AoA<=" + lim_aoa + " G<=" + lim_g + " slip<=" + lim_sideslip + " sideG<=" + lim_side_g.
   } ELSE {
     PRINT "AA: addon not available - kOS steering fallback active.".
   }

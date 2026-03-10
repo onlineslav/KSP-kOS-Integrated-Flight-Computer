@@ -71,6 +71,14 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "rollout_yaw_assist_ias", 95,
     "rollout_roll_assist_ias", 95,
 
+    // ── AA Moderators ─────────────────────────────────────
+    // Per-aircraft overrides for AtmosphereAutopilot FBW limits.
+    // Set to -1 to use the global default from ifc_constants.ks.
+    "aa_max_aoa",      -1,   // deg max AoA  (global: 12)
+    "aa_max_g",        -1,   // G   max G    (global: 3.5)
+    "aa_max_sideslip", -1,   // deg max sideslip (global: 5)
+    "aa_max_side_g",   -1,   // G   max lateral G (global: 1.5)
+
     // ── Flare ─────────────────────────────────────────────
     // Override the global constants for this specific aircraft.
     // Set to -1 to use the global default from ifc_constants.ks.

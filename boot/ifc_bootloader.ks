@@ -1,12 +1,17 @@
 @LAZYGLOBAL OFF.
 
 
-core:part:getmodule("kOSProcessor"):doevent("Open Terminal").
-set terminal:charheight to 20.
+// Keep terminal popup optional so accidental secondary boots do not steal focus.
+LOCAL auto_open_terminal IS FALSE.
+IF auto_open_terminal {
+  core:part:getmodule("kOSProcessor"):doevent("Open Terminal").
+}
+set terminal:charheight to 18.
 PRINT "+-----------------------------------------------+".
 PRINT "|       INTEGRATED FLIGHT COMPUTER  v1.0        |".
 PRINT "+-----------------------------------------------+".
 PRINT "".
+PRINT "IFC boot on core: " + CORE:PART.
 
 SAS OFF.
 RCS OFF.

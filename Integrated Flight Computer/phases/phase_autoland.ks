@@ -28,7 +28,7 @@ FUNCTION RUN_AUTOLAND {
 // vertical speed is linearly interpolated from the entry sink
 // rate to TOUCHDOWN_VS (-0.3 m/s).  That target VS is
 // converted to a flight path angle and fed to AA Director.
-// If FAR AoA approaches MAX_FLARE_AOA the pitch-up is frozen.
+// AoA is protected by AA's own MAXAOA FBW limiter.
 // ─────────────────────────────────────────────────────────
 FUNCTION _RUN_FLARE {
   SET TELEM_RO_ROLL_ASSIST TO 0.
@@ -113,18 +113,17 @@ FUNCTION _RUN_FLARE {
   LOCAL tgt_fpa IS ARCTAN(tgt_vs / ias).
 
   // Anti-balloon recovery: if we climb in flare, bias nose down immediately.
+  // Floor the cap at the entry glideslope angle so the push can't cascade
+  // into a dive steeper than what we entered the flare with.
   IF vs_now > flare_balloon_vs {
-    SET tgt_fpa TO MIN(tgt_fpa, FLARE_PITCH_CMD - flare_balloon_push).
+    LOCAL balloon_floor IS ARCTAN(FLARE_ENTRY_VS / MAX(ias, 1)).
+    SET tgt_fpa TO MAX(MIN(tgt_fpa, FLARE_PITCH_CMD - flare_balloon_push), balloon_floor).
   }
 
-  // AoA ceiling: if FAR is available and AoA is near the limit,
-  // stop pitching up (freeze tgt_fpa at current commanded value).
-  IF FAR_AVAILABLE {
-    LOCAL aoa IS GET_AOA().
-    IF aoa > MAX_FLARE_AOA * 0.85 {
-      SET tgt_fpa TO MIN(tgt_fpa, FLARE_PITCH_CMD).
-    }
-  }
+  // AoA ceiling is handled by AA's own MAXAOA FBW limiter — no IFC-level
+  // guard here.  A separate guard would freeze the flare FPA at the approach
+  // descent angle any time approach AoA is near the limit, preventing the
+  // flare from ever arresting sink rate.  AA is the correct backstop.
 
   // Speed-aware flare response: faster at high IAS, gentler at low IAS.
   LOCAL rate_span IS MAX(FLARE_RATE_HIGH_IAS - FLARE_RATE_LOW_IAS, 1).
@@ -143,8 +142,21 @@ FUNCTION _RUN_FLARE {
   SET TELEM_FLARE_TGT_VS TO tgt_vs.
   SET TELEM_FLARE_FRAC   TO frac.
 
-  // Idle throttle during flare.
-  SET THROTTLE_CMD TO 0.
+  // Flare autothrottle: continue cascade targeting Vref to prevent stall
+  // from IAS loss that idle throttle causes on high-drag aircraft.
+  // Minimum throttle is 0 (no forced idle floor) so the aircraft can still
+  // reduce thrust naturally when above Vref.
+  LOCAL v_ref_f IS ACTIVE_V_APP.
+  IF ac:HASKEY("v_ref") { SET v_ref_f TO ac["v_ref"]. }
+  LOCAL spd_err_f IS v_ref_f - ias.
+  LOCAL a_cmd_f IS CLAMP(KP_SPD_ACL * spd_err_f, -ACL_MAX, ACL_MAX).
+  LOCAL a_raw_f IS CLAMP((ias - PREV_IAS) / IFC_ACTUAL_DT, -10, 10).
+  SET PREV_IAS      TO ias.
+  SET A_ACTUAL_FILT TO A_ACTUAL_FILT * ACL_FILTER_ALPHA + a_raw_f * (1 - ACL_FILTER_ALPHA).
+  LOCAL a_err_f IS a_cmd_f - A_ACTUAL_FILT.
+  SET THR_INTEGRAL TO CLAMP(THR_INTEGRAL + spd_err_f * IFC_ACTUAL_DT, -THR_INTEGRAL_LIM, THR_INTEGRAL_LIM).
+  LOCAL raw_thr_f IS CLAMP(KP_ACL_THR * a_err_f + KI_SPD * THR_INTEGRAL, 0, 1).
+  SET THROTTLE_CMD TO MOVE_TOWARD(THROTTLE_CMD, raw_thr_f, THR_SLEW_PER_S * IFC_ACTUAL_DT).
 
   // Transition: confirmed touchdown (debounced).
   LOCAL td_fallback IS agl < TOUCHDOWN_FALLBACK_AGL_M AND vs_now <= TOUCHDOWN_FALLBACK_MAX_VS.

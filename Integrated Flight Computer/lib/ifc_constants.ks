@@ -110,7 +110,7 @@ GLOBAL FLARE_ROUNDOUT_AGL_M IS 0.0. // m AGL final roundout blend toward touchdo
 GLOBAL FLARE_ROUNDOUT_STRENGTH IS 1.0. // 0..1 blend strength toward flare_touchdown_vs in roundout zone
 GLOBAL FLARE_BALLOON_VS_TRIGGER IS 0.15. // m/s trigger balloon recovery when climbing
 GLOBAL FLARE_BALLOON_FPA_PUSH IS 1.0. // deg additional nose-down when ballooning
-GLOBAL MAX_FLARE_AOA    IS 10.   // deg AoA ceiling (FAR) — freeze pitch-up if exceeded
+
 
 // ----------------------------
 // Touchdown / rollout
