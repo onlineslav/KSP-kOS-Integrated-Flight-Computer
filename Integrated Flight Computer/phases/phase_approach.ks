@@ -42,9 +42,9 @@ FUNCTION _GET_VREF_TARGET {
 
 FUNCTION _GET_VINTERCEPT_TARGET {
   PARAMETER vapp, vref, gain, add_min, add_max.
-  LOCAL add IS (vapp - vref) * gain.
-  SET add TO CLAMP(add, add_min, add_max).
-  RETURN vapp + add.
+  LOCAL intercept_add IS (vapp - vref) * gain.
+  SET intercept_add TO CLAMP(intercept_add, add_min, add_max).
+  RETURN vapp + intercept_add.
 }
 
 FUNCTION _UPDATE_APPROACH_SPEED_TARGET {
@@ -78,12 +78,17 @@ FUNCTION _UPDATE_APPROACH_SPEED_TARGET {
   IF intercept_max_add < intercept_min_add { SET intercept_max_add TO intercept_min_add. }
   LOCAL vint IS _GET_VINTERCEPT_TARGET(vapp, vref, intercept_gain, intercept_min_add, intercept_max_add).
   LOCAL base_tgt IS vint.
+  LOCAL short_final_frac IS 0.
 
   // Final-speed mode is only available once ILS tracking is active.
   IF IFC_SUBPHASE = SUBPHASE_ILS_TRACK {
     LOCAL loc_cap IS LOC_CAPTURE_M.
     LOCAL gs_cap IS GS_CAPTURE_M.
     LOCAL in_capture IS ABS(ILS_LOC_DEV) <= loc_cap AND ABS(ILS_GS_DEV) <= gs_cap.
+    SET APP_LOC_CAP_OK TO 0.
+    SET APP_GS_CAP_OK TO 0.
+    IF ABS(ILS_LOC_DEV) <= loc_cap { SET APP_LOC_CAP_OK TO 1. }
+    IF ABS(ILS_GS_DEV) <= gs_cap { SET APP_GS_CAP_OK TO 1. }
 
     IF in_capture {
       IF APP_FINAL_ARM_UT < 0 { SET APP_FINAL_ARM_UT TO TIME:SECONDS. }
@@ -103,6 +108,8 @@ FUNCTION _UPDATE_APPROACH_SPEED_TARGET {
   } ELSE {
     SET APP_FINAL_ARM_UT TO -1.
     SET APP_ON_FINAL TO FALSE.
+    SET APP_LOC_CAP_OK TO 0.
+    SET APP_GS_CAP_OK TO 0.
   }
 
   IF APP_ON_FINAL {
@@ -111,9 +118,26 @@ FUNCTION _UPDATE_APPROACH_SPEED_TARGET {
     // On short final, bleed from Vapp toward Vref automatically.
     LOCAL agl IS GET_AGL().
     IF agl < short_final_agl {
-      LOCAL frac IS CLAMP((short_final_agl - agl) / short_final_agl, 0, 1).
-      SET base_tgt TO vapp + (vref - vapp) * frac.
+      SET short_final_frac TO CLAMP((short_final_agl - agl) / short_final_agl, 0, 1).
+      SET base_tgt TO vapp + (vref - vapp) * short_final_frac.
     }
+  }
+
+  // Export scheduler internals for terminal/log diagnostics.
+  SET APP_VREF_TGT TO vref.
+  SET APP_VINT_TGT TO vint.
+  SET APP_BASE_V_TGT TO base_tgt.
+  SET APP_SHORT_FINAL_FRAC TO short_final_frac.
+  IF IFC_SUBPHASE = SUBPHASE_FLY_TO_FIX {
+    SET APP_SPD_MODE TO "FIXES".
+  } ELSE IF APP_ON_FINAL {
+    IF short_final_frac > 0 {
+      SET APP_SPD_MODE TO "SHORT_FINAL".
+    } ELSE {
+      SET APP_SPD_MODE TO "FINAL".
+    }
+  } ELSE {
+    SET APP_SPD_MODE TO "INTERCEPT".
   }
 
   SET ACTIVE_V_TGT TO MOVE_TOWARD(

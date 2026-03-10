@@ -52,10 +52,68 @@ FUNCTION PRINT_TELEMETRY {
     PRINT "                                                  " AT (0,3).
   }
 
-  // ── Line 5: runway / approach info ───────────────────────
+  // ── Line 5/6: phase-specific debug internals ─────────────
+  IF IFC_PHASE = PHASE_APPROACH {
+    LOCAL arm_left IS 0.
+    IF APP_FINAL_ARM_UT >= 0 {
+      SET arm_left TO MAX(APP_FINAL_CAPTURE_CONFIRM_S - (now - APP_FINAL_ARM_UT), 0).
+    }
+    PRINT "SPD " + APP_SPD_MODE
+      + " Vtgt " + ROUND(ACTIVE_V_TGT, 1)
+      + " Vbase " + ROUND(APP_BASE_V_TGT, 1)
+      + " Vint " + ROUND(APP_VINT_TGT, 1)
+      + " Vapp " + ROUND(ACTIVE_V_APP, 1)
+      + " Vref " + ROUND(APP_VREF_TGT, 1) AT (0,4).
+    PRINT "CAP L/G " + APP_LOC_CAP_OK + "/" + APP_GS_CAP_OK
+      + " arm " + ROUND(arm_left, 2) + "s"
+      + " SF " + ROUND(APP_SHORT_FINAL_FRAC, 2)
+      + " ThrI " + ROUND(THR_INTEGRAL, 2) AT (0,5).
+  } ELSE IF IFC_PHASE = PHASE_FLARE {
+    PRINT "FLARE tgtVS " + ROUND(TELEM_FLARE_TGT_VS, 2)
+      + "  VS " + ROUND(SHIP:VERTICALSPEED, 2)
+      + "  frac " + ROUND(TELEM_FLARE_FRAC, 2)
+      + "  FPAcmd " + ROUND(FLARE_PITCH_CMD, 2) AT (0,4).
+    PRINT "AOA " + ROUND(GET_AOA(), 2)
+      + "  pitch " + pitch
+      + "  IAS " + ias
+      + "  agl " + agl AT (0,5).
+  } ELSE IF IFC_PHASE = PHASE_TOUCHDOWN OR IFC_PHASE = PHASE_ROLLOUT {
+    PRINT "RO yaw tgt " + ROUND(TELEM_RO_YAW_TGT, 3)
+      + " cmd " + ROUND(SHIP:CONTROL:YAW, 3)
+      + " sc " + ROUND(TELEM_RO_YAW_SCALE, 2)
+      + " gate " + ROUND(TELEM_RO_YAW_GATE, 0)
+      + " hdgErr " + ROUND(TELEM_RO_HDG_ERR, 2) AT (0,4).
+    PRINT "RO pitch tgt " + ROUND(TELEM_RO_PITCH_TGT, 2)
+      + " err " + ROUND(TELEM_RO_PITCH_ERR, 2)
+      + " ff " + ROUND(TELEM_RO_PITCH_FF, 3)
+      + " cmd " + ROUND(SHIP:CONTROL:PITCH, 3)
+      + " steerB " + ROUND(TELEM_STEER_BLEND, 2) AT (0,5).
+  } ELSE {
+    PRINT "                                                                                " AT (0,4).
+    PRINT "                                                                                " AT (0,5).
+  }
+
+  // ── Line 7: low-level controller command summary ─────────
+  IF IFC_PHASE = PHASE_APPROACH OR IFC_PHASE = PHASE_FLARE {
+    PRINT "AAcmd hdg " + ROUND(TELEM_AA_HDG_CMD, 1)
+      + " fpa " + ROUND(TELEM_AA_FPA_CMD, 2)
+      + " locCorr " + ROUND(TELEM_LOC_CORR, 2)
+      + " gsCorr " + ROUND(TELEM_GS_CORR, 2) AT (0,6).
+  } ELSE IF IFC_PHASE = PHASE_TOUCHDOWN OR IFC_PHASE = PHASE_ROLLOUT {
+    PRINT "RO steerHdg " + ROUND(ROLLOUT_STEER_HDG, 1)
+      + " blend " + ROUND(TELEM_STEER_BLEND, 2)
+      + " locCorr " + ROUND(TELEM_RO_LOC_CORR, 2)
+      + " rollAsst " + ROUND(TELEM_RO_ROLL_ASSIST, 0) AT (0,6).
+  } ELSE {
+    PRINT "                                                                                " AT (0,6).
+  }
+
+  // ── Line 8: runway / approach info ───────────────────────
   IF ACTIVE_ILS_ID <> "" {
     LOCAL v_tgt IS ACTIVE_V_APP.
     IF IFC_PHASE = PHASE_APPROACH { SET v_tgt TO ACTIVE_V_TGT. }
-    PRINT "RWY " + ACTIVE_ILS_ID + "  hdg " + ACTIVE_RWY_HDG + "  GS " + ACTIVE_GS_ANGLE + " deg  Vtgt " + ROUND(v_tgt, 1) + " m/s" AT (0,4).
+    PRINT "RWY " + ACTIVE_ILS_ID + "  hdg " + ACTIVE_RWY_HDG + "  GS " + ACTIVE_GS_ANGLE + " deg  Vtgt " + ROUND(v_tgt, 1) + " m/s" AT (0,7).
+  } ELSE {
+    PRINT "                                                                                " AT (0,7).
   }
 }
