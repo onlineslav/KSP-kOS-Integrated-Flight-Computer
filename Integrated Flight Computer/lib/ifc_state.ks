@@ -117,6 +117,22 @@ GLOBAL FLAPS_LAST_STEP_UT      IS 0.
 GLOBAL FLAPS_LAST_TARGET_LOGGED IS -1.
 
 // ----------------------------
+// Approach spoiler arming
+// ----------------------------
+GLOBAL APP_SPOILERS_ARMED IS FALSE. // TRUE once ag_spoilers_arm has been triggered in-flight
+
+// ----------------------------
+// Takeoff phase state
+// ----------------------------
+GLOBAL TO_RWY_HDG          IS 90.  // runway heading for takeoff (set by RUN_TAKEOFF_IFC)
+GLOBAL TO_ROTATE_PITCH_CMD IS 0.   // current ramped pitch target during rotation (deg)
+GLOBAL TO_AIRBORNE_UT      IS -1.  // UT when airborne was first detected (debounce)
+GLOBAL TO_STAGE_ATTEMPTS   IS 0.   // auto-stage attempts used during takeoff
+GLOBAL TO_LAST_STAGE_UT    IS -9999. // UT of last auto-stage attempt
+GLOBAL TO_YAW_CMD_PREV     IS 0.   // previous-cycle takeoff yaw cmd for slew limiting
+GLOBAL TO_PITCH_CMD_PREV   IS 0.   // previous-cycle takeoff pitch cmd for slew limiting
+
+// ----------------------------
 // Autoland phase state
 // ----------------------------
 GLOBAL FLARE_PITCH_CMD  IS 0.   // current commanded FPA during flare (deg, smoothed)
@@ -228,6 +244,15 @@ FUNCTION IFC_INIT_STATE {
   SET FLAPS_TARGET_DETENT      TO initial_det.
   SET FLAPS_LAST_STEP_UT       TO TIME:SECONDS.
   SET FLAPS_LAST_TARGET_LOGGED TO -1.
+
+  SET APP_SPOILERS_ARMED  TO FALSE.
+  SET TO_RWY_HDG          TO 90.
+  SET TO_ROTATE_PITCH_CMD TO 0.
+  SET TO_AIRBORNE_UT      TO -1.
+  SET TO_STAGE_ATTEMPTS   TO 0.
+  SET TO_LAST_STAGE_UT    TO -9999.
+  SET TO_YAW_CMD_PREV     TO 0.
+  SET TO_PITCH_CMD_PREV   TO 0.
 }
 
 // Called once after ACTIVE_PLATE and ACTIVE_AIRCRAFT are set.

@@ -15,6 +15,7 @@
 // ── Public entry point ────────────────────────────────────
 FUNCTION RUN_APPROACH {
   _CHECK_FLAP_DEPLOYMENT().
+  _CHECK_APPROACH_SPOILERS().
   IF IFC_SUBPHASE = SUBPHASE_FLY_TO_FIX {
     _RUN_FLY_TO_FIX().
   } ELSE IF IFC_SUBPHASE = SUBPHASE_ILS_TRACK {
@@ -115,6 +116,18 @@ FUNCTION _UPDATE_APPROACH_SPEED_TARGET {
     // Safety cap: near the runway, never carry intercept speeds.
     SET base_tgt TO MIN(base_tgt, short_final_target).
     SET short_cap_applied TO TRUE.
+  }
+
+  // AoA protection: if FAR AoA is approaching a_crit, raise speed floor.
+  LOCAL a_crit IS AC_PARAM("a_crit", 0, 0.001).
+  IF FAR_AVAILABLE AND a_crit > 0 {
+    LOCAL aoa_now  IS GET_AOA().
+    LOCAL aoa_warn IS a_crit * APP_AOA_PROTECT_FRAC.
+    IF aoa_now > aoa_warn {
+      LOCAL aoa_excess IS aoa_now - aoa_warn.
+      LOCAL aoa_floor  IS GET_IAS() + aoa_excess * APP_AOA_SPD_GAIN.
+      IF aoa_floor > base_tgt { SET base_tgt TO aoa_floor. }
+    }
   }
 
   // Export scheduler internals for terminal/log diagnostics.
@@ -252,6 +265,21 @@ FUNCTION _RUN_ILS_TRACK {
   // ── Lateral (localizer) ──
   // Positive loc_m = right of centerline → turn left (reduce heading).
   LOCAL loc_corr IS -(KP_LOC * loc_m + KD_LOC * d_loc).
+
+  // Bank angle limiter: AA has no native bank limit, so we implement it here.
+  // Fade loc_corr to zero as bank approaches limit; add counter-correction if over.
+  LOCAL max_bank IS AC_PARAM("aa_max_bank", AA_MAX_BANK, 0.001).
+  LOCAL bank IS 90 - VECTORANGLE(SHIP:FACING:STARVECTOR, SHIP:UP:VECTOR).
+  LOCAL bank_abs IS ABS(bank).
+  LOCAL bank_fade_start IS max_bank * 0.70.
+  LOCAL bank_fade_span  IS MAX(max_bank - bank_fade_start, 0.1).
+  SET loc_corr TO loc_corr * CLAMP((max_bank - bank_abs) / bank_fade_span, 0, 1).
+  IF bank_abs > max_bank {
+    LOCAL bank_push IS (bank_abs - max_bank) * KP_BANK_LIMIT.
+    IF bank > 0 { SET loc_corr TO loc_corr - bank_push. }
+    ELSE        { SET loc_corr TO loc_corr + bank_push. }
+  }
+
   LOCAL hdg_cmd  IS WRAP_360(ACTIVE_RWY_HDG + CLAMP(loc_corr, -MAX_LOC_CORR, MAX_LOC_CORR)).
 
   // ── Vertical (glideslope) ──
@@ -377,6 +405,27 @@ FUNCTION _CHECK_FLAP_DEPLOYMENT {
   }
 
   SET FLAPS_LAST_STEP_UT TO TIME:SECONDS.
+}
+
+// ─────────────────────────────────────────────────────────
+// APPROACH SPOILER ARM
+// Triggers ag_spoilers_arm once when within app_spoiler_arm_km.
+// Ground deployment on touchdown is handled separately by phase_autoland.
+// ─────────────────────────────────────────────────────────
+FUNCTION _CHECK_APPROACH_SPOILERS {
+  IF APP_SPOILERS_ARMED { RETURN. }
+  LOCAL arm_ag IS AC_PARAM("ag_spoilers_arm", 0, 0.001).
+  LOCAL arm_km IS AC_PARAM("app_spoiler_arm_km", 0, 0.001).
+  IF arm_ag <= 0 OR arm_km <= 0 { RETURN. }
+
+  LOCAL ils IS GET_BEACON(ACTIVE_ILS_ID).
+  IF NOT ils:HASKEY("ll") { RETURN. }
+  LOCAL dist_km IS GEO_DISTANCE(SHIP:GEOPOSITION, ils["ll"]) / 1000.
+  IF dist_km <= arm_km {
+    TRIGGER_AG(arm_ag, TRUE).
+    SET APP_SPOILERS_ARMED TO TRUE.
+    PRINT "  SPOILERS armed at " + ROUND(dist_km, 1) + " km.".
+  }
 }
 
 // ─────────────────────────────────────────────────────────

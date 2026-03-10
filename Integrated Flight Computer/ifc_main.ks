@@ -44,6 +44,7 @@ RUNONCEPATH(ifc_root + "nav/nav_math.ks").
 RUNONCEPATH(ifc_root + "nav/nav_beacons.ks").
 RUNONCEPATH(ifc_root + "phases/phase_approach.ks").
 RUNONCEPATH(ifc_root + "phases/phase_autoland.ks").
+RUNONCEPATH(ifc_root + "phases/phase_takeoff.ks").
 
 // ── Default aircraft config (if not set externally) ───────
 // Matches aircraft_template.ks structure; safe defaults only.
@@ -57,9 +58,13 @@ LOCAL _DEFAULT_AIRCRAFT IS LEXICON(
   "app_short_final_agl", -1,
   "app_speed_tgt_slew_per_s", -1,
   "app_short_final_cap", -1,
+  "vs0",                -1,
+  "a_crit",             -1,
   "ag_flaps_step_up",   0,
   "ag_flaps_step_down", 0,
   "ag_spoilers",        0,
+  "ag_spoilers_arm",    0,
+  "app_spoiler_arm_km", 0,
   "ag_thrust_rev",      0,
   "ag_drogue",          0,
   "flaps_initial_detent", 0,
@@ -95,10 +100,41 @@ LOCAL _DEFAULT_AIRCRAFT IS LEXICON(
   "rollout_pitch_max_cmd", -1,
   "rollout_pitch_max_down_cmd", -1,
   "rollout_pitch_slew_per_s", -1,
+  "v_r",                -1,
+  "v2",                 -1,
+  "takeoff_pitch_tgt",  -1,
+  "takeoff_rotate_pitch_kp",-1,
+  "takeoff_rotate_pitch_max_cmd",-1,
+  "takeoff_rotate_pitch_slew_per_s",-1,
+  "takeoff_climb_fpa",  -1,
+  "takeoff_throttle",   -1,
+  "takeoff_done_agl",   -1,
+  "takeoff_airborne_agl",-1,
+  "takeoff_airborne_min_vs",-1,
+  "takeoff_autostage",  -1,
+  "takeoff_stage_max_attempts",-1,
+  "takeoff_stage_retry_s",-1,
+  "takeoff_engine_spool_timeout_s",-1,
+  "takeoff_min_avail_thrust",-1,
+  "takeoff_loc_kp",     -1,
+  "takeoff_loc_guard_m",-1,
+  "takeoff_steer_max_corr",-1,
+  "takeoff_dir_max_corr",-1,
+  "takeoff_yaw_start_ias",-1,
+  "takeoff_yaw_full_ias",-1,
+  "takeoff_yaw_kp",     -1,
+  "takeoff_yaw_max_cmd",-1,
+  "takeoff_yaw_slew_per_s",-1,
+  "takeoff_yaw_sign",   -1,
+  "takeoff_climb_min_throttle",-1,
+  "takeoff_climb_spd_thr_gain",-1,
+  "takeoff_climb_fpa_spd_gain",-1,
+  "takeoff_climb_fpa_min",-1,
   "aa_max_aoa",          -1,
   "aa_max_g",            -1,
   "aa_max_sideslip",     -1,
   "aa_max_side_g",       -1,
+  "aa_max_bank",         -1,
   "flare_agl",           -1,
   "flare_touchdown_vs",  -1,
   "flare_ias_to_vs_gain",-1,
@@ -143,22 +179,26 @@ FUNCTION _IFC_INTERACTIVE_START {
   PRINT "║   Integrated Flight Computer  v1.0  ║".
   PRINT "╚══════════════════════════════════════╝".
   PRINT " ".
-  PRINT "Select runway:".
-  PRINT "  1 = KSC RWY 09  (full, 60 km)".
-  PRINT "  2 = KSC RWY 09  (short, 30 km)".
-  PRINT "  3 = KSC RWY 27  (full, 60 km)".
-  PRINT "  4 = KSC RWY 27  (short, 30 km)".
+  PRINT "Select mode:".
+  PRINT "  1 = KSC RWY 09  (approach, full 60 km)".
+  PRINT "  2 = KSC RWY 09  (approach, short 30 km)".
+  PRINT "  3 = KSC RWY 27  (approach, full 60 km)".
+  PRINT "  4 = KSC RWY 27  (approach, short 30 km)".
+  PRINT "  5 = KSC RWY 09  (takeoff)".
+  PRINT "  6 = KSC RWY 27  (takeoff)".
   PRINT " ".
 
   LOCAL sel IS "".
-  UNTIL sel = "1" OR sel = "2" OR sel = "3" OR sel = "4" {
+  UNTIL sel = "1" OR sel = "2" OR sel = "3" OR sel = "4" OR sel = "5" OR sel = "6" {
     SET sel TO TERMINAL:INPUT:GETCHAR().
   }
 
-  IF      sel = "1" { RUN_IFC("09", FALSE). }
-  ELSE IF sel = "2" { RUN_IFC("09", TRUE).  }
-  ELSE IF sel = "3" { RUN_IFC("27", FALSE). }
-  ELSE IF sel = "4" { RUN_IFC("27", TRUE).  }
+  IF      sel = "1" { RUN_IFC("09", FALSE).     }
+  ELSE IF sel = "2" { RUN_IFC("09", TRUE).       }
+  ELSE IF sel = "3" { RUN_IFC("27", FALSE).      }
+  ELSE IF sel = "4" { RUN_IFC("27", TRUE).       }
+  ELSE IF sel = "5" { RUN_TAKEOFF_IFC("09").     }
+  ELSE IF sel = "6" { RUN_TAKEOFF_IFC("27").     }
 }
 
 // Boot scripts can set GLOBAL IFC_SKIP_INTERACTIVE IS TRUE. before loading
@@ -279,4 +319,123 @@ FUNCTION RUN_IFC {
   PRINT " ".
   PRINT "IFC: COMPLETE — " + ACTIVE_PLATE["name"] + ".".
   PRINT "     Landed at T+" + ROUND(TIME:SECONDS - IFC_MISSION_START_UT, 1) + " s.".
+}
+
+// ── Takeoff entry point ────────────────────────────────
+FUNCTION RUN_TAKEOFF_IFC {
+  PARAMETER rwy_id.
+
+  CLEARSCREEN.
+
+  // Resolve aircraft config.
+  IF ACTIVE_AIRCRAFT = 0 {
+    IF NOT _TRY_LOAD_AIRCRAFT_CONFIG() {
+      SET ACTIVE_AIRCRAFT TO _DEFAULT_AIRCRAFT.
+    }
+  }
+
+  // Look up ILS beacon for runway heading.
+  LOCAL ils_id IS "KSC_ILS_" + rwy_id.
+  LOCAL ils IS GET_BEACON(ils_id).
+  IF ils = 0 { PRINT "IFC: abort - no beacon for RWY " + rwy_id. RETURN. }
+
+  // ── Startup banner ──────────────────────────────────
+  PRINT "╔══════════════════════════════════════╗".
+  PRINT "║   Integrated Flight Computer  v1.0  ║".
+  PRINT "╚══════════════════════════════════════╝".
+  PRINT "Aircraft : " + ACTIVE_AIRCRAFT["name"].
+  PRINT "Takeoff  : RWY " + rwy_id + "  hdg " + ils["hdg"].
+  LOCAL v_r IS AC_PARAM("v_r", TAKEOFF_V_R_DEFAULT, 0.001).
+  LOCAL v2  IS AC_PARAM("v2",  TAKEOFF_V2_DEFAULT,  0.001).
+  PRINT "V_R " + ROUND(v_r, 1) + " m/s   V2 " + ROUND(v2, 1) + " m/s".
+  IF ACTIVE_AIRCRAFT["notes"] <> "" {
+    PRINT "Notes    : " + ACTIVE_AIRCRAFT["notes"].
+  }
+  PRINT " ".
+
+  // ── Addon detection ─────────────────────────────────
+  IF ADDONS:AVAILABLE("AA") {
+    PRINT "kOS-AA   : detected".
+  } ELSE {
+    PRINT "kOS-AA   : NOT detected (kOS steering fallback)".
+  }
+  PRINT " ".
+
+  // ── Arm confirmation ────────────────────────────────
+  LOCAL auto_arm_takeoff IS FALSE.
+  IF DEFINED IFC_AUTO_ARM_TAKEOFF AND IFC_AUTO_ARM_TAKEOFF {
+    SET auto_arm_takeoff TO TRUE.
+    // One-shot flag so test helpers don't leak into later manual runs.
+    SET IFC_AUTO_ARM_TAKEOFF TO FALSE.
+  }
+  IF NOT auto_arm_takeoff {
+    PRINT "ARM TAKEOFF for RWY " + rwy_id + "? (y/n)".
+    TERMINAL:INPUT:CLEAR().
+    LOCAL reply IS "".
+    UNTIL reply = "y" OR reply = "Y" OR reply = "n" OR reply = "N" {
+      SET reply TO TERMINAL:INPUT:GETCHAR().
+    }
+    IF reply = "n" OR reply = "N" {
+      PRINT "IFC: disarmed.".
+      RETURN.
+    }
+  } ELSE {
+    PRINT "IFC: auto-arm enabled (IFC_AUTO_ARM_TAKEOFF).".
+  }
+  PRINT "IFC: ARMED.".
+  PRINT " ".
+
+  // ── Initialise state ────────────────────────────────
+  IFC_INIT_STATE().
+  SET IFC_PHASE    TO PHASE_TAKEOFF.
+  SET IFC_SUBPHASE TO SUBPHASE_TO_PREFLIGHT.
+  SET ACTIVE_ILS_ID TO ils_id.
+  SET ACTIVE_RWY_HDG TO ils["hdg"].
+  SET TO_RWY_HDG   TO ils["hdg"].
+  IF DEFINED VR_PROBE_HOOKS_READY AND VR_PROBE_HOOKS_READY {
+    VR_PROBE_INIT("IFC_TAKEOFF_RWY_" + rwy_id).
+    // Emit an initial sample immediately so a CSV exists even if AA init fails later.
+    VR_PROBE_TICK().
+  }
+  AA_INIT().
+  LOGGER_INIT().
+
+  SAS OFF.
+  LOCK THROTTLE TO THROTTLE_CMD.
+
+  PRINT "IFC: entering TAKEOFF  (subphase: TO_PREFLIGHT)".
+  PRINT "     Runway hdg " + ROUND(ils["hdg"], 1) + "  V_R " + ROUND(v_r, 1) + " m/s".
+  PRINT " ".
+  PRINT "Press CTRL+C at any time to abort and take manual control.".
+  PRINT "────────────────────────────────────────".
+
+  // ── Main loop ───────────────────────────────────────
+  UNTIL IFC_PHASE = PHASE_DONE {
+    LOCAL actual_dt IS TIME:SECONDS - IFC_CYCLE_UT.
+    SET IFC_CYCLE_UT  TO TIME:SECONDS.
+    SET IFC_ACTUAL_DT TO CLAMP(actual_dt, 0.01, 0.5).
+
+    RUN_TAKEOFF().
+    IF DEFINED VR_PROBE_HOOKS_READY AND VR_PROBE_HOOKS_READY {
+      VR_PROBE_TICK().
+    }
+
+    LOGGER_WRITE().
+    PRINT_TELEMETRY().
+    WAIT IFC_LOOP_DT.
+  }
+
+  // ── Shutdown ────────────────────────────────────────
+  UNLOCK THROTTLE.
+  UNLOCK STEERING.
+  UNLOCK WHEELSTEERING.
+  AA_DISABLE_ALL().
+  LOGGER_CLOSE().
+  IF DEFINED VR_PROBE_HOOKS_READY AND VR_PROBE_HOOKS_READY {
+    VR_PROBE_FINALIZE().
+  }
+
+  PRINT " ".
+  PRINT "IFC: TAKEOFF COMPLETE — RWY " + rwy_id + ".".
+  PRINT "     Airborne at T+" + ROUND(TIME:SECONDS - IFC_MISSION_START_UT, 1) + " s.".
 }

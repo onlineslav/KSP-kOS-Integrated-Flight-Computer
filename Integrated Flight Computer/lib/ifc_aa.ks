@@ -8,18 +8,39 @@
 // rest of the IFC never needs to check AA_AVAILABLE itself.
 // ============================================================
 
+// Resolve a valid AA addon handle.
+// Returns 0 when AA is unavailable or not fully initialised.
+FUNCTION _AA_GET_HANDLE {
+  IF NOT ADDONS:AVAILABLE("AA") { RETURN 0. }
+  IF NOT ADDONS:HASSUFFIX("AA") { RETURN 0. }
+  LOCAL aa_handle IS ADDONS:AA.
+  IF aa_handle = 0 { RETURN 0. }
+  RETURN aa_handle.
+}
+
 // Call once at startup.  Detects AA and FAR, enables FBW with
 // the limits defined in ifc_constants.ks.
 FUNCTION AA_INIT {
-  SET AA_AVAILABLE  TO ADDONS:AVAILABLE("AA").
+  LOCAL aa IS _AA_GET_HANDLE().
+  LOCAL aa_tries IS 0.
+  // Startup race guard: AA can report available before its handle is ready.
+  UNTIL aa <> 0 OR aa_tries >= 20 {
+    WAIT 0.
+    SET aa TO _AA_GET_HANDLE().
+    SET aa_tries TO aa_tries + 1.
+  }
+  SET AA_AVAILABLE  TO aa <> 0.
   SET FAR_AVAILABLE TO ADDONS:AVAILABLE("FAR").
 
   // Allow kOS to take control even if another autopilot (SAS etc.) was active.
   SET CONFIG:SUPPRESSAUTOPILOT TO FALSE.
 
   IF AA_AVAILABLE {
+    IF aa_tries > 0 {
+      PRINT "AA: handle became ready after " + aa_tries + " ticks.".
+    }
     // Enable Fly-By-Wire for stability augmentation.
-    SET ADDONS:AA:FBW TO TRUE.
+    SET aa:FBW TO TRUE.
     SET AA_FBW_ON TO TRUE.
 
     // Resolve moderator limits: aircraft config overrides global constants.
@@ -35,17 +56,27 @@ FUNCTION AA_INIT {
     }
 
     // Apply structural / comfort limits.
-    IF ADDONS:AA:HASSUFFIX("MODERATEAOA")     { SET ADDONS:AA:MODERATEAOA     TO TRUE. }
-    IF ADDONS:AA:HASSUFFIX("MAXAOA")          { SET ADDONS:AA:MAXAOA          TO lim_aoa. }
-    IF ADDONS:AA:HASSUFFIX("MODERATEG")       { SET ADDONS:AA:MODERATEG       TO TRUE. }
-    IF ADDONS:AA:HASSUFFIX("MAXG")            { SET ADDONS:AA:MAXG            TO lim_g. }
-    IF ADDONS:AA:HASSUFFIX("MODERATESIDESLIP"){ SET ADDONS:AA:MODERATESIDESLIP TO TRUE. }
-    IF ADDONS:AA:HASSUFFIX("MAXSIDESLIP")     { SET ADDONS:AA:MAXSIDESLIP     TO lim_sideslip. }
-    IF ADDONS:AA:HASSUFFIX("MODERATESIDEG")   { SET ADDONS:AA:MODERATESIDEG   TO TRUE. }
-    IF ADDONS:AA:HASSUFFIX("MAXSIDEG")        { SET ADDONS:AA:MAXSIDEG        TO lim_side_g. }
-    IF ADDONS:AA:HASSUFFIX("COORDTURN")       { SET ADDONS:AA:COORDTURN       TO TRUE. }
+    IF aa:HASSUFFIX("MODERATEAOA")     { SET aa:MODERATEAOA     TO TRUE. }
+    IF aa:HASSUFFIX("MAXAOA")          { SET aa:MAXAOA          TO lim_aoa. }
+    IF aa:HASSUFFIX("MODERATEG")       { SET aa:MODERATEG       TO TRUE. }
+    IF aa:HASSUFFIX("MAXG")            { SET aa:MAXG            TO lim_g. }
+    IF aa:HASSUFFIX("MODERATESIDESLIP"){ SET aa:MODERATESIDESLIP TO TRUE. }
+    IF aa:HASSUFFIX("MAXSIDESLIP")     { SET aa:MAXSIDESLIP     TO lim_sideslip. }
+    IF aa:HASSUFFIX("MODERATESIDEG")   { SET aa:MODERATESIDEG   TO TRUE. }
+    IF aa:HASSUFFIX("MAXSIDEG")        { SET aa:MAXSIDEG        TO lim_side_g. }
+    IF aa:HASSUFFIX("COORDTURN")       { SET aa:COORDTURN       TO TRUE. }
 
-    PRINT "AA: FBW enabled  AoA<=" + lim_aoa + " G<=" + lim_g + " slip<=" + lim_sideslip + " sideG<=" + lim_side_g.
+    // Attempt to set bank angle limit (not supported in all AA versions; safe no-op).
+    LOCAL lim_bank IS AA_MAX_BANK.
+    IF ACTIVE_AIRCRAFT <> 0 {
+      IF ACTIVE_AIRCRAFT:HASKEY("aa_max_bank") AND ACTIVE_AIRCRAFT["aa_max_bank"] > 0 {
+        SET lim_bank TO ACTIVE_AIRCRAFT["aa_max_bank"].
+      }
+    }
+    IF aa:HASSUFFIX("MAXROLL") { SET aa:MAXROLL TO lim_bank. }
+    IF aa:HASSUFFIX("MAXBANK") { SET aa:MAXBANK TO lim_bank. }
+
+    PRINT "AA: FBW enabled  AoA<=" + lim_aoa + " G<=" + lim_g + " slip<=" + lim_sideslip + " sideG<=" + lim_side_g + " bank<=" + lim_bank.
   } ELSE {
     PRINT "AA: addon not available - kOS steering fallback active.".
   }
@@ -57,20 +88,23 @@ FUNCTION AA_INIT {
 FUNCTION AA_SET_DIRECTOR {
   PARAMETER hdg_deg, fpa_deg.
 
-  IF NOT AA_AVAILABLE {
+  LOCAL aa IS _AA_GET_HANDLE().
+  IF aa = 0 {
+    SET AA_AVAILABLE TO FALSE.
     // Fallback: kOS built-in steering.
     LOCK STEERING TO HEADING(hdg_deg, fpa_deg).
     RETURN.
   }
+  SET AA_AVAILABLE TO TRUE.
 
   LOCAL dir_vec IS HEADING(hdg_deg, fpa_deg):VECTOR.
-  SET ADDONS:AA:DIRECTION TO dir_vec.
+  SET aa:DIRECTION TO dir_vec.
 
   // Ensure Director mode is active, others off.
-  IF ADDONS:AA:HASSUFFIX("CRUISE")   AND ADDONS:AA:CRUISE   { SET ADDONS:AA:CRUISE   TO FALSE. }
-  IF ADDONS:AA:HASSUFFIX("FBW")      AND ADDONS:AA:FBW      { SET ADDONS:AA:FBW      TO FALSE. }
-  IF ADDONS:AA:HASSUFFIX("DIRECTOR") AND NOT ADDONS:AA:DIRECTOR {
-    SET ADDONS:AA:DIRECTOR TO TRUE.
+  IF aa:HASSUFFIX("CRUISE")   AND aa:CRUISE   { SET aa:CRUISE   TO FALSE. }
+  IF aa:HASSUFFIX("FBW")      AND aa:FBW      { SET aa:FBW      TO FALSE. }
+  IF aa:HASSUFFIX("DIRECTOR") AND NOT aa:DIRECTOR {
+    SET aa:DIRECTOR TO TRUE.
     SET AA_DIRECTOR_ON TO TRUE.
   }
 }
@@ -79,34 +113,49 @@ FUNCTION AA_SET_DIRECTOR {
 // Used if you want AA to own the vertical profile instead of the Director.
 FUNCTION AA_SET_CRUISE {
   PARAMETER hdg_deg, fpa_deg.
-  IF NOT AA_AVAILABLE { RETURN. }
+  LOCAL aa IS _AA_GET_HANDLE().
+  IF aa = 0 {
+    SET AA_AVAILABLE TO FALSE.
+    RETURN.
+  }
+  SET AA_AVAILABLE TO TRUE.
 
-  SET ADDONS:AA:HEADING  TO hdg_deg.
-  SET ADDONS:AA:FPANGLE  TO fpa_deg.
+  SET aa:HEADING  TO hdg_deg.
+  SET aa:FPANGLE  TO fpa_deg.
 
-  IF ADDONS:AA:HASSUFFIX("DIRECTOR") AND ADDONS:AA:DIRECTOR { SET ADDONS:AA:DIRECTOR TO FALSE. }
-  IF ADDONS:AA:HASSUFFIX("FBW")      AND ADDONS:AA:FBW      { SET ADDONS:AA:FBW      TO FALSE. }
-  IF ADDONS:AA:HASSUFFIX("CRUISE")   AND NOT ADDONS:AA:CRUISE {
-    SET ADDONS:AA:CRUISE TO TRUE.
+  IF aa:HASSUFFIX("DIRECTOR") AND aa:DIRECTOR { SET aa:DIRECTOR TO FALSE. }
+  IF aa:HASSUFFIX("FBW")      AND aa:FBW      { SET aa:FBW      TO FALSE. }
+  IF aa:HASSUFFIX("CRUISE")   AND NOT aa:CRUISE {
+    SET aa:CRUISE TO TRUE.
   }
 }
 
 // Turn off all AA modes cleanly.
 FUNCTION AA_DISABLE_ALL {
-  IF NOT AA_AVAILABLE { RETURN. }
-  IF ADDONS:AA:HASSUFFIX("CRUISE")   AND ADDONS:AA:CRUISE   { SET ADDONS:AA:CRUISE   TO FALSE. }
-  IF ADDONS:AA:HASSUFFIX("DIRECTOR") AND ADDONS:AA:DIRECTOR { SET ADDONS:AA:DIRECTOR TO FALSE. }
-  IF ADDONS:AA:HASSUFFIX("FBW")      AND ADDONS:AA:FBW      { SET ADDONS:AA:FBW      TO FALSE. }
+  LOCAL aa IS _AA_GET_HANDLE().
+  IF aa = 0 {
+    SET AA_AVAILABLE TO FALSE.
+    RETURN.
+  }
+  SET AA_AVAILABLE TO TRUE.
+  IF aa:HASSUFFIX("CRUISE")   AND aa:CRUISE   { SET aa:CRUISE   TO FALSE. }
+  IF aa:HASSUFFIX("DIRECTOR") AND aa:DIRECTOR { SET aa:DIRECTOR TO FALSE. }
+  IF aa:HASSUFFIX("FBW")      AND aa:FBW      { SET aa:FBW      TO FALSE. }
   SET AA_DIRECTOR_ON TO FALSE.
   SET AA_FBW_ON      TO FALSE.
 }
 
 // Re-enable FBW after it was switched off (e.g. after Director was active).
 FUNCTION AA_RESTORE_FBW {
-  IF NOT AA_AVAILABLE { RETURN. }
-  IF ADDONS:AA:HASSUFFIX("DIRECTOR") AND ADDONS:AA:DIRECTOR { SET ADDONS:AA:DIRECTOR TO FALSE. }
-  IF ADDONS:AA:HASSUFFIX("CRUISE")   AND ADDONS:AA:CRUISE   { SET ADDONS:AA:CRUISE   TO FALSE. }
-  IF NOT ADDONS:AA:FBW { SET ADDONS:AA:FBW TO TRUE. }
+  LOCAL aa IS _AA_GET_HANDLE().
+  IF aa = 0 {
+    SET AA_AVAILABLE TO FALSE.
+    RETURN.
+  }
+  SET AA_AVAILABLE TO TRUE.
+  IF aa:HASSUFFIX("DIRECTOR") AND aa:DIRECTOR { SET aa:DIRECTOR TO FALSE. }
+  IF aa:HASSUFFIX("CRUISE")   AND aa:CRUISE   { SET aa:CRUISE   TO FALSE. }
+  IF NOT aa:FBW { SET aa:FBW TO TRUE. }
   SET AA_FBW_ON TO TRUE.
   SET AA_DIRECTOR_ON TO FALSE.
 }

@@ -53,7 +53,21 @@ FUNCTION PRINT_TELEMETRY {
   }
 
   // ── Line 5/6: phase-specific debug internals ─────────────
-  IF IFC_PHASE = PHASE_APPROACH {
+  IF IFC_PHASE = PHASE_TAKEOFF {
+    LOCAL v_r IS AC_PARAM("v_r", TAKEOFF_V_R_DEFAULT, 0.001).
+    LOCAL v2  IS AC_PARAM("v2",  TAKEOFF_V2_DEFAULT,  0.001).
+    PRINT "TO sub " + IFC_SUBPHASE
+      + "  Vtgt " + ROUND(ACTIVE_V_TGT, 1)
+      + "  VR " + ROUND(v_r, 1)
+      + "  V2 " + ROUND(v2, 1)
+      + "  FLP " + FLAPS_CURRENT_DETENT + "->" + FLAPS_TARGET_DETENT AT (0,4).
+    PRINT "hdg " + ROUND(TO_RWY_HDG, 1)
+      + "  steer " + ROUND(ROLLOUT_STEER_HDG, 1)
+      + "  locCorr " + ROUND(TELEM_RO_LOC_CORR, 2)
+      + "  pCmd " + ROUND(SHIP:CONTROL:PITCH, 2)
+      + "  THR " + ROUND(THROTTLE_CMD, 2)
+      + "  AGL " + agl AT (0,5).
+  } ELSE IF IFC_PHASE = PHASE_APPROACH {
     LOCAL arm_left IS 0.
     IF APP_FINAL_ARM_UT >= 0 {
       SET arm_left TO MAX(APP_FINAL_CAPTURE_CONFIRM_S - (now - APP_FINAL_ARM_UT), 0).
@@ -94,7 +108,7 @@ FUNCTION PRINT_TELEMETRY {
   }
 
   // ── Line 7: low-level controller command summary ─────────
-  IF IFC_PHASE = PHASE_APPROACH OR IFC_PHASE = PHASE_FLARE {
+  IF IFC_PHASE = PHASE_APPROACH OR IFC_PHASE = PHASE_FLARE OR IFC_PHASE = PHASE_TAKEOFF {
     PRINT "AAcmd hdg " + ROUND(TELEM_AA_HDG_CMD, 1)
       + " fpa " + ROUND(TELEM_AA_FPA_CMD, 2)
       + " locCorr " + ROUND(TELEM_LOC_CORR, 2)

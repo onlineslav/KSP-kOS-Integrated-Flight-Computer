@@ -18,6 +18,7 @@ GLOBAL PHASE_APPROACH   IS "APPROACH".
 GLOBAL PHASE_FLARE      IS "FLARE".
 GLOBAL PHASE_TOUCHDOWN  IS "TOUCHDOWN".
 GLOBAL PHASE_ROLLOUT    IS "ROLLOUT".
+GLOBAL PHASE_TAKEOFF    IS "TAKEOFF".
 GLOBAL PHASE_DONE       IS "DONE".
 
 // ----------------------------
@@ -25,6 +26,14 @@ GLOBAL PHASE_DONE       IS "DONE".
 // ----------------------------
 GLOBAL SUBPHASE_FLY_TO_FIX  IS "FLY_TO_FIX".
 GLOBAL SUBPHASE_ILS_TRACK   IS "ILS_TRACK".
+
+// ----------------------------
+// Takeoff sub-phase names
+// ----------------------------
+GLOBAL SUBPHASE_TO_PREFLIGHT   IS "TO_PREFLIGHT".
+GLOBAL SUBPHASE_TO_GROUND_ROLL IS "TO_GROUND_ROLL".
+GLOBAL SUBPHASE_TO_ROTATE      IS "TO_ROTATE".
+GLOBAL SUBPHASE_TO_CLIMB       IS "TO_CLIMB".
 
 // ----------------------------
 // Navigation / waypoint capture
@@ -162,6 +171,55 @@ GLOBAL AA_MAX_AOA       IS 12.  // deg
 GLOBAL AA_MAX_G         IS 3.5.
 GLOBAL AA_MAX_SIDESLIP  IS 5.   // deg
 GLOBAL AA_MAX_SIDE_G    IS 1.5.
+
+// ----------------------------
+// Bank angle limiter  (IFC-level, applied during ILS tracking)
+// AA does not expose a native bank limit; IFC fades the heading
+// correction and adds a counter-correction when over limit.
+// ----------------------------
+GLOBAL AA_MAX_BANK   IS 35.   // deg  max roll bank during approach
+GLOBAL KP_BANK_LIMIT IS 0.5.  // deg heading corr per deg of bank overshoot
+
+// ----------------------------
+// AoA speed protection  (FAR-only; requires a_crit in aircraft config)
+// When AoA approaches a_crit, the speed target floor is raised.
+// ----------------------------
+GLOBAL APP_AOA_PROTECT_FRAC IS 0.90. // trigger when AoA > a_crit * this
+GLOBAL APP_AOA_SPD_GAIN     IS 3.0.  // m/s added to speed floor per deg above warning AoA
+
+// ----------------------------
+// Takeoff defaults
+// ----------------------------
+GLOBAL TAKEOFF_V_R_DEFAULT        IS 70.   // m/s  rotate speed
+GLOBAL TAKEOFF_V2_DEFAULT         IS 80.   // m/s  initial climb speed target
+GLOBAL TAKEOFF_ROTATE_PITCH_TGT   IS 12.   // deg  pitch target at rotation
+GLOBAL TAKEOFF_PITCH_SLEW_DPS     IS 3.0.  // deg/s  max rate to slew pitch cmd during rotation
+GLOBAL TAKEOFF_ROTATE_PITCH_KP    IS 0.08. // control cmd per deg pitch error during on-ground rotate
+GLOBAL TAKEOFF_ROTATE_PITCH_MAX_CMD IS 0.45. // max pitch control cmd during on-ground rotate
+GLOBAL TAKEOFF_ROTATE_PITCH_SLEW_PER_S IS 1.6. // control units/s pitch cmd slew during on-ground rotate
+GLOBAL TAKEOFF_CLIMB_FPA          IS 8.0.  // deg  FPA commanded during climb-out
+GLOBAL TAKEOFF_DONE_AGL           IS 300.  // m AGL  altitude where takeoff phase ends
+GLOBAL TAKEOFF_AIRBORNE_AGL_M     IS 3.    // m AGL  detect liftoff above this
+GLOBAL TAKEOFF_AIRBORNE_CONFIRM_S IS 0.5.  // s  airborne must persist before gear retract
+GLOBAL TAKEOFF_AIRBORNE_MIN_VS    IS 0.5.  // m/s  min vertical speed to confirm airborne
+GLOBAL TAKEOFF_AUTOSTAGE          IS TRUE. // attempt STAGE during takeoff if no available thrust
+GLOBAL TAKEOFF_STAGE_MAX_ATTEMPTS IS 1.    // max auto-stage attempts before giving up
+GLOBAL TAKEOFF_STAGE_RETRY_S      IS 1.0.  // s between auto-stage attempts
+GLOBAL TAKEOFF_ENGINE_SPOOL_TIMEOUT_S IS 8.0. // s wait in preflight for thrust before forced rollout
+GLOBAL TAKEOFF_MIN_AVAIL_THRUST   IS 5.0.  // kN threshold to consider engines lit
+GLOBAL KP_TAKEOFF_LOC             IS 0.020. // deg heading correction per meter localizer error
+GLOBAL TAKEOFF_LOC_GUARD_M        IS 120.0. // m cap localizer error used by takeoff steering
+GLOBAL TAKEOFF_STEER_MAX_CORR     IS 10.0. // deg max steering heading correction on ground roll
+GLOBAL TAKEOFF_DIR_MAX_CORR       IS 6.0.  // deg max heading correction in rotate/climb
+GLOBAL TAKEOFF_YAW_START_IAS      IS 20.0. // m/s IAS where rudder assist starts ramping in
+GLOBAL TAKEOFF_YAW_FULL_IAS       IS 90.0. // m/s IAS where rudder assist reaches full gain
+GLOBAL KP_TAKEOFF_YAW             IS 0.025. // rudder command per deg heading error
+GLOBAL TAKEOFF_YAW_MAX_CMD        IS 0.30. // max rudder command magnitude
+GLOBAL TAKEOFF_YAW_SLEW_PER_S     IS 2.0.  // control units/s max rudder command slew
+GLOBAL TAKEOFF_CLIMB_MIN_THR      IS 0.78. // throttle floor in climb to avoid sink-back
+GLOBAL TAKEOFF_CLIMB_SPD_THR_GAIN IS 0.010. // throttle trim per m/s (V2-IAS) in climb
+GLOBAL TAKEOFF_CLIMB_FPA_SPD_GAIN IS 0.08. // deg FPA reduction per m/s below V2
+GLOBAL TAKEOFF_CLIMB_FPA_MIN      IS 3.0.  // deg minimum climb FPA when speed-protecting
 
 // ----------------------------
 // Beacon type tags

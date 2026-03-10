@@ -82,8 +82,8 @@ FUNCTION AC_PARAM {
   PARAMETER key, fallback, guard.
   IF ACTIVE_AIRCRAFT = 0 { RETURN fallback. }
   IF NOT ACTIVE_AIRCRAFT:HASKEY(key) { RETURN fallback. }
-  LOCAL v IS ACTIVE_AIRCRAFT[key].
-  IF v >= guard { RETURN v. }
+  LOCAL val IS ACTIVE_AIRCRAFT[key].
+  IF val >= guard { RETURN val. }
   RETURN fallback.
 }
 

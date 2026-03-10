@@ -95,6 +95,46 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "rollout_pitch_max_down_cmd", 0.12,
     "rollout_pitch_slew_per_s", 1.4,
 
+    // -- Stall / AoA limits --------------------------------
+    "vs0",      92.0,   // m/s  stall speed in landing configuration
+    "a_crit",    0.0,   // deg  FAR critical AoA (0 = protection disabled until tuned)
+
+    // -- Spoiler arming (approach) -------------------------
+    "ag_spoilers_arm",    0,   // AG to arm spoilers in-flight (0 = not used)
+    "app_spoiler_arm_km", 0,   // km from threshold to arm (0 = disabled)
+
+    // -- Takeoff --------------------------------------------
+    "v_r",                110.0,  // m/s  rotate speed
+    "v2",                126.0,  // m/s  V2 climb speed
+    "takeoff_pitch_tgt",  10.0,  // deg  pitch target at rotation
+    "takeoff_rotate_pitch_kp", 0.09, // pitch cmd per deg pitch error while on wheels
+    "takeoff_rotate_pitch_max_cmd", 0.42, // max pitch cmd while on wheels
+    "takeoff_rotate_pitch_slew_per_s", 1.8, // pitch cmd slew while on wheels
+    "takeoff_climb_fpa",   8.0,  // deg  climb FPA for climb-out
+    "takeoff_throttle",    1.0,  // 0..1 takeoff throttle setting
+    "takeoff_done_agl",  300.0,  // m AGL to end takeoff phase
+    "takeoff_airborne_agl",  3.0, // m AGL threshold for airborne detect
+    "takeoff_airborne_min_vs", 0.7, // m/s min VS for airborne detect
+    "takeoff_autostage",      1,   // 1=auto STAGE attempts if no thrust
+    "takeoff_stage_max_attempts", 1, // max autostage attempts
+    "takeoff_stage_retry_s",   1.0, // s between autostage attempts
+    "takeoff_engine_spool_timeout_s", 8.0, // s wait in preflight for thrust
+    "takeoff_min_avail_thrust", 5.0, // kN considered "engines lit"
+    "takeoff_loc_kp",          0.022, // deg/m centerline correction gain
+    "takeoff_loc_guard_m",   140.0, // m loc error clamp for steering
+    "takeoff_steer_max_corr", 10.0, // deg max wheelsteering heading correction
+    "takeoff_dir_max_corr",    6.0, // deg max director heading correction
+    "takeoff_yaw_start_ias",  20.0, // m/s IAS where yaw assist starts
+    "takeoff_yaw_full_ias",   90.0, // m/s IAS where yaw assist reaches full gain
+    "takeoff_yaw_kp",          0.024, // rudder cmd per deg heading error
+    "takeoff_yaw_max_cmd",     0.30, // max rudder cmd magnitude
+    "takeoff_yaw_slew_per_s",  2.0, // rudder cmd slew rate
+    "takeoff_yaw_sign",       -1,   // command sign for your control layout
+    "takeoff_climb_min_throttle", 0.82, // throttle floor during climb
+    "takeoff_climb_spd_thr_gain", 0.010, // throttle trim gain vs (V2-IAS)
+    "takeoff_climb_fpa_spd_gain", 0.08, // deg FPA reduction per m/s below V2
+    "takeoff_climb_fpa_min",   3.0, // deg minimum climb FPA under speed protection
+
     // ── AA Moderators ─────────────────────────────────────
     // Per-aircraft overrides for AtmosphereAutopilot FBW limits.
     // Set to -1 to use the global default from ifc_constants.ks.
@@ -102,6 +142,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "aa_max_g",        -1,   // G   max G    (global: 3.5)
     "aa_max_sideslip", -1,   // deg max sideslip (global: 5)
     "aa_max_side_g",   -1,   // G   max lateral G (global: 1.5)
+    "aa_max_bank",     -1,   // deg max bank (global: 35; -1 = use default)
 
     // ── Flare ─────────────────────────────────────────────
     // Override the global constants for this specific aircraft.

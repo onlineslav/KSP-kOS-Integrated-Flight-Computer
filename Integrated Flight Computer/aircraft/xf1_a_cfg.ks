@@ -71,6 +71,22 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "rollout_yaw_assist_ias", 95,
     "rollout_roll_assist_ias", 95,
 
+    // -- Stall / AoA limits --------------------------------
+    "vs0",      50.0,   // m/s  stall speed in landing configuration
+    "a_crit",    0.0,   // deg  FAR critical AoA (0 = protection disabled until tuned)
+
+    // -- Spoiler arming (approach) -------------------------
+    "ag_spoilers_arm",    0,   // AG to arm spoilers in-flight (0 = not used)
+    "app_spoiler_arm_km", 0,   // km from threshold to arm (0 = disabled)
+
+    // -- Takeoff --------------------------------------------
+    "v_r",                60.0,  // m/s  rotate speed
+    "v2",                 70.0,  // m/s  V2 climb speed
+    "takeoff_pitch_tgt",  10.0,  // deg  pitch target at rotation
+    "takeoff_climb_fpa",   8.0,  // deg  climb FPA for climb-out
+    "takeoff_throttle",    1.0,  // 0..1 takeoff throttle setting
+    "takeoff_done_agl",  300.0,  // m AGL to end takeoff phase
+
     // ── AA Moderators ─────────────────────────────────────
     // Per-aircraft overrides for AtmosphereAutopilot FBW limits.
     // Set to -1 to use the global default from ifc_constants.ks.
@@ -78,6 +94,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "aa_max_g",        -1,   // G   max G    (global: 3.5)
     "aa_max_sideslip", -1,   // deg max sideslip (global: 5)
     "aa_max_side_g",   -1,   // G   max lateral G (global: 1.5)
+    "aa_max_bank",     -1,   // deg max bank (global: 35; -1 = use default)
 
     // ── Flare ─────────────────────────────────────────────
     // Override the global constants for this specific aircraft.
