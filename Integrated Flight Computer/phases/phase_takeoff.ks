@@ -65,17 +65,40 @@ FUNCTION _TO_COMPUTE_STEER_HDG {
   RETURN WRAP_360(TO_RWY_HDG + loc_corr).
 }
 
+FUNCTION _TO_COMPUTE_CLIMB_FPA_TGT {
+  PARAMETER ias.
+  LOCAL v2 IS AC_PARAM("v2", TAKEOFF_V2_DEFAULT, 0.001).
+  LOCAL spd_err IS v2 - ias.
+
+  LOCAL climb_fpa_base IS AC_PARAM("takeoff_climb_fpa", TAKEOFF_CLIMB_FPA, 0.001).
+  LOCAL fpa_spd_gain IS AC_PARAM("takeoff_climb_fpa_spd_gain", TAKEOFF_CLIMB_FPA_SPD_GAIN, 0).
+  LOCAL fpa_min IS AC_PARAM("takeoff_climb_fpa_min", TAKEOFF_CLIMB_FPA_MIN, 0.001).
+
+  LOCAL climb_fpa_tgt IS climb_fpa_base.
+  IF spd_err > 0 {
+    SET climb_fpa_tgt TO MAX(climb_fpa_base - spd_err * fpa_spd_gain, fpa_min).
+  }
+  RETURN climb_fpa_tgt.
+}
+
 FUNCTION _TO_RUN_GROUND_CENTERLINE {
   PARAMETER steer_max_corr.
-
-  LOCAL steer_hdg IS _TO_COMPUTE_STEER_HDG(steer_max_corr).
-  SET ROLLOUT_STEER_HDG TO steer_hdg.
-  LOCK WHEELSTEERING TO steer_hdg.
-  SET TELEM_STEER_BLEND TO 1.
 
   LOCAL hdg_now IS GET_COMPASS_HDG().
   LOCAL hdg_rate IS WRAP_180(hdg_now - TO_HDG_PREV) / MAX(IFC_ACTUAL_DT, 0.01).
   SET TO_HDG_PREV TO hdg_now.
+
+  LOCAL steer_hdg IS _TO_COMPUTE_STEER_HDG(steer_max_corr).
+  LOCAL steer_rate_kd IS AC_PARAM("takeoff_steer_hdg_rate_kd", TAKEOFF_STEER_HDG_RATE_KD, 0).
+  IF steer_rate_kd > 0 {
+    LOCAL steer_corr IS WRAP_180(steer_hdg - TO_RWY_HDG) - hdg_rate * steer_rate_kd.
+    SET steer_corr TO CLAMP(steer_corr, -steer_max_corr, steer_max_corr).
+    SET steer_hdg TO WRAP_360(TO_RWY_HDG + steer_corr).
+  }
+  SET ROLLOUT_STEER_HDG TO steer_hdg.
+  LOCK WHEELSTEERING TO steer_hdg.
+  SET TELEM_STEER_BLEND TO 1.
+
   LOCAL hdg_err IS WRAP_180(hdg_now - steer_hdg).
   SET TELEM_RO_HDG_ERR TO hdg_err.
 
@@ -85,6 +108,8 @@ FUNCTION _TO_RUN_GROUND_CENTERLINE {
   LOCAL yaw_min_scale IS CLAMP(AC_PARAM("takeoff_yaw_min_scale", TAKEOFF_YAW_MIN_SCALE, 0), 0, 1).
   LOCAL yaw_kp    IS AC_PARAM("takeoff_yaw_kp", KP_TAKEOFF_YAW, 0).
   LOCAL yaw_kd    IS AC_PARAM("takeoff_yaw_kd", KD_TAKEOFF_YAW, 0).
+  LOCAL yaw_boost_err_deg IS AC_PARAM("takeoff_yaw_boost_err_deg", TAKEOFF_YAW_BOOST_ERR_DEG, 0.001).
+  LOCAL yaw_boost_max IS AC_PARAM("takeoff_yaw_boost_max", TAKEOFF_YAW_BOOST_MAX, 0).
   LOCAL yaw_max   IS MIN(AC_PARAM("takeoff_yaw_max_cmd", TAKEOFF_YAW_MAX_CMD, 0), 1).
   LOCAL yaw_slew  IS AC_PARAM("takeoff_yaw_slew_per_s", TAKEOFF_YAW_SLEW_PER_S, 0.001).
   LOCAL yaw_sign  IS _TO_GET_YAW_SIGN().
@@ -103,7 +128,11 @@ FUNCTION _TO_RUN_GROUND_CENTERLINE {
         // Keep some rudder authority available from rollout start.
         SET yaw_scale TO yaw_min_scale.
       }
-      LOCAL yaw_err IS hdg_err * yaw_kp + hdg_rate * yaw_kd.
+      LOCAL yaw_gain_scale IS 1.
+      IF yaw_boost_max > 0 AND yaw_boost_err_deg > 0 {
+        SET yaw_gain_scale TO 1 + MIN(ABS(hdg_err) / yaw_boost_err_deg, yaw_boost_max).
+      }
+      LOCAL yaw_err IS (hdg_err * yaw_kp + hdg_rate * yaw_kd) * yaw_gain_scale.
       SET yaw_tgt TO (yaw_err * yaw_sign) * yaw_scale.
     } ELSE {
       SET yaw_gate TO 2.
@@ -279,7 +308,9 @@ FUNCTION _RUN_TO_ROTATE {
 
   LOCAL airborne_agl IS AC_PARAM("takeoff_airborne_agl", TAKEOFF_AIRBORNE_AGL_M, 0).
   LOCAL airborne_min_vs IS AC_PARAM("takeoff_airborne_min_vs", TAKEOFF_AIRBORNE_MIN_VS, 0).
-  LOCAL on_ground_rotate IS SHIP:STATUS = "LANDED" OR GET_AGL() <= airborne_agl + 1.
+  LOCAL agl_now IS GET_AGL().
+  // Avoid control-mode thrash from LANDED/FLYING status flicker near liftoff.
+  LOCAL on_ground_rotate IS agl_now <= airborne_agl + 1.
 
   IF on_ground_rotate {
     // Keep ground steering/yaw control active through rotation while on wheels.
@@ -290,10 +321,16 @@ FUNCTION _RUN_TO_ROTATE {
     // Use FBW damping plus direct pitch input until airborne.
     AA_RESTORE_FBW().
     LOCAL pitch_kp IS AC_PARAM("takeoff_rotate_pitch_kp", TAKEOFF_ROTATE_PITCH_KP, 0).
+    LOCAL pitch_ff IS AC_PARAM("takeoff_rotate_pitch_ff", TAKEOFF_ROTATE_PITCH_FF, -1).
     LOCAL pitch_max_cmd IS MIN(AC_PARAM("takeoff_rotate_pitch_max_cmd", TAKEOFF_ROTATE_PITCH_MAX_CMD, 0), 1).
+    LOCAL pitch_min_cmd IS MIN(AC_PARAM("takeoff_rotate_pitch_min_cmd", TAKEOFF_ROTATE_PITCH_MIN_CMD, 0), pitch_max_cmd).
     LOCAL pitch_cmd_slew IS AC_PARAM("takeoff_rotate_pitch_slew_per_s", TAKEOFF_ROTATE_PITCH_SLEW_PER_S, 0.001).
     LOCAL pitch_err IS TO_ROTATE_PITCH_CMD - GET_PITCH().
-    LOCAL pitch_tgt_cmd IS CLAMP(pitch_err * pitch_kp, -0.10, pitch_max_cmd).
+    LOCAL pitch_tgt_cmd IS pitch_ff + pitch_err * pitch_kp.
+    IF pitch_err > 0 {
+      SET pitch_tgt_cmd TO MAX(pitch_tgt_cmd, pitch_min_cmd).
+    }
+    SET pitch_tgt_cmd TO CLAMP(pitch_tgt_cmd, -0.10, pitch_max_cmd).
     LOCAL pitch_cmd IS MOVE_TOWARD(
       TO_PITCH_CMD_PREV,
       pitch_tgt_cmd,
@@ -304,6 +341,9 @@ FUNCTION _RUN_TO_ROTATE {
 
     SET TELEM_AA_HDG_CMD TO ROLLOUT_STEER_HDG.
     SET TELEM_AA_FPA_CMD TO TO_ROTATE_PITCH_CMD.
+    SET TELEM_RO_PITCH_TGT TO TO_ROTATE_PITCH_CMD.
+    SET TELEM_RO_PITCH_ERR TO pitch_err.
+    SET TELEM_RO_PITCH_FF TO pitch_ff.
   } ELSE {
     LOCAL hdg_cmd IS TO_RWY_HDG.
     AA_SET_DIRECTOR(hdg_cmd, TO_ROTATE_PITCH_CMD).
@@ -322,9 +362,12 @@ FUNCTION _RUN_TO_ROTATE {
     SET TELEM_STEER_BLEND TO 1.
     SET TELEM_RO_LOC_CORR TO 0.
     SET TELEM_LOC_CORR TO 0.
+    SET TELEM_RO_PITCH_TGT TO TO_ROTATE_PITCH_CMD.
+    SET TELEM_RO_PITCH_ERR TO TO_ROTATE_PITCH_CMD - GET_PITCH().
+    SET TELEM_RO_PITCH_FF TO 0.
   }
 
-  LOCAL airborne IS GET_AGL() > airborne_agl AND
+  LOCAL airborne IS agl_now > airborne_agl AND
                   SHIP:VERTICALSPEED > airborne_min_vs AND
                   SHIP:STATUS <> "LANDED".
   IF airborne {
@@ -332,8 +375,11 @@ FUNCTION _RUN_TO_ROTATE {
     IF TIME:SECONDS - TO_AIRBORNE_UT >= TAKEOFF_AIRBORNE_CONFIRM_S {
       UNLOCK WHEELSTEERING.
       GEAR OFF.
-      LOCAL ias_now IS MAX(GET_IAS(), 1).
-      SET TO_CLIMB_FPA_CMD TO ARCTAN(SHIP:VERTICALSPEED / ias_now).
+      LOCAL ias_now IS GET_IAS().
+      LOCAL climb_fpa_tgt IS _TO_COMPUTE_CLIMB_FPA_TGT(ias_now).
+      LOCAL climb_seed_max IS MAX(TO_ROTATE_PITCH_CMD, climb_fpa_tgt).
+      // Seed climb command from rotate target/pitch, not instantaneous VS/IAS.
+      SET TO_CLIMB_FPA_CMD TO CLAMP(GET_PITCH(), climb_fpa_tgt, climb_seed_max).
       SET SHIP:CONTROL:PITCH TO 0.
       SET TO_PITCH_CMD_PREV TO 0.
       SET_SUBPHASE(SUBPHASE_TO_CLIMB).
@@ -358,13 +404,7 @@ FUNCTION _RUN_TO_CLIMB {
   LOCAL raw_thr IS CLAMP(to_thr + spd_err * thr_gain, min_thr, to_thr).
   SET THROTTLE_CMD TO MOVE_TOWARD(THROTTLE_CMD, raw_thr, THR_SLEW_PER_S * IFC_ACTUAL_DT).
 
-  LOCAL climb_fpa_base IS AC_PARAM("takeoff_climb_fpa", TAKEOFF_CLIMB_FPA, 0.001).
-  LOCAL fpa_spd_gain IS AC_PARAM("takeoff_climb_fpa_spd_gain", TAKEOFF_CLIMB_FPA_SPD_GAIN, 0).
-  LOCAL fpa_min IS AC_PARAM("takeoff_climb_fpa_min", TAKEOFF_CLIMB_FPA_MIN, 0.001).
-  LOCAL climb_fpa_tgt IS climb_fpa_base.
-  IF spd_err > 0 {
-    SET climb_fpa_tgt TO MAX(climb_fpa_base - spd_err * fpa_spd_gain, fpa_min).
-  }
+  LOCAL climb_fpa_tgt IS _TO_COMPUTE_CLIMB_FPA_TGT(ias).
   LOCAL climb_fpa_slew IS AC_PARAM("takeoff_climb_fpa_slew_dps", TAKEOFF_CLIMB_FPA_SLEW_DPS, 0.001).
   SET TO_CLIMB_FPA_CMD TO MOVE_TOWARD(
     TO_CLIMB_FPA_CMD,

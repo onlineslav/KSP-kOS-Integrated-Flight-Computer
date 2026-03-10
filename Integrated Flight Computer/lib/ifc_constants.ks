@@ -195,6 +195,8 @@ GLOBAL TAKEOFF_V2_DEFAULT         IS 80.   // m/s  initial climb speed target
 GLOBAL TAKEOFF_ROTATE_PITCH_TGT   IS 12.   // deg  pitch target at rotation
 GLOBAL TAKEOFF_PITCH_SLEW_DPS     IS 3.0.  // deg/s  max rate to slew pitch cmd during rotation
 GLOBAL TAKEOFF_ROTATE_PITCH_KP    IS 0.08. // control cmd per deg pitch error during on-ground rotate
+GLOBAL TAKEOFF_ROTATE_PITCH_FF    IS 0.08. // control cmd baseline back-pressure during on-ground rotate
+GLOBAL TAKEOFF_ROTATE_PITCH_MIN_CMD IS 0.12. // minimum nose-up pitch cmd while rotate target is above current pitch
 GLOBAL TAKEOFF_ROTATE_PITCH_MAX_CMD IS 0.45. // max pitch control cmd during on-ground rotate
 GLOBAL TAKEOFF_ROTATE_PITCH_SLEW_PER_S IS 1.6. // control units/s pitch cmd slew during on-ground rotate
 GLOBAL TAKEOFF_CLIMB_FPA          IS 8.0.  // deg  FPA commanded during climb-out
@@ -214,12 +216,15 @@ GLOBAL TAKEOFF_MIN_AVAIL_THRUST   IS 5.0.  // kN threshold to consider engines l
 GLOBAL KP_TAKEOFF_LOC             IS 0.020. // deg heading correction per meter localizer error
 GLOBAL TAKEOFF_LOC_GUARD_M        IS 120.0. // m cap localizer error used by takeoff steering
 GLOBAL TAKEOFF_STEER_MAX_CORR     IS 10.0. // deg max steering heading correction on ground roll
+GLOBAL TAKEOFF_STEER_HDG_RATE_KD  IS 0.20. // deg/deg/s heading-rate damping applied to steering heading
 GLOBAL TAKEOFF_DIR_MAX_CORR       IS 6.0.  // deg max heading correction in rotate/climb
 GLOBAL TAKEOFF_YAW_START_IAS      IS 20.0. // m/s IAS where rudder assist starts ramping in
 GLOBAL TAKEOFF_YAW_FULL_IAS       IS 90.0. // m/s IAS where rudder assist reaches full gain
 GLOBAL TAKEOFF_YAW_MIN_SCALE      IS 0.25. // 0..1 minimum rudder-assist scale applied from rollout start
 GLOBAL KP_TAKEOFF_YAW             IS 0.025. // rudder command per deg heading error
 GLOBAL KD_TAKEOFF_YAW             IS 0.00. // rudder command per deg/s heading-rate error (damping)
+GLOBAL TAKEOFF_YAW_BOOST_ERR_DEG  IS 0.50. // deg heading error where yaw gain boost reaches +1x
+GLOBAL TAKEOFF_YAW_BOOST_MAX      IS 0.80. // max extra yaw gain multiplier from heading-error boost
 GLOBAL TAKEOFF_YAW_MAX_CMD        IS 0.30. // max rudder command magnitude
 GLOBAL TAKEOFF_YAW_SLEW_PER_S     IS 2.0.  // control units/s max rudder command slew
 GLOBAL TAKEOFF_CLIMB_MIN_THR      IS 0.78. // throttle floor in climb to avoid sink-back
