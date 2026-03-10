@@ -79,6 +79,7 @@ FUNCTION _TO_RUN_GROUND_CENTERLINE {
   LOCAL ias IS GET_IAS().
   LOCAL yaw_start IS AC_PARAM("takeoff_yaw_start_ias", TAKEOFF_YAW_START_IAS, 0).
   LOCAL yaw_full  IS AC_PARAM("takeoff_yaw_full_ias", TAKEOFF_YAW_FULL_IAS, 0.001).
+  LOCAL yaw_min_scale IS CLAMP(AC_PARAM("takeoff_yaw_min_scale", TAKEOFF_YAW_MIN_SCALE, 0), 0, 1).
   LOCAL yaw_kp    IS AC_PARAM("takeoff_yaw_kp", KP_TAKEOFF_YAW, 0).
   LOCAL yaw_max   IS MIN(AC_PARAM("takeoff_yaw_max_cmd", TAKEOFF_YAW_MAX_CMD, 0), 1).
   LOCAL yaw_slew  IS AC_PARAM("takeoff_yaw_slew_per_s", TAKEOFF_YAW_SLEW_PER_S, 0.001).
@@ -88,16 +89,19 @@ FUNCTION _TO_RUN_GROUND_CENTERLINE {
   LOCAL yaw_scale IS 0.
   LOCAL yaw_tgt IS 0.
   IF SHIP:STATUS = "LANDED" {
-    IF ias >= yaw_start {
+    IF ABS(hdg_err) <= ROLLOUT_YAW_ERR_GUARD_DEG {
       LOCAL yaw_span IS MAX(yaw_full - yaw_start, 1).
-      IF ABS(hdg_err) <= ROLLOUT_YAW_ERR_GUARD_DEG {
-        SET yaw_scale TO CLAMP((ias - yaw_start) / yaw_span, 0, 1).
-        SET yaw_tgt TO (hdg_err * yaw_kp * yaw_sign) * yaw_scale.
+      IF ias >= yaw_start {
+        LOCAL yaw_ramp IS CLAMP((ias - yaw_start) / yaw_span, 0, 1).
+        SET yaw_scale TO yaw_min_scale + (1 - yaw_min_scale) * yaw_ramp.
       } ELSE {
-        SET yaw_gate TO 2.
+        SET yaw_gate TO 1.
+        // Keep some rudder authority available from rollout start.
+        SET yaw_scale TO yaw_min_scale.
       }
+      SET yaw_tgt TO (hdg_err * yaw_kp * yaw_sign) * yaw_scale.
     } ELSE {
-      SET yaw_gate TO 1.
+      SET yaw_gate TO 2.
     }
   } ELSE {
     SET yaw_gate TO 3.
@@ -140,44 +144,63 @@ FUNCTION _TO_TRY_AUTO_STAGE {
 }
 
 FUNCTION _RUN_TO_PREFLIGHT {
+  LOCAL first_tick IS PHASE_ELAPSED() <= IFC_ACTUAL_DT * 1.5.
   LOCAL det_clmb IS ROUND(AC_PARAM("flaps_detent_climb", 1, 0)).
   SET FLAPS_TARGET_DETENT TO det_clmb.
   _CHECK_TAKEOFF_FLAPS().
 
-  IF DEFINED CAMERA {
-    SET CAMERA:MODE TO "LOCKED".
+  BRAKES ON.
+  GEAR ON.
+  // One-time preflight setup. Keep this out of the per-cycle path so
+  // throttle can spool up while brakes remain engaged.
+  IF first_tick {
+    IF DEFINED CAMERA {
+      SET CAMERA:MODE TO "LOCKED".
+    }
+    SET THROTTLE_CMD TO 0.
+    SET SHIP:CONTROL:YAW TO 0.
+    SET SHIP:CONTROL:ROLL TO 0.
+    SET SHIP:CONTROL:PITCH TO 0.
+    SET TO_YAW_CMD_PREV TO 0.
+    SET TO_PITCH_CMD_PREV TO 0.
+    LOCK WHEELSTEERING TO TO_RWY_HDG.
+
+    SET TELEM_AA_HDG_CMD TO TO_RWY_HDG.
+    SET TELEM_AA_FPA_CMD TO 0.
+    SET TELEM_RO_YAW_TGT TO 0.
+    SET TELEM_RO_YAW_SCALE TO 0.
+    SET TELEM_RO_YAW_GATE TO 1.
+    SET TELEM_RO_HDG_ERR TO WRAP_180(GET_COMPASS_HDG() - TO_RWY_HDG).
+    SET TELEM_RO_LOC_CORR TO 0.
+    SET ROLLOUT_STEER_HDG TO TO_RWY_HDG.
+    SET TELEM_STEER_BLEND TO 1.
   }
 
-  BRAKES ON.
-  SET THROTTLE_CMD TO 0.
-  SET SHIP:CONTROL:YAW TO 0.
-  SET SHIP:CONTROL:ROLL TO 0.
-  SET SHIP:CONTROL:PITCH TO 0.
-  SET TO_YAW_CMD_PREV TO 0.
-  SET TO_PITCH_CMD_PREV TO 0.
-  LOCK WHEELSTEERING TO TO_RWY_HDG.
-
-  SET TELEM_AA_HDG_CMD TO TO_RWY_HDG.
-  SET TELEM_AA_FPA_CMD TO 0.
-  SET TELEM_RO_YAW_TGT TO 0.
-  SET TELEM_RO_YAW_SCALE TO 0.
-  SET TELEM_RO_YAW_GATE TO 1.
-  SET TELEM_RO_HDG_ERR TO WRAP_180(GET_COMPASS_HDG() - TO_RWY_HDG).
-  SET TELEM_RO_LOC_CORR TO 0.
-  SET ROLLOUT_STEER_HDG TO TO_RWY_HDG.
-  SET TELEM_STEER_BLEND TO 1.
-
   _TO_TRY_AUTO_STAGE().
+
+  LOCAL to_thr IS AC_PARAM("takeoff_throttle", 1.0, 0.001).
+  SET THROTTLE_CMD TO MOVE_TOWARD(THROTTLE_CMD, to_thr, THR_SLEW_PER_S * IFC_ACTUAL_DT).
 
   IF PHASE_ELAPSED() < 2.0 { RETURN. }
 
   LOCAL min_avail IS AC_PARAM("takeoff_min_avail_thrust", TAKEOFF_MIN_AVAIL_THRUST, 0).
   LOCAL spool_timeout_s IS AC_PARAM("takeoff_engine_spool_timeout_s", TAKEOFF_ENGINE_SPOOL_TIMEOUT_S, 0).
-  IF SHIP:AVAILABLETHRUST >= min_avail OR PHASE_ELAPSED() >= spool_timeout_s {
-    IF SHIP:AVAILABLETHRUST < min_avail {
-      PRINT "  TO warning: low available thrust after preflight wait (" +
-            ROUND(SHIP:AVAILABLETHRUST, 1) + " kN). Continuing.".
+  LOCAL spool_frac IS CLAMP(AC_PARAM("takeoff_spool_thrust_frac", TAKEOFF_SPOOL_THRUST_FRAC, 0), 0, 1).
+
+  LOCAL req_avail IS min_avail.
+  IF SHIP:MAXTHRUST > 0 {
+    SET req_avail TO MAX(req_avail, SHIP:MAXTHRUST * spool_frac * to_thr).
+  }
+
+  LOCAL throttle_ready IS to_thr <= 0 OR THROTTLE_CMD >= to_thr - 0.01.
+  LOCAL thrust_ready IS SHIP:AVAILABLETHRUST >= req_avail.
+
+  IF (throttle_ready AND thrust_ready) OR PHASE_ELAPSED() >= spool_timeout_s {
+    IF NOT thrust_ready {
+      PRINT "  TO warning: spool timeout, avail " + ROUND(SHIP:AVAILABLETHRUST, 1) +
+            " kN < req " + ROUND(req_avail, 1) + " kN. Continuing.".
     }
+    SET THROTTLE_CMD TO to_thr.
     BRAKES OFF.
     SET_SUBPHASE(SUBPHASE_TO_GROUND_ROLL).
   }

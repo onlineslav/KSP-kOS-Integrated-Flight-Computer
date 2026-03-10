@@ -206,6 +206,7 @@ GLOBAL TAKEOFF_AUTOSTAGE          IS TRUE. // attempt STAGE during takeoff if no
 GLOBAL TAKEOFF_STAGE_MAX_ATTEMPTS IS 1.    // max auto-stage attempts before giving up
 GLOBAL TAKEOFF_STAGE_RETRY_S      IS 1.0.  // s between auto-stage attempts
 GLOBAL TAKEOFF_ENGINE_SPOOL_TIMEOUT_S IS 8.0. // s wait in preflight for thrust before forced rollout
+GLOBAL TAKEOFF_SPOOL_THRUST_FRAC  IS 0.95. // 0..1 min fraction of max available thrust required before brake release
 GLOBAL TAKEOFF_MIN_AVAIL_THRUST   IS 5.0.  // kN threshold to consider engines lit
 GLOBAL KP_TAKEOFF_LOC             IS 0.020. // deg heading correction per meter localizer error
 GLOBAL TAKEOFF_LOC_GUARD_M        IS 120.0. // m cap localizer error used by takeoff steering
@@ -213,6 +214,7 @@ GLOBAL TAKEOFF_STEER_MAX_CORR     IS 10.0. // deg max steering heading correctio
 GLOBAL TAKEOFF_DIR_MAX_CORR       IS 6.0.  // deg max heading correction in rotate/climb
 GLOBAL TAKEOFF_YAW_START_IAS      IS 20.0. // m/s IAS where rudder assist starts ramping in
 GLOBAL TAKEOFF_YAW_FULL_IAS       IS 90.0. // m/s IAS where rudder assist reaches full gain
+GLOBAL TAKEOFF_YAW_MIN_SCALE      IS 0.25. // 0..1 minimum rudder-assist scale applied from rollout start
 GLOBAL KP_TAKEOFF_YAW             IS 0.025. // rudder command per deg heading error
 GLOBAL TAKEOFF_YAW_MAX_CMD        IS 0.30. // max rudder command magnitude
 GLOBAL TAKEOFF_YAW_SLEW_PER_S     IS 2.0.  // control units/s max rudder command slew

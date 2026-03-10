@@ -104,8 +104,8 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "app_spoiler_arm_km", 0,   // km from threshold to arm (0 = disabled)
 
     // -- Takeoff --------------------------------------------
-    "v_r",                110.0,  // m/s  rotate speed
-    "v2",                126.0,  // m/s  V2 climb speed
+    "v_r",                160.0,  // m/s  rotate speed
+    "v2",                176.0,  // m/s  V2 climb speed
     "takeoff_pitch_tgt",  10.0,  // deg  pitch target at rotation
     "takeoff_rotate_pitch_kp", 0.09, // pitch cmd per deg pitch error while on wheels
     "takeoff_rotate_pitch_max_cmd", 0.42, // max pitch cmd while on wheels
@@ -119,16 +119,18 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "takeoff_stage_max_attempts", 1, // max autostage attempts
     "takeoff_stage_retry_s",   1.0, // s between autostage attempts
     "takeoff_engine_spool_timeout_s", 8.0, // s wait in preflight for thrust
+    "takeoff_spool_thrust_frac", 0.98, // 0..1 fraction of max thrust required before brake release
     "takeoff_min_avail_thrust", 5.0, // kN considered "engines lit"
-    "takeoff_loc_kp",          0.022, // deg/m centerline correction gain
+    "takeoff_loc_kp",          0.040, // deg/m centerline correction gain
     "takeoff_loc_guard_m",   140.0, // m loc error clamp for steering
     "takeoff_steer_max_corr", 10.0, // deg max wheelsteering heading correction
     "takeoff_dir_max_corr",    6.0, // deg max director heading correction
-    "takeoff_yaw_start_ias",  20.0, // m/s IAS where yaw assist starts
-    "takeoff_yaw_full_ias",   90.0, // m/s IAS where yaw assist reaches full gain
-    "takeoff_yaw_kp",          0.024, // rudder cmd per deg heading error
-    "takeoff_yaw_max_cmd",     0.30, // max rudder cmd magnitude
-    "takeoff_yaw_slew_per_s",  2.0, // rudder cmd slew rate
+    "takeoff_yaw_start_ias",   0.0, // m/s IAS where yaw assist starts
+    "takeoff_yaw_full_ias",   45.0, // m/s IAS where yaw assist reaches full gain
+    "takeoff_yaw_min_scale",   0.55, // 0..1 rudder authority floor from rollout start
+    "takeoff_yaw_kp",          0.050, // rudder cmd per deg heading error
+    "takeoff_yaw_max_cmd",     0.65, // max rudder cmd magnitude
+    "takeoff_yaw_slew_per_s",  4.0, // rudder cmd slew rate
     "takeoff_yaw_sign",       -1,   // command sign for your control layout
     "takeoff_climb_min_throttle", 0.82, // throttle floor during climb
     "takeoff_climb_spd_thr_gain", 0.010, // throttle trim gain vs (V2-IAS)
