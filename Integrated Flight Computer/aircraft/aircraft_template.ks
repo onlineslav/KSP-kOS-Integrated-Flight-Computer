@@ -33,6 +33,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "app_spd_intercept_max_add", -1, // m/s, -1 = use APP_SPD_INTERCEPT_MAX_ADD
     "app_short_final_agl",       -1, // m AGL where Vapp blends toward Vref (-1 = global)
     "app_speed_tgt_slew_per_s",  -1, // m/s/s speed target slew limit (-1 = global)
+    "app_short_final_cap",       -1, // 1=cap speed to short-final schedule even without final capture, 0=disable, -1=global
 
     // ── Action groups ─────────────────────────────────────
     // Set to the action group NUMBER (1-10) that controls each
@@ -89,7 +90,19 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // If it pushes the nose the wrong way, invert the sign.
     "rollout_nose_hold_cmd", 0,    // 0 = disabled
     "rollout_nose_release_ias", -1, // -1 = use global
+    "rollout_nose_hold_min_s", -1,  // -1 = use global
+    "rollout_nose_min_ref_deg", -1, // -1 = use global
+    "rollout_nose_target_pitch_deg", -1, // -1 = use global
+    "rollout_nose_target_slew_dps", -1,  // -1 = use global
+    "rollout_pitch_hold_kp", -1,    // -1 = use global
+    "rollout_pitch_max_cmd", -1,    // -1 = use global
+    "rollout_pitch_max_down_cmd", -1, // -1 = use global
     "rollout_pitch_slew_per_s", -1, // -1 = use global
+    "rollout_touchdown_settle_s", -1, // -1 = use global
+    "bounce_recovery_agl_m", -1,    // -1 = use global
+    "bounce_recovery_min_vs", -1,   // -1 = use global
+    "bounce_recovery_confirm_s", -1, // -1 = use global
+    "bounce_recovery_max_s", -1,    // -1 = use global
 
     // ── Flare ─────────────────────────────────────────────
     // Override the global constants for this specific aircraft.
@@ -103,6 +116,8 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "flare_balloon_fpa_push",  -1, // deg extra nose-down in recovery (-1 = global)
     "flare_pitch_rate_min",    -1, // deg/s (-1 = global)
     "flare_pitch_rate_max",    -1, // deg/s (-1 = global)
+    "touchdown_confirm_s", -1, // s debounce for FLARE->TOUCHDOWN (-1 = global)
+    "touchdown_confirm_max_abs_vs", -1, // m/s max |VS| at FLARE->TOUCHDOWN commit (-1 = global)
 
     // ── Notes ─────────────────────────────────────────────
     // Free-text, shown at startup for crew awareness.

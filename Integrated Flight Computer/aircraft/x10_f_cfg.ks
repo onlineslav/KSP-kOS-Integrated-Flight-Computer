@@ -30,11 +30,12 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "v_ref",        170.0,
     // Approach speed schedule shaping:
     // Vint = Vapp + clamp((Vapp - Vref) * gain, min_add, max_add)
-    "app_spd_intercept_gain",    0.50,
-    "app_spd_intercept_min_add", 8.0,
-    "app_spd_intercept_max_add", 16.0,
-    "app_short_final_agl",       120.0,
-    "app_speed_tgt_slew_per_s",  1.3,
+    "app_spd_intercept_gain",    0.45,
+    "app_spd_intercept_min_add", 6.0,
+    "app_spd_intercept_max_add", 12.0,
+    "app_short_final_agl",       180.0,
+    "app_speed_tgt_slew_per_s",  1.6,
+    "app_short_final_cap",       1,    // cap to short-final schedule even if LOC/GS capture is noisy
 
     // ── Action groups ─────────────────────────────────────
     // Set to the action group NUMBER (1-10) that controls each
@@ -69,14 +70,45 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
 
     // ── Rollout ────────────────────────────────────────────
     // Max IAS to allow wheel brakes during rollout.
-    "rollout_brake_max_ias", 160,
-    "rollout_yaw_assist_ias", 120,
-    "rollout_roll_assist_ias", 100,
+    "rollout_brake_max_ias",    95,    // avoid high-speed wheel-brake instability
+    "rollout_yaw_assist_ias",  110,
+    "rollout_yaw_kp",         0.018,
+    "rollout_yaw_slew_per_s",  1.0,
+    "rollout_yaw_fade_ias",     35,
+    "rollout_yaw_max_cmd",    0.22,
+    "rollout_roll_assist_ias",   0,    // let AA FBW own roll damping
+    "rollout_steer_min_blend", 0.04,
+    "rollout_yaw_sign",        -1,
+    "rollout_touchdown_settle_s", 0.55,
+    "bounce_recovery_agl_m",   3.5,
+    "bounce_recovery_min_vs",  0.8,
+    "bounce_recovery_confirm_s", 0.35,
+    "bounce_recovery_max_s",   4.0,
+    "rollout_nose_hold_cmd",   0.14,
+    "rollout_nose_release_ias", 60,
+    "rollout_nose_hold_min_s", 2.4,
+    "rollout_nose_min_ref_deg", 4.0,
+    "rollout_nose_target_pitch_deg", 0.8,
+    "rollout_nose_target_slew_dps", 0.35,
+    "rollout_pitch_hold_kp",   0.09,
+    "rollout_pitch_max_cmd",   0.32,
+    "rollout_pitch_max_down_cmd", 0.12,
+    "rollout_pitch_slew_per_s", 1.4,
 
     // ── Flare ─────────────────────────────────────────────
     // Override the global constants for this specific aircraft.
     // Set to -1 to use the global default from ifc_constants.ks.
-    "flare_agl",    70,   // m AGL to begin flare  (-1 = use FLARE_AGL_M)
+    "flare_agl",               85,   // m AGL to begin flare  (-1 = use FLARE_AGL_M)
+    "flare_touchdown_vs",     -0.10, // m/s target sink rate at wheel contact
+    "flare_ias_to_vs_gain",    0.010,// extra sink per m/s above Vref during flare
+    "flare_roundout_agl",      8.0,  // m AGL final sink blend zone
+    "flare_roundout_strength", 1.0,  // full roundout blend
+    "flare_balloon_vs_trigger",0.08, // m/s VS threshold for anti-balloon push
+    "flare_balloon_fpa_push",  1.4,  // deg nose-down bias when ballooning
+    "flare_pitch_rate_min",    1.0,  // deg/s low-speed flare response
+    "flare_pitch_rate_max",    3.0,  // deg/s high-speed flare response
+    "touchdown_confirm_s",      0.16,
+    "touchdown_confirm_max_abs_vs", 2.0,
 
     // ── Notes ─────────────────────────────────────────────
     // Free-text, shown at startup for crew awareness.

@@ -55,6 +55,7 @@ FUNCTION _UPDATE_APPROACH_SPEED_TARGET {
   LOCAL intercept_max_add IS APP_SPD_INTERCEPT_MAX_ADD.
   LOCAL short_final_agl IS APP_SHORT_FINAL_AGL_M.
   LOCAL speed_tgt_slew_per_s IS APP_SPEED_TGT_SLEW_PER_S.
+  LOCAL short_final_cap_when_not_final IS APP_SHORT_FINAL_CAP_WHEN_NOT_FINAL.
 
   // Optional per-aircraft overrides (keep minimal; defaults are robust).
   IF ACTIVE_AIRCRAFT <> 0 {
@@ -73,12 +74,22 @@ FUNCTION _UPDATE_APPROACH_SPEED_TARGET {
     IF ACTIVE_AIRCRAFT:HASKEY("app_speed_tgt_slew_per_s") AND ACTIVE_AIRCRAFT["app_speed_tgt_slew_per_s"] > 0 {
       SET speed_tgt_slew_per_s TO ACTIVE_AIRCRAFT["app_speed_tgt_slew_per_s"].
     }
+    IF ACTIVE_AIRCRAFT:HASKEY("app_short_final_cap") AND ACTIVE_AIRCRAFT["app_short_final_cap"] >= 0 {
+      SET short_final_cap_when_not_final TO ACTIVE_AIRCRAFT["app_short_final_cap"] <> 0.
+    }
   }
 
   IF intercept_max_add < intercept_min_add { SET intercept_max_add TO intercept_min_add. }
   LOCAL vint IS _GET_VINTERCEPT_TARGET(vapp, vref, intercept_gain, intercept_min_add, intercept_max_add).
   LOCAL base_tgt IS vint.
   LOCAL short_final_frac IS 0.
+  LOCAL short_final_target IS vapp.
+  LOCAL short_cap_applied IS FALSE.
+  LOCAL agl IS GET_AGL().
+  IF short_final_agl > 0 AND agl < short_final_agl {
+    SET short_final_frac TO CLAMP((short_final_agl - agl) / short_final_agl, 0, 1).
+    SET short_final_target TO vapp + (vref - vapp) * short_final_frac.
+  }
 
   // Final-speed mode is only available once ILS tracking is active.
   IF IFC_SUBPHASE = SUBPHASE_ILS_TRACK {
@@ -116,11 +127,11 @@ FUNCTION _UPDATE_APPROACH_SPEED_TARGET {
     SET base_tgt TO vapp.
 
     // On short final, bleed from Vapp toward Vref automatically.
-    LOCAL agl IS GET_AGL().
-    IF agl < short_final_agl {
-      SET short_final_frac TO CLAMP((short_final_agl - agl) / short_final_agl, 0, 1).
-      SET base_tgt TO vapp + (vref - vapp) * short_final_frac.
-    }
+    IF short_final_frac > 0 { SET base_tgt TO short_final_target. }
+  } ELSE IF IFC_SUBPHASE = SUBPHASE_ILS_TRACK AND short_final_cap_when_not_final AND short_final_frac > 0 {
+    // Safety cap: near the runway, never carry intercept speeds.
+    SET base_tgt TO MIN(base_tgt, short_final_target).
+    SET short_cap_applied TO TRUE.
   }
 
   // Export scheduler internals for terminal/log diagnostics.
@@ -136,6 +147,8 @@ FUNCTION _UPDATE_APPROACH_SPEED_TARGET {
     } ELSE {
       SET APP_SPD_MODE TO "FINAL".
     }
+  } ELSE IF short_cap_applied {
+    SET APP_SPD_MODE TO "SHORT_CAP".
   } ELSE {
     SET APP_SPD_MODE TO "INTERCEPT".
   }
@@ -203,7 +216,10 @@ FUNCTION _RUN_FLY_TO_FIX {
   SET THROTTLE_CMD TO MOVE_TOWARD(THROTTLE_CMD, raw_thr, THR_SLEW_PER_S * IFC_ACTUAL_DT).
 
   // Extend gear if aircraft config specifies a gear-down AGL.
-  LOCAL gear_agl IS ACTIVE_AIRCRAFT["gear_down_agl"].
+  LOCAL gear_agl IS 0.
+  IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("gear_down_agl") {
+    SET gear_agl TO ACTIVE_AIRCRAFT["gear_down_agl"].
+  }
   IF gear_agl > 0 AND GET_AGL() < gear_agl {
     GEAR ON.
   }
@@ -276,7 +292,9 @@ FUNCTION _RUN_ILS_TRACK {
 
   // ── Check for flare trigger (with hysteresis + debounce) ──
   LOCAL flare_agl IS FLARE_AGL_M.
-  IF ACTIVE_AIRCRAFT["flare_agl"] >= 0 { SET flare_agl TO ACTIVE_AIRCRAFT["flare_agl"]. }
+  IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("flare_agl") AND ACTIVE_AIRCRAFT["flare_agl"] >= 0 {
+    SET flare_agl TO ACTIVE_AIRCRAFT["flare_agl"].
+  }
   LOCAL flare_arm_agl IS MAX(flare_agl - FLARE_TRIGGER_HYST_M, 0.5).
   LOCAL agl_now IS GET_AGL().
 

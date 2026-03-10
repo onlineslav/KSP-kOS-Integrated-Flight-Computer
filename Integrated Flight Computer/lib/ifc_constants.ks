@@ -75,6 +75,7 @@ GLOBAL APP_FINAL_CAPTURE_CONFIRM_S IS 1.0.  // s LOC/GS capture must persist bef
 GLOBAL APP_FINAL_RELEASE_FACTOR    IS 1.35. // hysteresis factor on LOC/GS capture limits to exit final-speed mode
 GLOBAL APP_SHORT_FINAL_AGL_M       IS 60.0. // m AGL where Vapp -> Vref blend starts
 GLOBAL APP_SPEED_TGT_SLEW_PER_S    IS 0.8.  // m/s/s max speed-target change rate (prevents throttle step jumps)
+GLOBAL APP_SHORT_FINAL_CAP_WHEN_NOT_FINAL IS TRUE. // if TRUE, short-final Vapp->Vref blend can cap speed even before final capture
 
 // ----------------------------
 // Enroute descent to fix
@@ -116,10 +117,13 @@ GLOBAL MAX_FLARE_AOA    IS 10.   // deg AoA ceiling (FAR) — freeze pitch-up if
 // ----------------------------
 GLOBAL TOUCHDOWN_AGL_M  IS 2.    // m AGL considered touchdown (radar alt)
 GLOBAL TOUCHDOWN_CONFIRM_S IS 0.12. // s touchdown conditions must persist before switching phases
+GLOBAL TOUCHDOWN_CONFIRM_MAX_ABS_VS IS 2.5. // m/s max |VS| allowed when committing FLARE->TOUCHDOWN
 GLOBAL TOUCHDOWN_FALLBACK_AGL_M IS 0.8. // m AGL fallback detector if LANDED status lags
 GLOBAL TOUCHDOWN_FALLBACK_MAX_VS IS 0.2. // m/s max VS for fallback detector (descending/near-zero)
 GLOBAL TOUCHDOWN_SETTLE_S IS 0.20. // s hold TOUCHDOWN phase to let gear loads settle
-GLOBAL BOUNCE_RECOVERY_AGL_M IS 1.5. // m if airborne above this in rollout, return to flare
+GLOBAL BOUNCE_RECOVERY_AGL_M IS 2.5. // m if airborne above this in touchdown/rollout, consider bounce recovery
+GLOBAL BOUNCE_RECOVERY_MIN_VS IS 0.6. // m/s minimum upward VS to count as a real bounce
+GLOBAL BOUNCE_RECOVERY_CONFIRM_S IS 0.30. // s airborne criteria must persist before bounce recovery
 GLOBAL BOUNCE_RECOVERY_MAX_S IS 6.0. // s after touchdown where bounce recovery is allowed
 GLOBAL ROLLOUT_DONE_IAS IS 3.    // m/s IAS to declare rollout complete
 GLOBAL KP_ROLLOUT_ROLL  IS 0.16. // aileron authority per deg of bank (wings level)
@@ -148,6 +152,7 @@ GLOBAL ROLLOUT_NOSE_TARGET_PITCH_DEG IS 0.0. // deg final rollout pitch target o
 GLOBAL ROLLOUT_NOSE_TARGET_SLEW_DPS IS 1.2. // deg/s max target attitude change while lowering nose
 GLOBAL ROLLOUT_PITCH_HOLD_KP    IS 0.08. // pitch command per deg of (target - actual) pitch attitude error
 GLOBAL ROLLOUT_PITCH_MAX_CMD    IS 0.35. // max magnitude of closed-loop rollout pitch command
+GLOBAL ROLLOUT_PITCH_MAX_DOWN_CMD IS 0.18. // max nose-down rollout pitch command magnitude to avoid nosewheel slams
 GLOBAL ROLLOUT_PITCH_SLEW_PER_S IS 1.2. // control units/s max pitch command rate change on rollout
 
 // ----------------------------

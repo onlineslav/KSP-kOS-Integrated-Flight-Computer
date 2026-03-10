@@ -126,6 +126,7 @@ GLOBAL FLARE_TRIGGER_START_UT IS -1. // debounce timer start for entering flare
 GLOBAL TOUCHDOWN_CANDIDATE_UT IS -1. // debounce timer start for entering touchdown
 GLOBAL TOUCHDOWN_INIT_DONE IS FALSE. // one-time touchdown handoff latch
 GLOBAL TOUCHDOWN_CAPTURE_PITCH_DEG IS 0. // pitch snapshot captured at flare->touchdown transition
+GLOBAL BOUNCE_RECOVERY_START_UT IS -1. // debounce timer for confirming a real airborne bounce
 GLOBAL ROLLOUT_ENTRY_HDG IS 0.  // heading captured at touchdown for blended wheelsteering
 GLOBAL ROLLOUT_YAW_CMD_PREV IS 0. // previous-cycle rudder command for slew limiting
 GLOBAL ROLLOUT_PITCH_CMD_PREV IS 0. // previous-cycle pitch command for slew limiting
@@ -187,6 +188,7 @@ FUNCTION IFC_INIT_STATE {
   SET TOUCHDOWN_CANDIDATE_UT TO -1.
   SET TOUCHDOWN_INIT_DONE TO FALSE.
   SET TOUCHDOWN_CAPTURE_PITCH_DEG TO 0.
+  SET BOUNCE_RECOVERY_START_UT TO -1.
   SET ROLLOUT_ENTRY_HDG   TO GET_COMPASS_HDG().
   SET ROLLOUT_YAW_CMD_PREV TO 0.
   SET ROLLOUT_PITCH_CMD_PREV TO 0.
