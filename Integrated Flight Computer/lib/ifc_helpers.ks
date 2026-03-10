@@ -46,6 +46,9 @@ FUNCTION SET_PHASE {
       + "  T+" + ROUND(TIME:SECONDS - IFC_MISSION_START_UT, 1).
     SET IFC_PHASE          TO NEW_PHASE.
     SET IFC_PHASE_START_UT TO TIME:SECONDS.
+    // Clear the approach sub-phase label when leaving APPROACH so telemetry
+    // and logs don't show a stale "ILS_TRACK" during FLARE/TOUCHDOWN/ROLLOUT.
+    IF NEW_PHASE <> PHASE_APPROACH { SET IFC_SUBPHASE TO "". }
   }
 }
 
@@ -59,6 +62,29 @@ FUNCTION SET_SUBPHASE {
 
 FUNCTION PHASE_ELAPSED {
   RETURN TIME:SECONDS - IFC_PHASE_START_UT.
+}
+
+// ----------------------------
+// Aircraft config helper
+// ----------------------------
+// Resolve a numeric parameter from ACTIVE_AIRCRAFT config.
+// Returns the aircraft's value if it exists AND the value >= guard,
+// otherwise returns fallback.
+//
+// Common guard values:
+//   0.001  →  "accept if > 0"        (positive-only params, e.g. IAS limits)
+//   0      →  "accept if >= 0"       (params that can legitimately be zero)
+//  -0.5    →  "accept if > -1"       (where -1 is the no-override sentinel)
+//
+// For negative-valued params (e.g. flare_touchdown_vs) where -1 is still the
+// sentinel, keep the check inline since AC_PARAM cannot express "< 0 AND <> -1".
+FUNCTION AC_PARAM {
+  PARAMETER key, fallback, guard.
+  IF ACTIVE_AIRCRAFT = 0 { RETURN fallback. }
+  IF NOT ACTIVE_AIRCRAFT:HASKEY(key) { RETURN fallback. }
+  LOCAL v IS ACTIVE_AIRCRAFT[key].
+  IF v >= guard { RETURN v. }
+  RETURN fallback.
 }
 
 // ----------------------------

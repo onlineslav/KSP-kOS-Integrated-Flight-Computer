@@ -2,6 +2,7 @@ Would be good if the FC could automatically pull the AC config from the name of 
 
 Is there a way we could limit bank angle during all phases of flight (except maybe in space but we can patch that in later)? AA doesn't have a bank limiter
 
+(note for me)
 Add these to cfg files?
 Vs: stall speed in the configuration you mean
 
@@ -25,4 +26,9 @@ Would be nice:
 fine tune spoiler deflection and fine tune braking
 - maybe by changing the deflection angle in real time?
 
-set moderate aoa value to just below 
+set moderate aoa value to just below A_crit from FAR data
+
+---
+
+Some GUIs would be nice.
+- 

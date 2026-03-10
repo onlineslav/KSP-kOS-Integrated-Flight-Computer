@@ -161,7 +161,11 @@ FUNCTION _IFC_INTERACTIVE_START {
   ELSE IF sel = "4" { RUN_IFC("27", TRUE).  }
 }
 
-_IFC_INTERACTIVE_START().
+// Boot scripts can set GLOBAL IFC_SKIP_INTERACTIVE IS TRUE. before loading
+// ifc_main.ks to suppress the interactive menu and call RUN_IFC() directly.
+IF NOT (DEFINED IFC_SKIP_INTERACTIVE AND IFC_SKIP_INTERACTIVE) {
+  _IFC_INTERACTIVE_START().
+}
 
 // ── Main entry point ──────────────────────────────────────
 FUNCTION RUN_IFC {

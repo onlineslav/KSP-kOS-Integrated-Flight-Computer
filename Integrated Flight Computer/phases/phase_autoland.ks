@@ -21,6 +21,57 @@ FUNCTION RUN_AUTOLAND {
 }
 
 // ─────────────────────────────────────────────────────────
+// BOUNCE RECOVERY helper
+// Detects a post-touchdown bounce and transitions back to FLARE.
+//
+// Parameters (all resolved by the caller from AC_PARAM or constants):
+//   br_agl_m     - m AGL above which aircraft is considered airborne
+//   br_min_vs    - m/s minimum upward VS to count as a real bounce
+//   br_confirm_s - s airborne conditions must persist before recovery triggers
+//   br_max_s     - s after phase entry where bounce recovery is still checked
+//   reset_init   - TRUE when called from PHASE_TOUCHDOWN (resets TOUCHDOWN_INIT_DONE
+//                  so the one-time handoff sequence re-runs on re-landing)
+//
+// Returns TRUE when recovery was triggered; caller must RETURN immediately.
+// ─────────────────────────────────────────────────────────
+FUNCTION _CHECK_BOUNCE_RECOVERY {
+  PARAMETER br_agl_m, br_min_vs, br_confirm_s, br_max_s, reset_init.
+  LOCAL agl IS GET_AGL().
+  LOCAL airborne IS PHASE_ELAPSED() < br_max_s AND
+                   SHIP:STATUS <> "LANDED" AND
+                   agl > br_agl_m AND
+                   SHIP:VERTICALSPEED > br_min_vs.
+  IF airborne {
+    IF BOUNCE_RECOVERY_START_UT < 0 { SET BOUNCE_RECOVERY_START_UT TO TIME:SECONDS. }
+    IF TIME:SECONDS - BOUNCE_RECOVERY_START_UT >= br_confirm_s {
+      BRAKES OFF.
+      UNLOCK WHEELSTEERING.
+      IF reset_init { SET TOUCHDOWN_INIT_DONE TO FALSE. }
+      SET TOUCHDOWN_CANDIDATE_UT      TO -1.
+      SET TOUCHDOWN_CAPTURE_PITCH_DEG TO 0.
+      SET BOUNCE_RECOVERY_START_UT    TO -1.
+      SET ROLLOUT_PITCH_CMD_PREV      TO 0.
+      LOCAL pitch_now IS GET_PITCH().
+      SET ROLLOUT_PITCH_REF_DEG TO pitch_now.
+      SET ROLLOUT_PITCH_TGT_DEG TO pitch_now.
+      SET SHIP:CONTROL:YAW   TO 0.
+      SET SHIP:CONTROL:ROLL  TO 0.
+      SET SHIP:CONTROL:PITCH TO 0.
+      LOCAL entry_ias IS MAX(GET_IAS(), 10).
+      SET FLARE_PITCH_CMD TO ARCTAN(SHIP:VERTICALSPEED / entry_ias).
+      SET FLARE_ENTRY_VS  TO CLAMP(SHIP:VERTICALSPEED, FLARE_MIN_ENTRY_SINK_VS, -0.05).
+      SET FLARE_ENTRY_AGL TO MAX(agl, 1).
+      PRINT "  BOUNCE recovery: returning to FLARE (AGL " + ROUND(agl, 1) + " m)".
+      SET_PHASE(PHASE_FLARE).
+      RETURN TRUE.
+    }
+  } ELSE {
+    SET BOUNCE_RECOVERY_START_UT TO -1.
+  }
+  RETURN FALSE.
+}
+
+// ─────────────────────────────────────────────────────────
 // FLARE
 // Sink-rate targeting with AoA ceiling.
 //
@@ -32,57 +83,35 @@ FUNCTION RUN_AUTOLAND {
 // ─────────────────────────────────────────────────────────
 FUNCTION _RUN_FLARE {
   SET TELEM_RO_ROLL_ASSIST TO 0.
-  SET TELEM_RO_YAW_SCALE TO 0.
-  SET TELEM_RO_YAW_GATE TO 0.
-  SET TELEM_RO_PITCH_TGT TO 0.
-  SET TELEM_RO_PITCH_ERR TO 0.
-  SET TELEM_RO_PITCH_FF TO 0.
-  LOCAL ac  IS ACTIVE_AIRCRAFT.
-  LOCAL agl IS GET_AGL().
-  LOCAL ias IS MAX(GET_IAS(), 10).  // floor prevents divide-by-zero at very low speed
+  SET TELEM_RO_YAW_SCALE   TO 0.
+  SET TELEM_RO_YAW_GATE    TO 0.
+  SET TELEM_RO_PITCH_TGT   TO 0.
+  SET TELEM_RO_PITCH_ERR   TO 0.
+  SET TELEM_RO_PITCH_FF    TO 0.
+  LOCAL agl    IS GET_AGL().
+  LOCAL ias    IS MAX(GET_IAS(), 10).  // floor prevents divide-by-zero at very low speed
   LOCAL vs_now IS SHIP:VERTICALSPEED.
 
-  // Per-aircraft flare overrides (optional).
-  LOCAL flare_touchdown_vs   IS TOUCHDOWN_VS.
-  LOCAL flare_vs_gain        IS FLARE_IAS_TO_VS_GAIN.
-  LOCAL flare_balloon_vs     IS FLARE_BALLOON_VS_TRIGGER.
-  LOCAL flare_balloon_push   IS FLARE_BALLOON_FPA_PUSH.
-  LOCAL flare_rate_min       IS FLARE_PITCH_RATE_MIN.
-  LOCAL flare_rate_max       IS FLARE_PITCH_RATE_MAX.
-  LOCAL flare_roundout_agl   IS FLARE_ROUNDOUT_AGL_M.
-  LOCAL flare_roundout_strength IS FLARE_ROUNDOUT_STRENGTH.
-  LOCAL touchdown_confirm_s IS TOUCHDOWN_CONFIRM_S.
-  LOCAL touchdown_confirm_max_abs_vs IS TOUCHDOWN_CONFIRM_MAX_ABS_VS.
-  IF ac:HASKEY("flare_touchdown_vs") AND ac["flare_touchdown_vs"] <> -1 AND ac["flare_touchdown_vs"] < 0 {
-    SET flare_touchdown_vs TO ac["flare_touchdown_vs"].
+  // Per-aircraft flare overrides.
+  // flare_touchdown_vs is a negative value (e.g. -0.05) with -1 as sentinel.
+  // AC_PARAM cannot express "< 0 AND <> -1", so this one stays inline.
+  LOCAL flare_touchdown_vs IS TOUCHDOWN_VS.
+  IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("flare_touchdown_vs")
+      AND ACTIVE_AIRCRAFT["flare_touchdown_vs"] <> -1
+      AND ACTIVE_AIRCRAFT["flare_touchdown_vs"] < 0 {
+    SET flare_touchdown_vs TO ACTIVE_AIRCRAFT["flare_touchdown_vs"].
   }
-  IF ac:HASKEY("flare_ias_to_vs_gain") AND ac["flare_ias_to_vs_gain"] >= 0 {
-    SET flare_vs_gain TO ac["flare_ias_to_vs_gain"].
-  }
-  IF ac:HASKEY("flare_balloon_vs_trigger") AND ac["flare_balloon_vs_trigger"] >= 0 {
-    SET flare_balloon_vs TO ac["flare_balloon_vs_trigger"].
-  }
-  IF ac:HASKEY("flare_balloon_fpa_push") AND ac["flare_balloon_fpa_push"] >= 0 {
-    SET flare_balloon_push TO ac["flare_balloon_fpa_push"].
-  }
-  IF ac:HASKEY("flare_pitch_rate_min") AND ac["flare_pitch_rate_min"] > 0 {
-    SET flare_rate_min TO ac["flare_pitch_rate_min"].
-  }
-  IF ac:HASKEY("flare_pitch_rate_max") AND ac["flare_pitch_rate_max"] > 0 {
-    SET flare_rate_max TO ac["flare_pitch_rate_max"].
-  }
-  IF ac:HASKEY("flare_roundout_agl") AND ac["flare_roundout_agl"] >= 0 {
-    SET flare_roundout_agl TO ac["flare_roundout_agl"].
-  }
-  IF ac:HASKEY("flare_roundout_strength") AND ac["flare_roundout_strength"] >= 0 {
-    SET flare_roundout_strength TO CLAMP(ac["flare_roundout_strength"], 0, 1).
-  }
-  IF ac:HASKEY("touchdown_confirm_s") AND ac["touchdown_confirm_s"] > 0 {
-    SET touchdown_confirm_s TO ac["touchdown_confirm_s"].
-  }
-  IF ac:HASKEY("touchdown_confirm_max_abs_vs") AND ac["touchdown_confirm_max_abs_vs"] > 0 {
-    SET touchdown_confirm_max_abs_vs TO ac["touchdown_confirm_max_abs_vs"].
-  }
+  LOCAL flare_vs_gain           IS AC_PARAM("flare_ias_to_vs_gain",       FLARE_IAS_TO_VS_GAIN,     0).
+  LOCAL flare_balloon_vs        IS AC_PARAM("flare_balloon_vs_trigger",   FLARE_BALLOON_VS_TRIGGER, 0).
+  LOCAL flare_balloon_push      IS AC_PARAM("flare_balloon_fpa_push",     FLARE_BALLOON_FPA_PUSH,   0).
+  LOCAL flare_rate_min          IS AC_PARAM("flare_pitch_rate_min",       FLARE_PITCH_RATE_MIN,     0.001).
+  LOCAL flare_rate_max          IS AC_PARAM("flare_pitch_rate_max",       FLARE_PITCH_RATE_MAX,     0.001).
+  LOCAL flare_roundout_agl      IS AC_PARAM("flare_roundout_agl",         FLARE_ROUNDOUT_AGL_M,     0).
+  LOCAL flare_roundout_strength IS MIN(AC_PARAM("flare_roundout_strength", FLARE_ROUNDOUT_STRENGTH, 0), 1).
+  LOCAL touchdown_confirm_s     IS AC_PARAM("touchdown_confirm_s",         TOUCHDOWN_CONFIRM_S,      0.001).
+  LOCAL touchdown_confirm_max_abs_vs IS AC_PARAM("touchdown_confirm_max_abs_vs", TOUCHDOWN_CONFIRM_MAX_ABS_VS, 0.001).
+  // Vref: used for both energy-compensation sink and autothrottle target.
+  LOCAL vref IS AC_PARAM("v_ref", ACTIVE_V_APP - 10, 0).
   IF flare_rate_max < flare_rate_min { SET flare_rate_max TO flare_rate_min. }
 
   // Progress: 0 = just entered flare, 1 = at ground level.
@@ -92,11 +121,9 @@ FUNCTION _RUN_FLARE {
   LOCAL base_vs IS FLARE_ENTRY_VS + (flare_touchdown_vs - FLARE_ENTRY_VS) * frac.
 
   // Energy compensation: if still fast versus Vref, command extra sink.
-  LOCAL vref IS ACTIVE_V_APP - 10.
-  IF ac:HASKEY("v_ref") { SET vref TO ac["v_ref"]. }
-  LOCAL speed_excess IS MAX(ias - vref, 0).
   // Fade speed-driven extra sink out as we approach touchdown:
   // early flare can still shed energy, but the last part prioritizes a soft touchdown.
+  LOCAL speed_excess IS MAX(ias - vref, 0).
   LOCAL speed_sink_blend IS CLAMP(1 - frac, 0, 1).
   LOCAL tgt_vs IS base_vs - speed_excess * flare_vs_gain * speed_sink_blend.
 
@@ -146,9 +173,7 @@ FUNCTION _RUN_FLARE {
   // from IAS loss that idle throttle causes on high-drag aircraft.
   // Minimum throttle is 0 (no forced idle floor) so the aircraft can still
   // reduce thrust naturally when above Vref.
-  LOCAL v_ref_f IS ACTIVE_V_APP.
-  IF ac:HASKEY("v_ref") { SET v_ref_f TO ac["v_ref"]. }
-  LOCAL spd_err_f IS v_ref_f - ias.
+  LOCAL spd_err_f IS vref - ias.
   LOCAL a_cmd_f IS CLAMP(KP_SPD_ACL * spd_err_f, -ACL_MAX, ACL_MAX).
   LOCAL a_raw_f IS CLAMP((ias - PREV_IAS) / IFC_ACTUAL_DT, -10, 10).
   SET PREV_IAS      TO ias.
@@ -171,9 +196,9 @@ FUNCTION _RUN_FLARE {
       // Capture pre-impact pitch while still in flare; this is a better
       // nose-hold reference than waiting until touchdown transients begin.
       SET TOUCHDOWN_CAPTURE_PITCH_DEG TO GET_PITCH().
-      SET TOUCHDOWN_INIT_DONE TO FALSE.
-      SET TOUCHDOWN_CANDIDATE_UT TO -1.
-      SET BOUNCE_RECOVERY_START_UT TO -1.
+      SET TOUCHDOWN_INIT_DONE         TO FALSE.
+      SET TOUCHDOWN_CANDIDATE_UT      TO -1.
+      SET BOUNCE_RECOVERY_START_UT    TO -1.
       SET_PHASE(PHASE_TOUCHDOWN).
     }
   } ELSE {
@@ -188,70 +213,37 @@ FUNCTION _RUN_FLARE {
 // ─────────────────────────────────────────────────────────
 FUNCTION _RUN_TOUCHDOWN {
   SET TELEM_RO_ROLL_ASSIST TO 0.
-  SET TELEM_RO_YAW_SCALE TO 0.
-  SET TELEM_RO_YAW_GATE TO 0.
+  SET TELEM_RO_YAW_SCALE   TO 0.
+  SET TELEM_RO_YAW_GATE    TO 0.
   SET THROTTLE_CMD TO 0.
-  LOCAL nose_hold_cmd IS ROLLOUT_NOSE_HOLD_CMD.
-  LOCAL nose_min_ref_deg IS ROLLOUT_NOSE_MIN_REF_DEG.
-  LOCAL rollout_pitch_hold_kp IS ROLLOUT_PITCH_HOLD_KP.
-  LOCAL rollout_pitch_max_cmd IS ROLLOUT_PITCH_MAX_CMD.
-  LOCAL rollout_pitch_max_down_cmd IS ROLLOUT_PITCH_MAX_DOWN_CMD.
-  LOCAL rollout_pitch_slew_per_s IS ROLLOUT_PITCH_SLEW_PER_S.
-  LOCAL touchdown_settle_s IS TOUCHDOWN_SETTLE_S.
-  LOCAL bounce_recovery_agl_m IS BOUNCE_RECOVERY_AGL_M.
-  LOCAL bounce_recovery_min_vs IS BOUNCE_RECOVERY_MIN_VS.
-  LOCAL bounce_recovery_confirm_s IS BOUNCE_RECOVERY_CONFIRM_S.
-  LOCAL bounce_recovery_max_s IS BOUNCE_RECOVERY_MAX_S.
-  IF ACTIVE_AIRCRAFT:HASKEY("rollout_nose_hold_cmd") AND ACTIVE_AIRCRAFT["rollout_nose_hold_cmd"] <> -1 {
-    SET nose_hold_cmd TO ACTIVE_AIRCRAFT["rollout_nose_hold_cmd"].
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("rollout_nose_min_ref_deg") AND ACTIVE_AIRCRAFT["rollout_nose_min_ref_deg"] >= 0 {
-    SET nose_min_ref_deg TO ACTIVE_AIRCRAFT["rollout_nose_min_ref_deg"].
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("rollout_pitch_hold_kp") AND ACTIVE_AIRCRAFT["rollout_pitch_hold_kp"] >= 0 {
-    SET rollout_pitch_hold_kp TO ACTIVE_AIRCRAFT["rollout_pitch_hold_kp"].
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("rollout_pitch_max_cmd") AND ACTIVE_AIRCRAFT["rollout_pitch_max_cmd"] > 0 {
-    SET rollout_pitch_max_cmd TO CLAMP(ACTIVE_AIRCRAFT["rollout_pitch_max_cmd"], 0, 1).
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("rollout_pitch_max_down_cmd") AND ACTIVE_AIRCRAFT["rollout_pitch_max_down_cmd"] >= 0 {
-    SET rollout_pitch_max_down_cmd TO CLAMP(ACTIVE_AIRCRAFT["rollout_pitch_max_down_cmd"], 0, rollout_pitch_max_cmd).
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("rollout_pitch_slew_per_s") AND ACTIVE_AIRCRAFT["rollout_pitch_slew_per_s"] > 0 {
-    SET rollout_pitch_slew_per_s TO ACTIVE_AIRCRAFT["rollout_pitch_slew_per_s"].
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("rollout_touchdown_settle_s") AND ACTIVE_AIRCRAFT["rollout_touchdown_settle_s"] > 0 {
-    SET touchdown_settle_s TO ACTIVE_AIRCRAFT["rollout_touchdown_settle_s"].
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("bounce_recovery_agl_m") AND ACTIVE_AIRCRAFT["bounce_recovery_agl_m"] > 0 {
-    SET bounce_recovery_agl_m TO ACTIVE_AIRCRAFT["bounce_recovery_agl_m"].
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("bounce_recovery_min_vs") AND ACTIVE_AIRCRAFT["bounce_recovery_min_vs"] > 0 {
-    SET bounce_recovery_min_vs TO ACTIVE_AIRCRAFT["bounce_recovery_min_vs"].
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("bounce_recovery_confirm_s") AND ACTIVE_AIRCRAFT["bounce_recovery_confirm_s"] > 0 {
-    SET bounce_recovery_confirm_s TO ACTIVE_AIRCRAFT["bounce_recovery_confirm_s"].
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("bounce_recovery_max_s") AND ACTIVE_AIRCRAFT["bounce_recovery_max_s"] > 0 {
-    SET bounce_recovery_max_s TO ACTIVE_AIRCRAFT["bounce_recovery_max_s"].
-  }
-  SET rollout_pitch_max_down_cmd TO CLAMP(rollout_pitch_max_down_cmd, 0, rollout_pitch_max_cmd).
+
+  LOCAL nose_hold_cmd              IS AC_PARAM("rollout_nose_hold_cmd",          ROLLOUT_NOSE_HOLD_CMD,          -0.5).
+  LOCAL nose_min_ref_deg           IS AC_PARAM("rollout_nose_min_ref_deg",       ROLLOUT_NOSE_MIN_REF_DEG,       0).
+  LOCAL rollout_pitch_hold_kp      IS AC_PARAM("rollout_pitch_hold_kp",          ROLLOUT_PITCH_HOLD_KP,          0).
+  LOCAL rollout_pitch_max_cmd      IS MIN(AC_PARAM("rollout_pitch_max_cmd",      ROLLOUT_PITCH_MAX_CMD,          0.001), 1).
+  LOCAL rollout_pitch_max_down_cmd IS MIN(AC_PARAM("rollout_pitch_max_down_cmd", ROLLOUT_PITCH_MAX_DOWN_CMD,     0), rollout_pitch_max_cmd).
+  LOCAL rollout_pitch_slew_per_s   IS AC_PARAM("rollout_pitch_slew_per_s",       ROLLOUT_PITCH_SLEW_PER_S,       0.001).
+  LOCAL touchdown_settle_s         IS AC_PARAM("rollout_touchdown_settle_s",     TOUCHDOWN_SETTLE_S,             0.001).
+  LOCAL br_agl_m                   IS AC_PARAM("bounce_recovery_agl_m",         BOUNCE_RECOVERY_AGL_M,          0.001).
+  LOCAL br_min_vs                  IS AC_PARAM("bounce_recovery_min_vs",        BOUNCE_RECOVERY_MIN_VS,         0.001).
+  LOCAL br_confirm_s               IS AC_PARAM("bounce_recovery_confirm_s",     BOUNCE_RECOVERY_CONFIRM_S,      0.001).
+  LOCAL br_max_s                   IS AC_PARAM("bounce_recovery_max_s",         BOUNCE_RECOVERY_MAX_S,          0.001).
 
   // One-time touchdown handoff work.
   IF NOT TOUCHDOWN_INIT_DONE {
     // Spoilers (action group from aircraft config).
     LOCAL ag_sp IS 0.
-    IF ACTIVE_AIRCRAFT:HASKEY("ag_spoilers") { SET ag_sp TO ACTIVE_AIRCRAFT["ag_spoilers"]. }
+    IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("ag_spoilers") { SET ag_sp TO ACTIVE_AIRCRAFT["ag_spoilers"]. }
     IF ag_sp > 0 { TRIGGER_AG(ag_sp, TRUE). }
 
     // Reverse thrust (action group from aircraft config).
     LOCAL ag_tr IS 0.
-    IF ACTIVE_AIRCRAFT:HASKEY("ag_thrust_rev") { SET ag_tr TO ACTIVE_AIRCRAFT["ag_thrust_rev"]. }
+    IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("ag_thrust_rev") { SET ag_tr TO ACTIVE_AIRCRAFT["ag_thrust_rev"]. }
     IF ag_tr > 0 { TRIGGER_AG(ag_tr, TRUE). }
 
     // Drogue chute (action group from aircraft config).
     LOCAL ag_dr IS 0.
-    IF ACTIVE_AIRCRAFT:HASKEY("ag_drogue") { SET ag_dr TO ACTIVE_AIRCRAFT["ag_drogue"]. }
+    IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("ag_drogue") { SET ag_dr TO ACTIVE_AIRCRAFT["ag_drogue"]. }
     IF ag_dr > 0 { TRIGGER_AG(ag_dr, TRUE). }
 
     BRAKES OFF.
@@ -264,7 +256,7 @@ FUNCTION _RUN_TOUCHDOWN {
     SET SHIP:CONTROL:YAW   TO 0.
     SET SHIP:CONTROL:ROLL  TO 0.
     SET SHIP:CONTROL:PITCH TO 0.
-    SET ROLLOUT_YAW_CMD_PREV TO 0.
+    SET ROLLOUT_YAW_CMD_PREV   TO 0.
     SET ROLLOUT_PITCH_CMD_PREV TO 0.
     LOCAL captured_pitch IS TOUCHDOWN_CAPTURE_PITCH_DEG.
     IF captured_pitch = 0 { SET captured_pitch TO GET_PITCH(). }
@@ -298,51 +290,17 @@ FUNCTION _RUN_TOUCHDOWN {
   SET SHIP:CONTROL:PITCH TO td_pitch_cmd.
   SET TELEM_RO_PITCH_TGT TO ROLLOUT_PITCH_REF_DEG.
   SET TELEM_RO_PITCH_ERR TO pitch_err.
-  SET TELEM_RO_PITCH_FF TO td_pitch_ff.
+  SET TELEM_RO_PITCH_FF  TO td_pitch_ff.
 
-  // Debounced bounce recovery: only return to FLARE if we are clearly airborne,
-  // climbing, and that state persists for a short confirmation window.
-  LOCAL agl IS GET_AGL().
-  LOCAL airborne_bounce IS FALSE.
-  IF PHASE_ELAPSED() < bounce_recovery_max_s AND
-     SHIP:STATUS <> "LANDED" AND
-     agl > bounce_recovery_agl_m AND
-     SHIP:VERTICALSPEED > bounce_recovery_min_vs {
-    SET airborne_bounce TO TRUE.
-  }
-  IF airborne_bounce {
-    IF BOUNCE_RECOVERY_START_UT < 0 { SET BOUNCE_RECOVERY_START_UT TO TIME:SECONDS. }
-    IF TIME:SECONDS - BOUNCE_RECOVERY_START_UT >= bounce_recovery_confirm_s {
-      BRAKES OFF.
-      UNLOCK WHEELSTEERING.
-      SET TOUCHDOWN_INIT_DONE TO FALSE.
-      SET TOUCHDOWN_CANDIDATE_UT TO -1.
-      SET TOUCHDOWN_CAPTURE_PITCH_DEG TO 0.
-      SET BOUNCE_RECOVERY_START_UT TO -1.
-      SET ROLLOUT_PITCH_CMD_PREV TO 0.
-      SET ROLLOUT_PITCH_REF_DEG TO GET_PITCH().
-      SET ROLLOUT_PITCH_TGT_DEG TO GET_PITCH().
-      // Clear any leftover manual inputs before re-entering flare director mode.
-      SET SHIP:CONTROL:YAW TO 0.
-      SET SHIP:CONTROL:ROLL TO 0.
-      SET SHIP:CONTROL:PITCH TO 0.
-      LOCAL entry_ias IS MAX(GET_IAS(), 10).
-      SET FLARE_PITCH_CMD TO ARCTAN(SHIP:VERTICALSPEED / entry_ias).
-      SET FLARE_ENTRY_VS  TO CLAMP(SHIP:VERTICALSPEED, FLARE_MIN_ENTRY_SINK_VS, -0.05).
-      SET FLARE_ENTRY_AGL TO MAX(agl, 1).
-      SET_PHASE(PHASE_FLARE).
-      RETURN.
-    }
-  } ELSE {
-    SET BOUNCE_RECOVERY_START_UT TO -1.
-  }
+  // Debounced bounce recovery (reset_init=TRUE so the handoff sequence re-arms on re-landing).
+  IF _CHECK_BOUNCE_RECOVERY(br_agl_m, br_min_vs, br_confirm_s, br_max_s, TRUE) { RETURN. }
 
   // Hold briefly in TOUCHDOWN to absorb contact transients before rollout.
   IF PHASE_ELAPSED() >= touchdown_settle_s {
-    SET TOUCHDOWN_INIT_DONE TO FALSE.
-    SET TOUCHDOWN_CANDIDATE_UT TO -1.
+    SET TOUCHDOWN_INIT_DONE         TO FALSE.
+    SET TOUCHDOWN_CANDIDATE_UT      TO -1.
     SET TOUCHDOWN_CAPTURE_PITCH_DEG TO 0.
-    SET BOUNCE_RECOVERY_START_UT TO -1.
+    SET BOUNCE_RECOVERY_START_UT    TO -1.
     SET_PHASE(PHASE_ROLLOUT).
   }
 }
@@ -358,132 +316,41 @@ FUNCTION _RUN_TOUCHDOWN {
 FUNCTION _RUN_ROLLOUT {
   SET THROTTLE_CMD TO 0.
   LOCAL ias IS GET_IAS().
-  LOCAL agl IS GET_AGL().
-  LOCAL brake_max_ias IS ROLLOUT_BRAKE_MAX_IAS.
-  LOCAL yaw_assist_ias IS ROLLOUT_YAW_ASSIST_IAS.
-  LOCAL roll_assist_ias IS ROLLOUT_ROLL_ASSIST_IAS.
-  LOCAL steer_min_blend IS ROLLOUT_STEER_MIN_BLEND.
-  LOCAL rollout_yaw_kp IS KP_ROLLOUT_YAW.
-  LOCAL rollout_yaw_slew_per_s IS ROLLOUT_YAW_SLEW_PER_S.
-  LOCAL rollout_yaw_fade_ias IS ROLLOUT_YAW_FADE_IAS.
-  LOCAL rollout_yaw_max_cmd IS ROLLOUT_YAW_MAX_CMD.
-  LOCAL nose_hold_cmd IS ROLLOUT_NOSE_HOLD_CMD.
-  LOCAL nose_release_ias IS ROLLOUT_NOSE_RELEASE_IAS.
-  LOCAL nose_hold_min_s IS ROLLOUT_NOSE_HOLD_MIN_S.
-  LOCAL rollout_nose_target_pitch_deg IS ROLLOUT_NOSE_TARGET_PITCH_DEG.
-  LOCAL rollout_nose_target_slew_dps IS ROLLOUT_NOSE_TARGET_SLEW_DPS.
-  LOCAL rollout_pitch_hold_kp IS ROLLOUT_PITCH_HOLD_KP.
-  LOCAL rollout_pitch_max_cmd IS ROLLOUT_PITCH_MAX_CMD.
-  LOCAL rollout_pitch_max_down_cmd IS ROLLOUT_PITCH_MAX_DOWN_CMD.
-  LOCAL rollout_pitch_slew_per_s IS ROLLOUT_PITCH_SLEW_PER_S.
-  LOCAL bounce_recovery_agl_m IS BOUNCE_RECOVERY_AGL_M.
-  LOCAL bounce_recovery_min_vs IS BOUNCE_RECOVERY_MIN_VS.
-  LOCAL bounce_recovery_confirm_s IS BOUNCE_RECOVERY_CONFIRM_S.
-  LOCAL bounce_recovery_max_s IS BOUNCE_RECOVERY_MAX_S.
+
+  LOCAL brake_max_ias              IS AC_PARAM("rollout_brake_max_ias",          ROLLOUT_BRAKE_MAX_IAS,          0.001).
+  // rollout_brake_delay_s: per-aircraft override for the brake enable delay.
+  LOCAL brake_delay_s              IS AC_PARAM("rollout_brake_delay_s",          ROLLOUT_BRAKE_DELAY_S,          0).
+  LOCAL yaw_assist_ias             IS AC_PARAM("rollout_yaw_assist_ias",         ROLLOUT_YAW_ASSIST_IAS,         0.001).
+  // roll_assist_ias: explicit 0 from config disables IFC roll assist, so guard = 0.
+  LOCAL roll_assist_ias            IS AC_PARAM("rollout_roll_assist_ias",        ROLLOUT_ROLL_ASSIST_IAS,        0).
+  LOCAL steer_min_blend            IS MIN(AC_PARAM("rollout_steer_min_blend",    ROLLOUT_STEER_MIN_BLEND,        0), 1).
+  LOCAL rollout_yaw_kp             IS AC_PARAM("rollout_yaw_kp",                 KP_ROLLOUT_YAW,                 0).
+  LOCAL rollout_yaw_slew_per_s     IS AC_PARAM("rollout_yaw_slew_per_s",         ROLLOUT_YAW_SLEW_PER_S,         0).
+  LOCAL rollout_yaw_fade_ias       IS AC_PARAM("rollout_yaw_fade_ias",           ROLLOUT_YAW_FADE_IAS,           0.001).
+  LOCAL rollout_yaw_max_cmd        IS MIN(AC_PARAM("rollout_yaw_max_cmd",        ROLLOUT_YAW_MAX_CMD,            0), 1).
+  LOCAL nose_hold_cmd              IS AC_PARAM("rollout_nose_hold_cmd",          ROLLOUT_NOSE_HOLD_CMD,          -0.5).
+  LOCAL nose_release_ias           IS AC_PARAM("rollout_nose_release_ias",       ROLLOUT_NOSE_RELEASE_IAS,       0.001).
+  LOCAL nose_hold_min_s            IS AC_PARAM("rollout_nose_hold_min_s",        ROLLOUT_NOSE_HOLD_MIN_S,        0).
+  // rollout_nose_target_pitch_deg: -1 is sentinel, so guard = -0.5 to accept 0 and positive.
+  LOCAL rollout_nose_target_pitch  IS AC_PARAM("rollout_nose_target_pitch_deg",  ROLLOUT_NOSE_TARGET_PITCH_DEG,  -0.5).
+  LOCAL rollout_nose_target_slew   IS AC_PARAM("rollout_nose_target_slew_dps",   ROLLOUT_NOSE_TARGET_SLEW_DPS,   0.001).
+  LOCAL rollout_pitch_hold_kp      IS AC_PARAM("rollout_pitch_hold_kp",          ROLLOUT_PITCH_HOLD_KP,          0).
+  LOCAL rollout_pitch_max_cmd      IS MIN(AC_PARAM("rollout_pitch_max_cmd",      ROLLOUT_PITCH_MAX_CMD,          0.001), 1).
+  LOCAL rollout_pitch_max_down_cmd IS MIN(AC_PARAM("rollout_pitch_max_down_cmd", ROLLOUT_PITCH_MAX_DOWN_CMD,     0), rollout_pitch_max_cmd).
+  LOCAL rollout_pitch_slew_per_s   IS AC_PARAM("rollout_pitch_slew_per_s",       ROLLOUT_PITCH_SLEW_PER_S,       0.001).
+  LOCAL br_agl_m                   IS AC_PARAM("bounce_recovery_agl_m",         BOUNCE_RECOVERY_AGL_M,          0.001).
+  LOCAL br_min_vs                  IS AC_PARAM("bounce_recovery_min_vs",        BOUNCE_RECOVERY_MIN_VS,         0.001).
+  LOCAL br_confirm_s               IS AC_PARAM("bounce_recovery_confirm_s",     BOUNCE_RECOVERY_CONFIRM_S,      0.001).
+  LOCAL br_max_s                   IS AC_PARAM("bounce_recovery_max_s",         BOUNCE_RECOVERY_MAX_S,          0.001).
+  // yaw_sign: -1 or 1 only; AC_PARAM cannot express "any non-zero value". Keep inline.
   LOCAL yaw_sign IS -1.
-  IF ACTIVE_AIRCRAFT:HASKEY("rollout_brake_max_ias") AND ACTIVE_AIRCRAFT["rollout_brake_max_ias"] > 0 {
-    SET brake_max_ias TO ACTIVE_AIRCRAFT["rollout_brake_max_ias"].
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("rollout_yaw_assist_ias") AND ACTIVE_AIRCRAFT["rollout_yaw_assist_ias"] > 0 {
-    SET yaw_assist_ias TO ACTIVE_AIRCRAFT["rollout_yaw_assist_ias"].
-  }
-  // Allow explicit 0 from aircraft config to disable IFC roll assist.
-  IF ACTIVE_AIRCRAFT:HASKEY("rollout_roll_assist_ias") AND ACTIVE_AIRCRAFT["rollout_roll_assist_ias"] >= 0 {
-    SET roll_assist_ias TO ACTIVE_AIRCRAFT["rollout_roll_assist_ias"].
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("rollout_steer_min_blend") AND ACTIVE_AIRCRAFT["rollout_steer_min_blend"] >= 0 {
-    SET steer_min_blend TO CLAMP(ACTIVE_AIRCRAFT["rollout_steer_min_blend"], 0, 1).
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("rollout_yaw_kp") AND ACTIVE_AIRCRAFT["rollout_yaw_kp"] >= 0 {
-    SET rollout_yaw_kp TO ACTIVE_AIRCRAFT["rollout_yaw_kp"].
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("rollout_yaw_slew_per_s") AND ACTIVE_AIRCRAFT["rollout_yaw_slew_per_s"] >= 0 {
-    SET rollout_yaw_slew_per_s TO ACTIVE_AIRCRAFT["rollout_yaw_slew_per_s"].
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("rollout_yaw_fade_ias") AND ACTIVE_AIRCRAFT["rollout_yaw_fade_ias"] > 0 {
-    SET rollout_yaw_fade_ias TO ACTIVE_AIRCRAFT["rollout_yaw_fade_ias"].
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("rollout_yaw_max_cmd") AND ACTIVE_AIRCRAFT["rollout_yaw_max_cmd"] >= 0 {
-    SET rollout_yaw_max_cmd TO CLAMP(ACTIVE_AIRCRAFT["rollout_yaw_max_cmd"], 0, 1).
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("rollout_nose_hold_cmd") AND ACTIVE_AIRCRAFT["rollout_nose_hold_cmd"] <> -1 {
-    SET nose_hold_cmd TO ACTIVE_AIRCRAFT["rollout_nose_hold_cmd"].
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("rollout_nose_release_ias") AND ACTIVE_AIRCRAFT["rollout_nose_release_ias"] > 0 {
-    SET nose_release_ias TO ACTIVE_AIRCRAFT["rollout_nose_release_ias"].
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("rollout_nose_hold_min_s") AND ACTIVE_AIRCRAFT["rollout_nose_hold_min_s"] >= 0 {
-    SET nose_hold_min_s TO ACTIVE_AIRCRAFT["rollout_nose_hold_min_s"].
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("rollout_nose_target_pitch_deg") AND ACTIVE_AIRCRAFT["rollout_nose_target_pitch_deg"] <> -1 {
-    SET rollout_nose_target_pitch_deg TO ACTIVE_AIRCRAFT["rollout_nose_target_pitch_deg"].
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("rollout_nose_target_slew_dps") AND ACTIVE_AIRCRAFT["rollout_nose_target_slew_dps"] > 0 {
-    SET rollout_nose_target_slew_dps TO ACTIVE_AIRCRAFT["rollout_nose_target_slew_dps"].
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("rollout_pitch_hold_kp") AND ACTIVE_AIRCRAFT["rollout_pitch_hold_kp"] >= 0 {
-    SET rollout_pitch_hold_kp TO ACTIVE_AIRCRAFT["rollout_pitch_hold_kp"].
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("rollout_pitch_max_cmd") AND ACTIVE_AIRCRAFT["rollout_pitch_max_cmd"] > 0 {
-    SET rollout_pitch_max_cmd TO CLAMP(ACTIVE_AIRCRAFT["rollout_pitch_max_cmd"], 0, 1).
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("rollout_pitch_max_down_cmd") AND ACTIVE_AIRCRAFT["rollout_pitch_max_down_cmd"] >= 0 {
-    SET rollout_pitch_max_down_cmd TO CLAMP(ACTIVE_AIRCRAFT["rollout_pitch_max_down_cmd"], 0, rollout_pitch_max_cmd).
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("rollout_pitch_slew_per_s") AND ACTIVE_AIRCRAFT["rollout_pitch_slew_per_s"] > 0 {
-    SET rollout_pitch_slew_per_s TO ACTIVE_AIRCRAFT["rollout_pitch_slew_per_s"].
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("bounce_recovery_agl_m") AND ACTIVE_AIRCRAFT["bounce_recovery_agl_m"] > 0 {
-    SET bounce_recovery_agl_m TO ACTIVE_AIRCRAFT["bounce_recovery_agl_m"].
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("bounce_recovery_min_vs") AND ACTIVE_AIRCRAFT["bounce_recovery_min_vs"] > 0 {
-    SET bounce_recovery_min_vs TO ACTIVE_AIRCRAFT["bounce_recovery_min_vs"].
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("bounce_recovery_confirm_s") AND ACTIVE_AIRCRAFT["bounce_recovery_confirm_s"] > 0 {
-    SET bounce_recovery_confirm_s TO ACTIVE_AIRCRAFT["bounce_recovery_confirm_s"].
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("bounce_recovery_max_s") AND ACTIVE_AIRCRAFT["bounce_recovery_max_s"] > 0 {
-    SET bounce_recovery_max_s TO ACTIVE_AIRCRAFT["bounce_recovery_max_s"].
-  }
-  IF ACTIVE_AIRCRAFT:HASKEY("rollout_yaw_sign") AND ACTIVE_AIRCRAFT["rollout_yaw_sign"] <> 0 {
+  IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("rollout_yaw_sign")
+      AND ACTIVE_AIRCRAFT["rollout_yaw_sign"] <> 0 {
     SET yaw_sign TO ACTIVE_AIRCRAFT["rollout_yaw_sign"].
   }
-  SET rollout_pitch_max_down_cmd TO CLAMP(rollout_pitch_max_down_cmd, 0, rollout_pitch_max_cmd).
 
-  // Debounced bounce recovery: require clear airborne + climb before re-entering FLARE.
-  LOCAL airborne_bounce IS FALSE.
-  IF PHASE_ELAPSED() < bounce_recovery_max_s AND
-     SHIP:STATUS <> "LANDED" AND
-     agl > bounce_recovery_agl_m AND
-     SHIP:VERTICALSPEED > bounce_recovery_min_vs {
-    SET airborne_bounce TO TRUE.
-  }
-  IF airborne_bounce {
-    IF BOUNCE_RECOVERY_START_UT < 0 { SET BOUNCE_RECOVERY_START_UT TO TIME:SECONDS. }
-    IF TIME:SECONDS - BOUNCE_RECOVERY_START_UT >= bounce_recovery_confirm_s {
-      BRAKES OFF.
-      UNLOCK WHEELSTEERING.
-      SET TOUCHDOWN_CANDIDATE_UT TO -1.
-      SET TOUCHDOWN_CAPTURE_PITCH_DEG TO 0.
-      SET BOUNCE_RECOVERY_START_UT TO -1.
-      SET ROLLOUT_PITCH_CMD_PREV TO 0.
-      SET ROLLOUT_PITCH_REF_DEG TO GET_PITCH().
-      SET ROLLOUT_PITCH_TGT_DEG TO GET_PITCH().
-      // Clear any leftover manual inputs before re-entering flare director mode.
-      SET SHIP:CONTROL:YAW TO 0.
-      SET SHIP:CONTROL:ROLL TO 0.
-      SET SHIP:CONTROL:PITCH TO 0.
-      LOCAL entry_ias IS MAX(GET_IAS(), 10).
-      SET FLARE_PITCH_CMD TO ARCTAN(SHIP:VERTICALSPEED / entry_ias).
-      SET FLARE_ENTRY_VS  TO CLAMP(SHIP:VERTICALSPEED, FLARE_MIN_ENTRY_SINK_VS, -0.05).
-      SET FLARE_ENTRY_AGL TO MAX(agl, 1).
-      PRINT "  BOUNCE recovery: returning to FLARE (AGL " + ROUND(agl, 1) + " m)".
-      SET_PHASE(PHASE_FLARE).
-      RETURN.
-    }
-  } ELSE {
-    SET BOUNCE_RECOVERY_START_UT TO -1.
-  }
+  // Debounced bounce recovery (no TOUCHDOWN_INIT_DONE reset needed — ROLLOUT already cleared it).
+  IF _CHECK_BOUNCE_RECOVERY(br_agl_m, br_min_vs, br_confirm_s, br_max_s, FALSE) { RETURN. }
 
   // Build a centerline-aware steering target from localizer error.
   LOCAL steer_target_hdg IS ACTIVE_RWY_HDG.
@@ -514,7 +381,7 @@ FUNCTION _RUN_ROLLOUT {
   SET TELEM_RO_LOC_CORR TO loc_corr.
 
   // Wheel brakes: delayed and speed-gated to reduce high-speed instability.
-  IF PHASE_ELAPSED() > ROLLOUT_BRAKE_DELAY_S AND ias <= brake_max_ias {
+  IF PHASE_ELAPSED() > brake_delay_s AND ias <= brake_max_ias {
     BRAKES ON.
   } ELSE {
     BRAKES OFF.
@@ -549,8 +416,8 @@ FUNCTION _RUN_ROLLOUT {
   }
   SET yaw_cmd_target TO CLAMP(yaw_cmd_target, -rollout_yaw_max_cmd, rollout_yaw_max_cmd).
   SET TELEM_RO_YAW_SCALE TO yaw_scale.
-  SET TELEM_RO_YAW_GATE TO yaw_gate.
-  SET TELEM_RO_YAW_TGT TO yaw_cmd_target.
+  SET TELEM_RO_YAW_GATE  TO yaw_gate.
+  SET TELEM_RO_YAW_TGT   TO yaw_cmd_target.
   LOCAL yaw_cmd IS MOVE_TOWARD(
     ROLLOUT_YAW_CMD_PREV,
     yaw_cmd_target,
@@ -564,12 +431,12 @@ FUNCTION _RUN_ROLLOUT {
   // 2) Once stable and slow enough, ramp target pitch down gradually.
   LOCAL desired_pitch_deg IS ROLLOUT_PITCH_REF_DEG.
   IF SHIP:STATUS = "LANDED" AND PHASE_ELAPSED() >= nose_hold_min_s AND ias <= nose_release_ias {
-    SET desired_pitch_deg TO rollout_nose_target_pitch_deg.
+    SET desired_pitch_deg TO rollout_nose_target_pitch.
   }
   SET ROLLOUT_PITCH_TGT_DEG TO MOVE_TOWARD(
     ROLLOUT_PITCH_TGT_DEG,
     desired_pitch_deg,
-    rollout_nose_target_slew_dps * IFC_ACTUAL_DT
+    rollout_nose_target_slew * IFC_ACTUAL_DT
   ).
 
   LOCAL pitch_cmd_ff IS 0.
@@ -596,7 +463,7 @@ FUNCTION _RUN_ROLLOUT {
   SET SHIP:CONTROL:PITCH TO pitch_cmd.
   SET TELEM_RO_PITCH_TGT TO ROLLOUT_PITCH_TGT_DEG.
   SET TELEM_RO_PITCH_ERR TO pitch_err.
-  SET TELEM_RO_PITCH_FF TO pitch_cmd_ff.
+  SET TELEM_RO_PITCH_FF  TO pitch_cmd_ff.
 
   // Roll assist: keep wings level during rollout (also speed-scaled).
   // If AA FBW is active, do not inject roll input from IFC to avoid
@@ -616,10 +483,10 @@ FUNCTION _RUN_ROLLOUT {
   IF ias < ROLLOUT_DONE_IAS {
     BRAKES ON.
     SET SHIP:CONTROL:NEUTRALIZE TO TRUE.
-    SET ROLLOUT_YAW_CMD_PREV TO 0.
-    SET ROLLOUT_PITCH_CMD_PREV TO 0.
+    SET ROLLOUT_YAW_CMD_PREV        TO 0.
+    SET ROLLOUT_PITCH_CMD_PREV      TO 0.
     SET TOUCHDOWN_CAPTURE_PITCH_DEG TO 0.
-    SET BOUNCE_RECOVERY_START_UT TO -1.
+    SET BOUNCE_RECOVERY_START_UT    TO -1.
     SET ROLLOUT_PITCH_REF_DEG TO GET_PITCH().
     SET ROLLOUT_PITCH_TGT_DEG TO GET_PITCH().
     UNLOCK WHEELSTEERING.

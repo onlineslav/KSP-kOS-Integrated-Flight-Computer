@@ -50,33 +50,16 @@ FUNCTION _GET_VINTERCEPT_TARGET {
 FUNCTION _UPDATE_APPROACH_SPEED_TARGET {
   LOCAL vapp IS ACTIVE_V_APP.
   LOCAL vref IS _GET_VREF_TARGET().
-  LOCAL intercept_gain IS APP_SPD_INTERCEPT_GAIN.
-  LOCAL intercept_min_add IS APP_SPD_INTERCEPT_MIN_ADD.
-  LOCAL intercept_max_add IS APP_SPD_INTERCEPT_MAX_ADD.
-  LOCAL short_final_agl IS APP_SHORT_FINAL_AGL_M.
-  LOCAL speed_tgt_slew_per_s IS APP_SPEED_TGT_SLEW_PER_S.
-  LOCAL short_final_cap_when_not_final IS APP_SHORT_FINAL_CAP_WHEN_NOT_FINAL.
+  LOCAL intercept_gain IS AC_PARAM("app_spd_intercept_gain",    APP_SPD_INTERCEPT_GAIN,    0).
+  LOCAL intercept_min_add IS AC_PARAM("app_spd_intercept_min_add", APP_SPD_INTERCEPT_MIN_ADD, 0.001).
+  LOCAL intercept_max_add IS AC_PARAM("app_spd_intercept_max_add", APP_SPD_INTERCEPT_MAX_ADD, 0.001).
+  LOCAL short_final_agl IS AC_PARAM("app_short_final_agl",      APP_SHORT_FINAL_AGL_M,     0.001).
+  LOCAL speed_tgt_slew_per_s IS AC_PARAM("app_speed_tgt_slew_per_s", APP_SPEED_TGT_SLEW_PER_S, 0.001).
 
-  // Optional per-aircraft overrides (keep minimal; defaults are robust).
-  IF ACTIVE_AIRCRAFT <> 0 {
-    IF ACTIVE_AIRCRAFT:HASKEY("app_spd_intercept_gain") AND ACTIVE_AIRCRAFT["app_spd_intercept_gain"] >= 0 {
-      SET intercept_gain TO ACTIVE_AIRCRAFT["app_spd_intercept_gain"].
-    }
-    IF ACTIVE_AIRCRAFT:HASKEY("app_spd_intercept_min_add") AND ACTIVE_AIRCRAFT["app_spd_intercept_min_add"] > 0 {
-      SET intercept_min_add TO ACTIVE_AIRCRAFT["app_spd_intercept_min_add"].
-    }
-    IF ACTIVE_AIRCRAFT:HASKEY("app_spd_intercept_max_add") AND ACTIVE_AIRCRAFT["app_spd_intercept_max_add"] > 0 {
-      SET intercept_max_add TO ACTIVE_AIRCRAFT["app_spd_intercept_max_add"].
-    }
-    IF ACTIVE_AIRCRAFT:HASKEY("app_short_final_agl") AND ACTIVE_AIRCRAFT["app_short_final_agl"] > 0 {
-      SET short_final_agl TO ACTIVE_AIRCRAFT["app_short_final_agl"].
-    }
-    IF ACTIVE_AIRCRAFT:HASKEY("app_speed_tgt_slew_per_s") AND ACTIVE_AIRCRAFT["app_speed_tgt_slew_per_s"] > 0 {
-      SET speed_tgt_slew_per_s TO ACTIVE_AIRCRAFT["app_speed_tgt_slew_per_s"].
-    }
-    IF ACTIVE_AIRCRAFT:HASKEY("app_short_final_cap") AND ACTIVE_AIRCRAFT["app_short_final_cap"] >= 0 {
-      SET short_final_cap_when_not_final TO ACTIVE_AIRCRAFT["app_short_final_cap"] <> 0.
-    }
+  // app_short_final_cap is a boolean flag stored as 0/1 in aircraft config.
+  LOCAL short_final_cap_when_not_final IS APP_SHORT_FINAL_CAP_WHEN_NOT_FINAL.
+  IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("app_short_final_cap") AND ACTIVE_AIRCRAFT["app_short_final_cap"] >= 0 {
+    SET short_final_cap_when_not_final TO ACTIVE_AIRCRAFT["app_short_final_cap"] <> 0.
   }
 
   IF intercept_max_add < intercept_min_add { SET intercept_max_add TO intercept_min_add. }
@@ -162,6 +145,27 @@ FUNCTION _UPDATE_APPROACH_SPEED_TARGET {
 }
 
 // ─────────────────────────────────────────────────────────
+// CASCADE AUTOTHROTTLE  (shared by FLY_TO_FIX and ILS_TRACK)
+//
+// Outer loop: speed error (m/s) → a_cmd (m/s²)
+// Inner loop: (a_cmd - a_actual) → throttle delta
+// Integral on speed error provides steady-state trim for drag / slope.
+// ─────────────────────────────────────────────────────────
+FUNCTION _RUN_APPROACH_THROTTLE {
+  LOCAL v_tgt IS _UPDATE_APPROACH_SPEED_TARGET().
+  LOCAL ias IS GET_IAS().
+  LOCAL spd_err IS v_tgt - ias.
+  LOCAL a_cmd IS CLAMP(KP_SPD_ACL * spd_err, -ACL_MAX, ACL_MAX).
+  LOCAL a_raw IS CLAMP((ias - PREV_IAS) / IFC_ACTUAL_DT, -10, 10).
+  SET PREV_IAS      TO ias.
+  SET A_ACTUAL_FILT TO A_ACTUAL_FILT * ACL_FILTER_ALPHA + a_raw * (1 - ACL_FILTER_ALPHA).
+  LOCAL a_err IS a_cmd - A_ACTUAL_FILT.
+  SET THR_INTEGRAL TO CLAMP(THR_INTEGRAL + spd_err * IFC_ACTUAL_DT, -THR_INTEGRAL_LIM, THR_INTEGRAL_LIM).
+  LOCAL raw_thr IS CLAMP(KP_ACL_THR * a_err + KI_SPD * THR_INTEGRAL, MIN_APPROACH_THR, 1).
+  SET THROTTLE_CMD TO MOVE_TOWARD(THROTTLE_CMD, raw_thr, THR_SLEW_PER_S * IFC_ACTUAL_DT).
+}
+
+// ─────────────────────────────────────────────────────────
 // SUB-PHASE: FLY_TO_FIX
 // Navigate toward each fix in the approach sequence.
 // Descend to the target altitude associated with each fix.
@@ -200,26 +204,10 @@ FUNCTION _RUN_FLY_TO_FIX {
   SET TELEM_LOC_CORR   TO 0.
   SET TELEM_GS_CORR    TO 0.
 
-  // Cascade autothrottle: speed outer loop + acceleration inner loop.
-  // Outer: speed error → a_cmd.  Inner: (a_cmd - a_actual) → throttle.
-  // Integral on speed error provides steady-state trim (drag / slope).
-  LOCAL v_tgt IS _UPDATE_APPROACH_SPEED_TARGET().
-  LOCAL ias IS GET_IAS().
-  LOCAL spd_err IS v_tgt - ias.
-  LOCAL a_cmd IS CLAMP(KP_SPD_ACL * spd_err, -ACL_MAX, ACL_MAX).
-  LOCAL a_raw IS CLAMP((ias - PREV_IAS) / IFC_ACTUAL_DT, -10, 10).
-  SET PREV_IAS      TO ias.
-  SET A_ACTUAL_FILT TO A_ACTUAL_FILT * ACL_FILTER_ALPHA + a_raw * (1 - ACL_FILTER_ALPHA).
-  LOCAL a_err IS a_cmd - A_ACTUAL_FILT.
-  SET THR_INTEGRAL TO CLAMP(THR_INTEGRAL + spd_err * IFC_ACTUAL_DT, -THR_INTEGRAL_LIM, THR_INTEGRAL_LIM).
-  LOCAL raw_thr IS CLAMP(KP_ACL_THR * a_err + KI_SPD * THR_INTEGRAL, MIN_APPROACH_THR, 1).
-  SET THROTTLE_CMD TO MOVE_TOWARD(THROTTLE_CMD, raw_thr, THR_SLEW_PER_S * IFC_ACTUAL_DT).
+  _RUN_APPROACH_THROTTLE().
 
   // Extend gear if aircraft config specifies a gear-down AGL.
-  LOCAL gear_agl IS 0.
-  IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("gear_down_agl") {
-    SET gear_agl TO ACTIVE_AIRCRAFT["gear_down_agl"].
-  }
+  LOCAL gear_agl IS AC_PARAM("gear_down_agl", 0, 0.001).
   IF gear_agl > 0 AND GET_AGL() < gear_agl {
     GEAR ON.
   }
@@ -277,24 +265,10 @@ FUNCTION _RUN_ILS_TRACK {
   SET TELEM_LOC_CORR   TO loc_corr.
   SET TELEM_GS_CORR    TO gs_corr.
 
-  // ── Cascade autothrottle: speed outer loop + acceleration inner loop ──
-  LOCAL v_tgt IS _UPDATE_APPROACH_SPEED_TARGET().
-  LOCAL ias IS GET_IAS().
-  LOCAL spd_err IS v_tgt - ias.
-  LOCAL a_cmd IS CLAMP(KP_SPD_ACL * spd_err, -ACL_MAX, ACL_MAX).
-  LOCAL a_raw IS CLAMP((ias - PREV_IAS) / IFC_ACTUAL_DT, -10, 10).
-  SET PREV_IAS      TO ias.
-  SET A_ACTUAL_FILT TO A_ACTUAL_FILT * ACL_FILTER_ALPHA + a_raw * (1 - ACL_FILTER_ALPHA).
-  LOCAL a_err IS a_cmd - A_ACTUAL_FILT.
-  SET THR_INTEGRAL TO CLAMP(THR_INTEGRAL + spd_err * IFC_ACTUAL_DT, -THR_INTEGRAL_LIM, THR_INTEGRAL_LIM).
-  LOCAL raw_thr IS CLAMP(KP_ACL_THR * a_err + KI_SPD * THR_INTEGRAL, MIN_APPROACH_THR, 1).
-  SET THROTTLE_CMD TO MOVE_TOWARD(THROTTLE_CMD, raw_thr, THR_SLEW_PER_S * IFC_ACTUAL_DT).
+  _RUN_APPROACH_THROTTLE().
 
   // ── Check for flare trigger (with hysteresis + debounce) ──
-  LOCAL flare_agl IS FLARE_AGL_M.
-  IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("flare_agl") AND ACTIVE_AIRCRAFT["flare_agl"] >= 0 {
-    SET flare_agl TO ACTIVE_AIRCRAFT["flare_agl"].
-  }
+  LOCAL flare_agl IS AC_PARAM("flare_agl", FLARE_AGL_M, 0).
   LOCAL flare_arm_agl IS MAX(flare_agl - FLARE_TRIGGER_HYST_M, 0.5).
   LOCAL agl_now IS GET_AGL().
 
@@ -338,38 +312,25 @@ FUNCTION _CHECK_FLAP_DEPLOYMENT {
   LOCAL dist_km IS GEO_DISTANCE(SHIP:GEOPOSITION, ils["ll"]) / 1000.
   LOCAL ias     IS GET_IAS().
 
-  LOCAL max_det IS 3.
-  IF ac:HASKEY("flaps_max_detent") {
-    SET max_det TO MAX(0, ROUND(ac["flaps_max_detent"], 0)).
-  }
+  LOCAL max_det IS ROUND(AC_PARAM("flaps_max_detent", 3, 0)).
 
-  LOCAL det_up   IS 0.
-  LOCAL det_clmb IS 1.
-  LOCAL det_app  IS 2.
-  LOCAL det_land IS 3.
-  IF ac:HASKEY("flaps_detent_up")       { SET det_up   TO ROUND(ac["flaps_detent_up"], 0). }
-  IF ac:HASKEY("flaps_detent_climb")    { SET det_clmb TO ROUND(ac["flaps_detent_climb"], 0). }
-  IF ac:HASKEY("flaps_detent_approach") { SET det_app  TO ROUND(ac["flaps_detent_approach"], 0). }
-  IF ac:HASKEY("flaps_detent_landing")  { SET det_land TO ROUND(ac["flaps_detent_landing"], 0). }
+  LOCAL det_up   IS ROUND(AC_PARAM("flaps_detent_up",       0, 0)).
+  LOCAL det_clmb IS ROUND(AC_PARAM("flaps_detent_climb",    1, 0)).
+  LOCAL det_app  IS ROUND(AC_PARAM("flaps_detent_approach", 2, 0)).
+  LOCAL det_land IS ROUND(AC_PARAM("flaps_detent_landing",  3, 0)).
 
   SET det_up   TO CLAMP(det_up,   0, max_det).
   SET det_clmb TO CLAMP(det_clmb, 0, max_det).
   SET det_app  TO CLAMP(det_app,  0, max_det).
   SET det_land TO CLAMP(det_land, 0, max_det).
 
-  LOCAL climb_km IS 45.
-  LOCAL app_km   IS 30.
-  LOCAL land_km  IS 8.
-  IF ac:HASKEY("flaps_climb_km")    { SET climb_km TO ac["flaps_climb_km"]. }
-  IF ac:HASKEY("flaps_approach_km") { SET app_km   TO ac["flaps_approach_km"]. }
-  IF ac:HASKEY("flaps_landing_km")  { SET land_km  TO ac["flaps_landing_km"]. }
+  LOCAL climb_km IS AC_PARAM("flaps_climb_km",    45, 0.001).
+  LOCAL app_km   IS AC_PARAM("flaps_approach_km", 30, 0.001).
+  LOCAL land_km  IS AC_PARAM("flaps_landing_km",   8, 0.001).
 
-  LOCAL vfe_clmb IS 160.
-  LOCAL vfe_app  IS 120.
-  LOCAL vfe_land IS 95.
-  IF ac:HASKEY("vfe_climb")    { SET vfe_clmb TO ac["vfe_climb"]. }
-  IF ac:HASKEY("vfe_approach") { SET vfe_app  TO ac["vfe_approach"]. }
-  IF ac:HASKEY("vfe_landing")  { SET vfe_land TO ac["vfe_landing"]. }
+  LOCAL vfe_clmb IS AC_PARAM("vfe_climb",    160, 0.001).
+  LOCAL vfe_app  IS AC_PARAM("vfe_approach", 120, 0.001).
+  LOCAL vfe_land IS AC_PARAM("vfe_landing",   95, 0.001).
 
   // Desired detent from range to threshold (far -> near).
   LOCAL desired_det IS det_up.
