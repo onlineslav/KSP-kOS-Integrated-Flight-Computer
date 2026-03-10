@@ -48,11 +48,20 @@ GLOBAL MAX_GS_CORR_DN IS 4.0. // deg  max extra nose-down beyond nominal GS
 GLOBAL MAX_GS_CORR_UP IS 3.0. // deg  max nose-up relief above nominal GS
 
 // ----------------------------
-// Speed control (autothrottle PI)
+// Speed control (cascade autothrottle: speed outer loop + acceleration inner loop)
 // ----------------------------
-GLOBAL KP_SPD           IS 0.055. // throttle / (m/s)   proportional
-GLOBAL KI_SPD           IS 0.012. // throttle / (m/s*s)  integral
+// Outer loop: speed error (m/s) → commanded acceleration a_cmd (m/s²).
+// Inner loop: acceleration error (a_cmd - a_actual) → throttle.
+//   a_actual = d(IAS)/dt, low-pass filtered to suppress sensor noise.
+// Integral on speed error provides steady-state trim throttle (drag/slope).
+// No physics model required; both loops close on measured quantities.
+GLOBAL KP_SPD_ACL       IS 0.20.  // m/s²/(m/s)  outer loop: accel commanded per m/s speed error
+GLOBAL ACL_MAX          IS 1.5.   // m/s²  outer loop clamp on commanded acceleration
+GLOBAL KP_ACL_THR       IS 0.25.  // throttle/(m/s²)  inner loop: throttle per m/s² of accel error
+GLOBAL ACL_FILTER_ALPHA IS 0.80.  // 0..1  low-pass weight on measured acceleration (higher = smoother)
+GLOBAL KI_SPD           IS 0.012. // throttle/(m/s*s)  integral trim
 GLOBAL THR_INTEGRAL_LIM IS 20.    // m/s*s  anti-windup clamp on integral
+GLOBAL THR_SLEW_PER_S   IS 0.40.  // /s    max throttle change per second
 GLOBAL MIN_APPROACH_THR IS 0.     // hard throttle floor on approach
 
 // Derived approach speed schedule (minimal tuning):

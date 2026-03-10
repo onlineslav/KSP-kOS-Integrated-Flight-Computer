@@ -38,8 +38,10 @@ GLOBAL FIX_INDEX IS 0.
 // ----------------------------
 // Throttle command
 // ----------------------------
-GLOBAL THROTTLE_CMD IS 0.
-GLOBAL THR_INTEGRAL IS 0.   // accumulated speed error for PI autothrottle
+GLOBAL THROTTLE_CMD     IS 0.
+GLOBAL THR_INTEGRAL     IS 0.   // accumulated speed error for integral trim
+GLOBAL PREV_IAS         IS 0.   // IAS from previous cycle for d(IAS)/dt measurement
+GLOBAL A_ACTUAL_FILT    IS 0.   // low-pass filtered measured acceleration (m/s²)
 GLOBAL APP_ON_FINAL IS FALSE. // TRUE once LOC/GS capture is stable for final-speed mode
 GLOBAL APP_FINAL_ARM_UT IS -1. // timer used to debounce entry to final-speed mode
 GLOBAL APP_SPD_MODE IS "INIT". // FIXES / INTERCEPT / FINAL / SHORT_FINAL
@@ -150,8 +152,10 @@ FUNCTION IFC_INIT_STATE {
   SET ACTIVE_ALT_AT   TO LEXICON().
   SET FIX_INDEX TO 0.
 
-  SET THROTTLE_CMD TO 0.
-  SET THR_INTEGRAL TO 0.
+  SET THROTTLE_CMD  TO 0.
+  SET THR_INTEGRAL  TO 0.
+  SET PREV_IAS      TO GET_IAS().
+  SET A_ACTUAL_FILT TO 0.
   SET APP_ON_FINAL TO FALSE.
   SET APP_FINAL_ARM_UT TO -1.
   SET APP_SPD_MODE TO "INIT".

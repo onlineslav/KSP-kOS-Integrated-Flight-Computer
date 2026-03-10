@@ -187,11 +187,20 @@ FUNCTION _RUN_FLY_TO_FIX {
   SET TELEM_LOC_CORR   TO 0.
   SET TELEM_GS_CORR    TO 0.
 
-  // Autothrottle PI: hold the scheduled approach speed target.
+  // Cascade autothrottle: speed outer loop + acceleration inner loop.
+  // Outer: speed error → a_cmd.  Inner: (a_cmd - a_actual) → throttle.
+  // Integral on speed error provides steady-state trim (drag / slope).
   LOCAL v_tgt IS _UPDATE_APPROACH_SPEED_TARGET().
-  LOCAL spd_err IS v_tgt - GET_IAS().
+  LOCAL ias IS GET_IAS().
+  LOCAL spd_err IS v_tgt - ias.
+  LOCAL a_cmd IS CLAMP(KP_SPD_ACL * spd_err, -ACL_MAX, ACL_MAX).
+  LOCAL a_raw IS CLAMP((ias - PREV_IAS) / IFC_ACTUAL_DT, -10, 10).
+  SET PREV_IAS      TO ias.
+  SET A_ACTUAL_FILT TO A_ACTUAL_FILT * ACL_FILTER_ALPHA + a_raw * (1 - ACL_FILTER_ALPHA).
+  LOCAL a_err IS a_cmd - A_ACTUAL_FILT.
   SET THR_INTEGRAL TO CLAMP(THR_INTEGRAL + spd_err * IFC_ACTUAL_DT, -THR_INTEGRAL_LIM, THR_INTEGRAL_LIM).
-  SET THROTTLE_CMD TO CLAMP(KP_SPD * spd_err + KI_SPD * THR_INTEGRAL, MIN_APPROACH_THR, 1).
+  LOCAL raw_thr IS CLAMP(KP_ACL_THR * a_err + KI_SPD * THR_INTEGRAL, MIN_APPROACH_THR, 1).
+  SET THROTTLE_CMD TO MOVE_TOWARD(THROTTLE_CMD, raw_thr, THR_SLEW_PER_S * IFC_ACTUAL_DT).
 
   // Extend gear if aircraft config specifies a gear-down AGL.
   LOCAL gear_agl IS ACTIVE_AIRCRAFT["gear_down_agl"].
@@ -252,11 +261,18 @@ FUNCTION _RUN_ILS_TRACK {
   SET TELEM_LOC_CORR   TO loc_corr.
   SET TELEM_GS_CORR    TO gs_corr.
 
-  // ── Autothrottle PI: hold the scheduled approach speed target ──
+  // ── Cascade autothrottle: speed outer loop + acceleration inner loop ──
   LOCAL v_tgt IS _UPDATE_APPROACH_SPEED_TARGET().
-  LOCAL spd_err IS v_tgt - GET_IAS().
+  LOCAL ias IS GET_IAS().
+  LOCAL spd_err IS v_tgt - ias.
+  LOCAL a_cmd IS CLAMP(KP_SPD_ACL * spd_err, -ACL_MAX, ACL_MAX).
+  LOCAL a_raw IS CLAMP((ias - PREV_IAS) / IFC_ACTUAL_DT, -10, 10).
+  SET PREV_IAS      TO ias.
+  SET A_ACTUAL_FILT TO A_ACTUAL_FILT * ACL_FILTER_ALPHA + a_raw * (1 - ACL_FILTER_ALPHA).
+  LOCAL a_err IS a_cmd - A_ACTUAL_FILT.
   SET THR_INTEGRAL TO CLAMP(THR_INTEGRAL + spd_err * IFC_ACTUAL_DT, -THR_INTEGRAL_LIM, THR_INTEGRAL_LIM).
-  SET THROTTLE_CMD TO CLAMP(KP_SPD * spd_err + KI_SPD * THR_INTEGRAL, MIN_APPROACH_THR, 1).
+  LOCAL raw_thr IS CLAMP(KP_ACL_THR * a_err + KI_SPD * THR_INTEGRAL, MIN_APPROACH_THR, 1).
+  SET THROTTLE_CMD TO MOVE_TOWARD(THROTTLE_CMD, raw_thr, THR_SLEW_PER_S * IFC_ACTUAL_DT).
 
   // ── Check for flare trigger (with hysteresis + debounce) ──
   LOCAL flare_agl IS FLARE_AGL_M.
