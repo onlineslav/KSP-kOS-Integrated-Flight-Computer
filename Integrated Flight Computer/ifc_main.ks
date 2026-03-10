@@ -39,6 +39,7 @@ RUNONCEPATH(ifc_root + "lib/ifc_state.ks").
 RUNONCEPATH(ifc_root + "lib/ifc_helpers.ks").
 RUNONCEPATH(ifc_root + "lib/ifc_aa.ks").
 RUNONCEPATH(ifc_root + "lib/ifc_telemetry.ks").
+RUNONCEPATH(ifc_root + "lib/ifc_logger.ks").
 RUNONCEPATH(ifc_root + "nav/nav_math.ks").
 RUNONCEPATH(ifc_root + "nav/nav_beacons.ks").
 RUNONCEPATH(ifc_root + "phases/phase_approach.ks").
@@ -199,6 +200,7 @@ FUNCTION RUN_IFC {
   IFC_INIT_STATE().
   IFC_LOAD_PLATE().
   AA_INIT().
+  LOGGER_INIT().
   PRINT "IFC: Vapp target armed at " + ROUND(ACTIVE_V_APP, 1) + " m/s (aircraft cfg)".
 
   SAS OFF.
@@ -223,6 +225,7 @@ FUNCTION RUN_IFC {
       RUN_AUTOLAND().
     }
 
+    LOGGER_WRITE().
     PRINT_TELEMETRY().
     WAIT IFC_LOOP_DT.
   }
@@ -233,6 +236,7 @@ FUNCTION RUN_IFC {
   UNLOCK WHEELSTEERING.
   AA_DISABLE_ALL().
   BRAKES ON.
+  LOGGER_CLOSE().
 
   PRINT " ".
   PRINT "IFC: COMPLETE — " + ACTIVE_PLATE["name"] + ".".

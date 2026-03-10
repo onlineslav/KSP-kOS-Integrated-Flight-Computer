@@ -108,6 +108,10 @@ FUNCTION _RUN_FLARE {
   ).
 
   AA_SET_DIRECTOR(ACTIVE_RWY_HDG, FLARE_PITCH_CMD).
+  SET TELEM_AA_HDG_CMD   TO ACTIVE_RWY_HDG.
+  SET TELEM_AA_FPA_CMD   TO FLARE_PITCH_CMD.
+  SET TELEM_FLARE_TGT_VS TO tgt_vs.
+  SET TELEM_FLARE_FRAC   TO frac.
 
   // Idle throttle during flare.
   SET THROTTLE_CMD TO 0.
@@ -158,7 +162,7 @@ FUNCTION _RUN_TOUCHDOWN {
 
     // Capture touchdown heading and start wheelsteering from that heading.
     // We'll blend from touchdown heading -> runway heading as speed decays.
-    SET ROLLOUT_ENTRY_HDG TO SHIP:HEADING.
+    SET ROLLOUT_ENTRY_HDG TO GET_COMPASS_HDG().
     LOCK WHEELSTEERING TO ROLLOUT_ENTRY_HDG.
     PRINT "  ROLLOUT armed: hdg " + ROUND(ROLLOUT_ENTRY_HDG, 1)
         + " deg, IAS " + ROUND(GET_IAS(), 1) + " m/s".
@@ -259,7 +263,10 @@ FUNCTION _RUN_ROLLOUT {
   LOCAL steer_blend IS CLAMP(MAX(steer_blend_base, steer_min_blend), 0, 1).
   LOCAL hdg_delta IS WRAP_180(steer_target_hdg - ROLLOUT_ENTRY_HDG).
   LOCAL steer_hdg IS WRAP_360(ROLLOUT_ENTRY_HDG + hdg_delta * steer_blend).
+  SET ROLLOUT_STEER_HDG TO steer_hdg.  // expose for telemetry logger
   LOCK WHEELSTEERING TO steer_hdg.
+  SET TELEM_STEER_BLEND TO steer_blend.
+  SET TELEM_RO_LOC_CORR TO loc_corr.
 
   // Wheel brakes: delayed and speed-gated to reduce high-speed instability.
   IF PHASE_ELAPSED() > ROLLOUT_BRAKE_DELAY_S AND ias <= brake_max_ias {
@@ -269,16 +276,19 @@ FUNCTION _RUN_ROLLOUT {
   }
 
   // Rudder assist starts near touchdown, ramps up as speed decays.
+  // hdg_err is computed here (outside the IAS gate) so telemetry always sees it.
+  LOCAL hdg_err IS WRAP_180(GET_COMPASS_HDG() - steer_hdg).
+  SET TELEM_RO_HDG_ERR TO hdg_err.
   LOCAL yaw_cmd_target IS 0.
   IF ias <= yaw_assist_ias {
     LOCAL yaw_span IS MAX(yaw_assist_ias - ROLLOUT_STEER_FULL_IAS, 1).
-    LOCAL hdg_err IS WRAP_180(SHIP:HEADING - steer_hdg).
     // Guard against large heading-wrap spikes on touchdown.
     IF ABS(hdg_err) <= ROLLOUT_YAW_ERR_GUARD_DEG {
       LOCAL yaw_scale IS CLAMP((yaw_assist_ias - ias) / yaw_span, 0, 1).
       SET yaw_cmd_target TO (hdg_err * KP_ROLLOUT_YAW * yaw_sign) * yaw_scale.
     }
   }
+  SET TELEM_RO_YAW_TGT TO yaw_cmd_target.
   LOCAL yaw_cmd IS MOVE_TOWARD(
     ROLLOUT_YAW_CMD_PREV,
     yaw_cmd_target,

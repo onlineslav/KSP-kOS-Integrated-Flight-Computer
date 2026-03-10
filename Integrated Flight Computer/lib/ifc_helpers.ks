@@ -84,6 +84,17 @@ FUNCTION GET_PITCH {
   RETURN 90 - VECTORANGLE(SHIP:FACING:FOREVECTOR, SHIP:UP:VECTOR).
 }
 
+// Compass heading of SHIP:FACING (0-360, 0=North, 90=East).
+// SHIP:HEADING returns 0 on the ground in kOS; use vectors instead.
+FUNCTION GET_COMPASS_HDG {
+  LOCAL fwd_v   IS SHIP:FACING:FOREVECTOR.
+  LOCAL up_v    IS SHIP:UP:VECTOR.
+  LOCAL north_v IS SHIP:NORTH:VECTOR.
+  LOCAL horiz   IS (fwd_v - up_v * VDOT(fwd_v, up_v)):NORMALIZED.
+  LOCAL east_v  IS VCRS(up_v, north_v):NORMALIZED.  // up × north = east in KSP surface frame
+  RETURN MOD(ARCTAN2(VDOT(horiz, east_v), VDOT(horiz, north_v)) + 360, 360).
+}
+
 // ----------------------------
 // Action group trigger
 // ----------------------------

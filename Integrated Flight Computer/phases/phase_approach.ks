@@ -56,6 +56,10 @@ FUNCTION _RUN_FLY_TO_FIX {
   LOCAL fpa_cmd IS CLAMP(-alt_err * KP_ALT_FPA, MAX_DESC_FPA, MAX_CLIMB_FPA).
 
   AA_SET_DIRECTOR(brg, fpa_cmd).
+  SET TELEM_AA_HDG_CMD TO brg.
+  SET TELEM_AA_FPA_CMD TO fpa_cmd.
+  SET TELEM_LOC_CORR   TO 0.
+  SET TELEM_GS_CORR    TO 0.
 
   // Autothrottle PI: hold Vapp.
   LOCAL spd_err IS ACTIVE_V_APP - GET_IAS().
@@ -116,6 +120,10 @@ FUNCTION _RUN_ILS_TRACK {
   LOCAL fpa_cmd IS -ACTIVE_GS_ANGLE + CLAMP(gs_corr, -MAX_GS_CORR_DN, MAX_GS_CORR_UP).
 
   AA_SET_DIRECTOR(hdg_cmd, fpa_cmd).
+  SET TELEM_AA_HDG_CMD TO hdg_cmd.
+  SET TELEM_AA_FPA_CMD TO fpa_cmd.
+  SET TELEM_LOC_CORR   TO loc_corr.
+  SET TELEM_GS_CORR    TO gs_corr.
 
   // ── Autothrottle PI: hold Vapp ──
   LOCAL spd_err IS ACTIVE_V_APP - GET_IAS().

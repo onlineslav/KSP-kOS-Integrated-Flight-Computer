@@ -69,6 +69,22 @@ GLOBAL FAR_AVAILABLE IS FALSE.
 GLOBAL LAST_TELEM_UT IS 0.
 
 // ----------------------------
+// Telemetry export
+// Written each cycle by phase functions so ifc_logger can read them
+// without needing access to local variables.
+// ----------------------------
+GLOBAL TELEM_AA_HDG_CMD    IS 0.  // heading sent to AA Director (deg)
+GLOBAL TELEM_AA_FPA_CMD    IS 0.  // FPA sent to AA Director (deg)
+GLOBAL TELEM_LOC_CORR      IS 0.  // ILS localizer heading correction (deg)
+GLOBAL TELEM_GS_CORR       IS 0.  // ILS glideslope FPA correction (deg)
+GLOBAL TELEM_FLARE_TGT_VS  IS 0.  // target sink rate from flare schedule (m/s)
+GLOBAL TELEM_FLARE_FRAC    IS 0.  // flare progress: 0 = entry AGL, 1 = ground
+GLOBAL TELEM_STEER_BLEND   IS 0.  // rollout wheelsteering blend factor (0-1)
+GLOBAL TELEM_RO_HDG_ERR    IS 0.  // rollout: actual hdg minus steer target (deg)
+GLOBAL TELEM_RO_YAW_TGT    IS 0.  // rollout: yaw command target before slew rate
+GLOBAL TELEM_RO_LOC_CORR   IS 0.  // rollout: heading correction from localizer (deg)
+
+// ----------------------------
 // Flap detent state
 // ----------------------------
 GLOBAL FLAPS_CURRENT_DETENT    IS 0.
@@ -87,6 +103,7 @@ GLOBAL TOUCHDOWN_CANDIDATE_UT IS -1. // debounce timer start for entering touchd
 GLOBAL TOUCHDOWN_INIT_DONE IS FALSE. // one-time touchdown handoff latch
 GLOBAL ROLLOUT_ENTRY_HDG IS 0.  // heading captured at touchdown for blended wheelsteering
 GLOBAL ROLLOUT_YAW_CMD_PREV IS 0. // previous-cycle rudder command for slew limiting
+GLOBAL ROLLOUT_STEER_HDG IS 0. // computed wheelsteering target (logged for telemetry)
 
 // ----------------------------
 // Init / reset
@@ -127,8 +144,20 @@ FUNCTION IFC_INIT_STATE {
   SET FLARE_TRIGGER_START_UT TO -1.
   SET TOUCHDOWN_CANDIDATE_UT TO -1.
   SET TOUCHDOWN_INIT_DONE TO FALSE.
-  SET ROLLOUT_ENTRY_HDG TO SHIP:HEADING.
+  SET ROLLOUT_ENTRY_HDG   TO GET_COMPASS_HDG().
   SET ROLLOUT_YAW_CMD_PREV TO 0.
+  SET ROLLOUT_STEER_HDG   TO GET_COMPASS_HDG().
+
+  SET TELEM_AA_HDG_CMD   TO 0.
+  SET TELEM_AA_FPA_CMD   TO 0.
+  SET TELEM_LOC_CORR     TO 0.
+  SET TELEM_GS_CORR      TO 0.
+  SET TELEM_FLARE_TGT_VS TO 0.
+  SET TELEM_FLARE_FRAC   TO 0.
+  SET TELEM_STEER_BLEND  TO 0.
+  SET TELEM_RO_HDG_ERR   TO 0.
+  SET TELEM_RO_YAW_TGT   TO 0.
+  SET TELEM_RO_LOC_CORR  TO 0.
 
   LOCAL initial_det IS 0.
   LOCAL max_det     IS 3.
