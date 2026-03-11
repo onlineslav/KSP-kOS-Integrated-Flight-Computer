@@ -97,7 +97,8 @@ FUNCTION LOGGER_INIT {
   LOG "t_s,phase,subphase,ias_ms,vapp_ms,spd_err_ms,agl_m,vs_ms,pitch_deg,aoa_deg,hdg_deg,bank_deg,thr_cmd,thr_intg,aa_hdg_cmd_deg,aa_fpa_cmd_deg,ils_loc_m,ils_gs_m,ils_dist_km,loc_corr_deg,gs_corr_deg,flare_fpa_cmd,flare_tgt_vs,flare_frac,steer_hdg_deg,steer_blend,ro_loc_corr_deg,ro_hdg_err_deg,ro_yaw_tgt,ro_yaw_scale,ro_yaw_gate,yaw_cmd,roll_cmd,pitch_cmd,ro_pitch_tgt_deg,ro_pitch_err_deg,ro_pitch_ff,ro_roll_assist,flaps_cur,flaps_tgt,phase_el_s,status" TO LOG_FILE.
 
   SET LOG_ACTIVE TO TRUE.
-  PRINT "IFC: logging -> " + LOG_FILE.
+  SET IFC_ALERT_TEXT TO "Logging -> " + LOG_FILE.
+  SET IFC_ALERT_UT   TO TIME:SECONDS.
 }
 
 FUNCTION LOGGER_WRITE {
@@ -160,5 +161,6 @@ FUNCTION LOGGER_CLOSE {
   LOG "# end T+" + ROUND(TIME:SECONDS - IFC_MISSION_START_UT, 1) +
       "  IAS " + ROUND(GET_IAS(), 1) + " m/s" TO LOG_FILE.
   SET LOG_ACTIVE TO FALSE.
-  PRINT "IFC: log saved -> " + LOG_FILE.
+  SET IFC_ALERT_TEXT TO "Log saved -> " + LOG_FILE.
+  SET IFC_ALERT_UT   TO TIME:SECONDS.
 }

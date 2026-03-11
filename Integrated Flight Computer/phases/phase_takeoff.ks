@@ -78,6 +78,23 @@ FUNCTION _TO_COMPUTE_CLIMB_FPA_TGT {
   IF spd_err > 0 {
     SET climb_fpa_tgt TO MAX(climb_fpa_base - spd_err * fpa_spd_gain, fpa_min).
   }
+
+  // AoA guard for early climb: if AoA approaches a_crit, pull FPA down.
+  LOCAL aoa_crit IS -1.
+  IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("a_crit")
+      AND ACTIVE_AIRCRAFT["a_crit"] > 0 {
+    SET aoa_crit TO ACTIVE_AIRCRAFT["a_crit"].
+  }
+  IF aoa_crit > 0 {
+    LOCAL aoa_warn_frac IS CLAMP(AC_PARAM("takeoff_aoa_protect_frac", 0.85, 0.01), 0.10, 0.99).
+    LOCAL aoa_fpa_gain  IS AC_PARAM("takeoff_aoa_fpa_gain", 0.90, 0).
+    LOCAL aoa_warn IS aoa_crit * aoa_warn_frac.
+    LOCAL aoa_now IS GET_AOA().
+    IF aoa_now > aoa_warn {
+      LOCAL aoa_over IS aoa_now - aoa_warn.
+      SET climb_fpa_tgt TO MAX(climb_fpa_tgt - aoa_over * aoa_fpa_gain, fpa_min).
+    }
+  }
   RETURN climb_fpa_tgt.
 }
 
@@ -173,8 +190,9 @@ FUNCTION _TO_TRY_AUTO_STAGE {
   STAGE.
   SET TO_STAGE_ATTEMPTS TO TO_STAGE_ATTEMPTS + 1.
   SET TO_LAST_STAGE_UT TO TIME:SECONDS.
-  PRINT "  TO autostage attempt " + TO_STAGE_ATTEMPTS
-    + " (avail thrust " + ROUND(SHIP:AVAILABLETHRUST, 1) + " kN)".
+  SET IFC_ALERT_TEXT TO "TO autostage #" + TO_STAGE_ATTEMPTS
+    + "  avail " + ROUND(SHIP:AVAILABLETHRUST, 1) + " kN".
+  SET IFC_ALERT_UT   TO TIME:SECONDS.
 }
 
 FUNCTION _RUN_TO_PREFLIGHT {
@@ -259,9 +277,9 @@ FUNCTION _RUN_TO_PREFLIGHT {
   IF ((throttle_ready AND thrust_ready) OR PHASE_ELAPSED() >= spool_timeout_s)
       AND flaps_ready {
     IF NOT thrust_ready {
-      PRINT "  TO warning: spool timeout, avail " + ROUND(avail_now, 1) +
-            " kN (req " + ROUND(req_avail, 1) + ", dT " + ROUND(avail_rate, 1) +
-            " kN/s). Continuing.".
+      SET IFC_ALERT_TEXT TO "TO spool timeout: avail " + ROUND(avail_now, 1)
+            + " kN (req " + ROUND(req_avail, 1) + ")".
+      SET IFC_ALERT_UT   TO TIME:SECONDS.
     }
     SET THROTTLE_CMD TO to_thr.
     BRAKES OFF.
@@ -321,7 +339,7 @@ FUNCTION _RUN_TO_ROTATE {
     // Use FBW damping plus direct pitch input until airborne.
     AA_RESTORE_FBW().
     LOCAL pitch_kp IS AC_PARAM("takeoff_rotate_pitch_kp", TAKEOFF_ROTATE_PITCH_KP, 0).
-    LOCAL pitch_ff IS AC_PARAM("takeoff_rotate_pitch_ff", TAKEOFF_ROTATE_PITCH_FF, -1).
+    LOCAL pitch_ff IS AC_PARAM("takeoff_rotate_pitch_ff", TAKEOFF_ROTATE_PITCH_FF, -0.5).
     LOCAL pitch_max_cmd IS MIN(AC_PARAM("takeoff_rotate_pitch_max_cmd", TAKEOFF_ROTATE_PITCH_MAX_CMD, 0), 1).
     LOCAL pitch_min_cmd IS MIN(AC_PARAM("takeoff_rotate_pitch_min_cmd", TAKEOFF_ROTATE_PITCH_MIN_CMD, 0), pitch_max_cmd).
     LOCAL pitch_cmd_slew IS AC_PARAM("takeoff_rotate_pitch_slew_per_s", TAKEOFF_ROTATE_PITCH_SLEW_PER_S, 0.001).
@@ -471,11 +489,13 @@ FUNCTION _CHECK_TAKEOFF_FLAPS {
   IF FLAPS_CURRENT_DETENT < FLAPS_TARGET_DETENT {
     PULSE_AG(ag_up).
     SET FLAPS_CURRENT_DETENT TO CLAMP(FLAPS_CURRENT_DETENT + 1, 0, max_det).
-    PRINT "  TO FLAPS step UP -> detent " + FLAPS_CURRENT_DETENT.
+    SET IFC_ALERT_TEXT TO "TO FLAPS UP -> detent " + FLAPS_CURRENT_DETENT.
+    SET IFC_ALERT_UT   TO TIME:SECONDS.
   } ELSE {
     PULSE_AG(ag_dn).
     SET FLAPS_CURRENT_DETENT TO CLAMP(FLAPS_CURRENT_DETENT - 1, 0, max_det).
-    PRINT "  TO FLAPS step DN -> detent " + FLAPS_CURRENT_DETENT.
+    SET IFC_ALERT_TEXT TO "TO FLAPS DN -> detent " + FLAPS_CURRENT_DETENT.
+    SET IFC_ALERT_UT   TO TIME:SECONDS.
   }
   SET FLAPS_LAST_STEP_UT TO TIME:SECONDS.
 }

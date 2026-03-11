@@ -18,8 +18,8 @@
 //        short_approach  TRUE = start from 30 km fix
 //                        FALSE = start from 60 km fix
 //
-//   3. The IFC will ask you to confirm "ARM? (y/n)" before
-//      locking controls.
+//   3. The IFC will show the FMS pre-arm screen — use the menu
+//      to select procedure/runway/distance then ARM.
 //
 // Aircraft config
 // ---------------
@@ -37,8 +37,10 @@ LOCAL ifc_root IS "0:/Integrated Flight Computer/".
 RUNONCEPATH(ifc_root + "lib/ifc_constants.ks").
 RUNONCEPATH(ifc_root + "lib/ifc_state.ks").
 RUNONCEPATH(ifc_root + "lib/ifc_helpers.ks").
+RUNONCEPATH(ifc_root + "lib/ifc_ui.ks").
+RUNONCEPATH(ifc_root + "lib/ifc_menu.ks").
+RUNONCEPATH(ifc_root + "lib/ifc_display.ks").
 RUNONCEPATH(ifc_root + "lib/ifc_aa.ks").
-RUNONCEPATH(ifc_root + "lib/ifc_telemetry.ks").
 RUNONCEPATH(ifc_root + "lib/ifc_logger.ks").
 RUNONCEPATH(ifc_root + "nav/nav_math.ks").
 RUNONCEPATH(ifc_root + "nav/nav_beacons.ks").
@@ -176,42 +178,63 @@ FUNCTION _TRY_LOAD_AIRCRAFT_CONFIG {
   IF EXISTS(cfg) {
     RUNONCEPATH(cfg).
     SET ACTIVE_AIRCRAFT TO BUILD_AIRCRAFT_CONFIG().
-    PRINT "IFC: loaded aircraft config for '" + SHIP:NAME + "'".
+    SET IFC_ALERT_TEXT TO "Loaded config: " + SHIP:NAME.
+    SET IFC_ALERT_UT   TO TIME:SECONDS.
     RETURN TRUE.
   }
 
-  PRINT "IFC: no config found for '" + SHIP:NAME + "' — using defaults.".
-  PRINT "     (expected: " + cfg + ")".
+  SET IFC_ALERT_TEXT TO "No config for '" + SHIP:NAME + "' — defaults".
+  SET IFC_ALERT_UT   TO TIME:SECONDS.
   RETURN FALSE.
 }
 
-// ── Interactive startup (called when file is run directly) ──
+// ── Interactive startup (FMS pre-arm screen) ──────────────
+// Shows the pre-arm page, opens the FMS menu, and waits for
+// the user to ARM or QUIT.  Dispatches to RUN_IFC / RUN_TAKEOFF_IFC.
 FUNCTION _IFC_INTERACTIVE_START {
-  CLEARSCREEN.
-  PRINT "╔══════════════════════════════════════╗".
-  PRINT "║   Integrated Flight Computer  v1.0  ║".
-  PRINT "╚══════════════════════════════════════╝".
-  PRINT " ".
-  PRINT "Select mode:".
-  PRINT "  1 = KSC RWY 09  (approach, full 60 km)".
-  PRINT "  2 = KSC RWY 09  (approach, short 30 km)".
-  PRINT "  3 = KSC RWY 27  (approach, full 60 km)".
-  PRINT "  4 = KSC RWY 27  (approach, short 30 km)".
-  PRINT "  5 = KSC RWY 09  (takeoff)".
-  PRINT "  6 = KSC RWY 27  (takeoff)".
-  PRINT " ".
+  SET IFC_MISSION_START_UT TO TIME:SECONDS.
+  SET IFC_PHASE    TO PHASE_PREARM.
+  SET IFC_SUBPHASE TO "".
+  UI_INIT().
 
-  LOCAL sel IS "".
-  UNTIL sel = "1" OR sel = "2" OR sel = "3" OR sel = "4" OR sel = "5" OR sel = "6" {
-    SET sel TO TERMINAL:INPUT:GETCHAR().
+  IF ACTIVE_AIRCRAFT = 0 {
+    _TRY_LOAD_AIRCRAFT_CONFIG().
+    IF ACTIVE_AIRCRAFT = 0 { SET ACTIVE_AIRCRAFT TO _DEFAULT_AIRCRAFT. }
   }
 
-  IF      sel = "1" { RUN_IFC("09", FALSE).     }
-  ELSE IF sel = "2" { RUN_IFC("09", TRUE).       }
-  ELSE IF sel = "3" { RUN_IFC("27", FALSE).      }
-  ELSE IF sel = "4" { RUN_IFC("27", TRUE).       }
-  ELSE IF sel = "5" { RUN_TAKEOFF_IFC("09").     }
-  ELSE IF sel = "6" { RUN_TAKEOFF_IFC("27").     }
+  // Draw initial static content before entering the loop.
+  DISPLAY_HEADER().
+  DISPLAY_BREADCRUMB().
+  DISPLAY_KEY_HINTS().
+  DISPLAY_PREARM(IFC_MENU_OPT_PROC, IFC_MENU_OPT_RWY, IFC_MENU_OPT_DIST).
+  DISPLAY_ALERT_BAR().
+
+  // Open FMS menu immediately so the user can navigate.
+  SET IFC_MENU_OPEN TO TRUE.
+  MENU_RENDER().
+
+  LOCAL result IS "".
+  UNTIL result = "ARM" OR result = "QUIT" {
+    SET result TO MENU_TICK().
+    // Refresh pre-arm page whenever the menu is closed.
+    IF NOT IFC_MENU_OPEN {
+      DISPLAY_PREARM(IFC_MENU_OPT_PROC, IFC_MENU_OPT_RWY, IFC_MENU_OPT_DIST).
+    }
+    DISPLAY_TICK().
+    WAIT 0.05.
+  }
+
+  IF result = "QUIT" { RETURN. }
+
+  LOCAL rwy_str IS "09".
+  IF IFC_MENU_OPT_RWY = 1 { SET rwy_str TO "27". }
+  LOCAL short_app IS IFC_MENU_OPT_DIST = 1.
+
+  IF IFC_MENU_OPT_PROC = 0 {
+    RUN_IFC(rwy_str, short_app).
+  } ELSE {
+    RUN_TAKEOFF_IFC(rwy_str).
+  }
 }
 
 // Boot scripts can set GLOBAL IFC_SKIP_INTERACTIVE IS TRUE. before loading
@@ -224,8 +247,6 @@ IF NOT (DEFINED IFC_SKIP_INTERACTIVE AND IFC_SKIP_INTERACTIVE) {
 FUNCTION RUN_IFC {
   PARAMETER rwy_id, short_approach.
 
-  CLEARSCREEN.
-
   // Resolve aircraft config (highest priority wins):
   //   1. Externally set before calling RUN_IFC (manual override)
   //   2. Auto-loaded from aircraft/<vessel_name>_cfg.ks
@@ -236,77 +257,34 @@ FUNCTION RUN_IFC {
     }
   }
 
-  // Override Vapp from aircraft config into the plate.
-  // (Plates carry a generic Vapp; the aircraft config overrides it.)
   LOCAL plate IS GET_PLATE_FOR_RUNWAY(rwy_id, short_approach).
-  IF plate = 0 { PRINT "IFC: abort - no plate for RWY " + rwy_id. RETURN. }
+  IF plate = 0 {
+    SET IFC_ALERT_TEXT TO "ABORT: no plate for RWY " + rwy_id.
+    SET IFC_ALERT_UT   TO TIME:SECONDS.
+    RETURN.
+  }
   SET plate["vapp"] TO ACTIVE_AIRCRAFT["v_app"].
   SET ACTIVE_PLATE  TO plate.
   SET ACTIVE_V_APP  TO ACTIVE_AIRCRAFT["v_app"].
 
-  // ── Startup banner ──────────────────────────────────────
-  PRINT "╔══════════════════════════════════════╗".
-  PRINT "║   Integrated Flight Computer  v1.0  ║".
-  PRINT "╚══════════════════════════════════════╝".
-  PRINT "Aircraft : " + ACTIVE_AIRCRAFT["name"].
-  PRINT "Approach : " + ACTIVE_PLATE["name"].
-  PRINT "Vapp     : " + ACTIVE_V_APP + " m/s".
-  IF ACTIVE_AIRCRAFT["notes"] <> "" {
-    PRINT "Notes    : " + ACTIVE_AIRCRAFT["notes"].
-  }
-  PRINT " ".
-
-  // ── Addon detection ─────────────────────────────────────
-  IF ADDONS:AVAILABLE("AA") {
-    PRINT "kOS-AA   : detected".
-  } ELSE {
-    PRINT "kOS-AA   : NOT detected (kOS steering fallback)".
-  }
-  IF ADDONS:AVAILABLE("FAR") {
-    PRINT "FAR      : detected".
-  } ELSE {
-    PRINT "FAR      : not detected (using SHIP:AIRSPEED)".
-  }
-  PRINT " ".
-
-  // ── Arm confirmation ────────────────────────────────────
-  PRINT "ARM IFC for " + ACTIVE_PLATE["name"] + "? (y/n)".
-  TERMINAL:INPUT:CLEAR().
-  LOCAL reply IS "".
-  UNTIL reply = "y" OR reply = "Y" OR reply = "n" OR reply = "N" {
-    SET reply TO TERMINAL:INPUT:GETCHAR().
-  }
-  IF reply = "n" OR reply = "N" {
-    PRINT "IFC: disarmed.".
-    RETURN.
-  }
-  PRINT "IFC: ARMED.".
-  PRINT " ".
-
-  // ── Initialise state ────────────────────────────────────
   IFC_INIT_STATE().
   IFC_LOAD_PLATE().
+  UI_INIT().
   AA_INIT().
   LOGGER_INIT().
-  PRINT "IFC: Vapp target armed at " + ROUND(ACTIVE_V_APP, 1) + " m/s (aircraft cfg)".
 
   SAS OFF.
   LOCK THROTTLE TO THROTTLE_CMD.
 
-  PRINT "IFC: entering APPROACH  (subphase: FLY_TO_FIX)".
-  PRINT "     First fix: " + ACTIVE_FIXES[0] + "  (" +
-        ROUND(GEO_DISTANCE(SHIP:GEOPOSITION, GET_BEACON(ACTIVE_FIXES[0])["ll"]) / 1000, 1) +
-        " km)".
-  PRINT " ".
-  PRINT "Press CTRL+C at any time to abort and take manual control.".
-  PRINT "────────────────────────────────────────".
-
-  // ── Main loop ───────────────────────────────────────────
+  // ── Main loop ──────────────────────────────────────────
   UNTIL IFC_PHASE = PHASE_DONE {
 
     LOCAL actual_dt IS TIME:SECONDS - IFC_CYCLE_UT.
     SET IFC_CYCLE_UT  TO TIME:SECONDS.
     SET IFC_ACTUAL_DT TO CLAMP(actual_dt, 0.01, 0.5).
+
+    LOCAL menu_result IS MENU_TICK().
+    IF menu_result = "QUIT" { SET IFC_PHASE TO PHASE_DONE. }
 
     IF IFC_PHASE = PHASE_APPROACH {
       RUN_APPROACH().
@@ -317,11 +295,11 @@ FUNCTION RUN_IFC {
     }
 
     LOGGER_WRITE().
-    PRINT_TELEMETRY().
+    DISPLAY_TICK().
     WAIT IFC_LOOP_DT.
   }
 
-  // ── Shutdown ────────────────────────────────────────────
+  // ── Shutdown ───────────────────────────────────────────
   UNLOCK THROTTLE.
   UNLOCK STEERING.
   UNLOCK WHEELSTEERING.
@@ -329,82 +307,40 @@ FUNCTION RUN_IFC {
   BRAKES ON.
   LOGGER_CLOSE().
 
-  PRINT " ".
-  PRINT "IFC: COMPLETE — " + ACTIVE_PLATE["name"] + ".".
-  PRINT "     Landed at T+" + ROUND(TIME:SECONDS - IFC_MISSION_START_UT, 1) + " s.".
+  // Force a final full render of the completion screen.
+  SET LAST_DISPLAY_UT  TO 0.
+  SET LAST_HEADER_UT   TO 0.
+  SET LAST_LOGGER_UT   TO 0.
+  DISPLAY_TICK().
 }
 
-// ── Takeoff entry point ────────────────────────────────
+// ── Takeoff entry point ────────────────────────────────────
 FUNCTION RUN_TAKEOFF_IFC {
   PARAMETER rwy_id.
 
-  CLEARSCREEN.
-
-  // Resolve aircraft config.
   IF ACTIVE_AIRCRAFT = 0 {
     IF NOT _TRY_LOAD_AIRCRAFT_CONFIG() {
       SET ACTIVE_AIRCRAFT TO _DEFAULT_AIRCRAFT.
     }
   }
 
-  // Look up ILS beacon for runway heading.
   LOCAL ils_id IS "KSC_ILS_" + rwy_id.
   LOCAL ils IS GET_BEACON(ils_id).
-  IF ils = 0 { PRINT "IFC: abort - no beacon for RWY " + rwy_id. RETURN. }
-
-  // ── Startup banner ──────────────────────────────────
-  PRINT "╔══════════════════════════════════════╗".
-  PRINT "║   Integrated Flight Computer  v1.0  ║".
-  PRINT "╚══════════════════════════════════════╝".
-  PRINT "Aircraft : " + ACTIVE_AIRCRAFT["name"].
-  PRINT "Takeoff  : RWY " + rwy_id + "  hdg " + ils["hdg"].
-  LOCAL v_r IS AC_PARAM("v_r", TAKEOFF_V_R_DEFAULT, 0.001).
-  LOCAL v2  IS AC_PARAM("v2",  TAKEOFF_V2_DEFAULT,  0.001).
-  PRINT "V_R " + ROUND(v_r, 1) + " m/s   V2 " + ROUND(v2, 1) + " m/s".
-  IF ACTIVE_AIRCRAFT["notes"] <> "" {
-    PRINT "Notes    : " + ACTIVE_AIRCRAFT["notes"].
+  IF NOT ils:HASKEY("ll") {
+    SET IFC_ALERT_TEXT TO "ABORT: no beacon for RWY " + rwy_id.
+    SET IFC_ALERT_UT   TO TIME:SECONDS.
+    RETURN.
   }
-  PRINT " ".
 
-  // ── Addon detection ─────────────────────────────────
-  IF ADDONS:AVAILABLE("AA") {
-    PRINT "kOS-AA   : detected".
-  } ELSE {
-    PRINT "kOS-AA   : NOT detected (kOS steering fallback)".
-  }
-  PRINT " ".
-
-  // ── Arm confirmation ────────────────────────────────
-  LOCAL auto_arm_takeoff IS FALSE.
-  IF DEFINED IFC_AUTO_ARM_TAKEOFF AND IFC_AUTO_ARM_TAKEOFF {
-    SET auto_arm_takeoff TO TRUE.
-    // One-shot flag so test helpers don't leak into later manual runs.
-    SET IFC_AUTO_ARM_TAKEOFF TO FALSE.
-  }
-  IF NOT auto_arm_takeoff {
-    PRINT "ARM TAKEOFF for RWY " + rwy_id + "? (y/n)".
-    TERMINAL:INPUT:CLEAR().
-    LOCAL reply IS "".
-    UNTIL reply = "y" OR reply = "Y" OR reply = "n" OR reply = "N" {
-      SET reply TO TERMINAL:INPUT:GETCHAR().
-    }
-    IF reply = "n" OR reply = "N" {
-      PRINT "IFC: disarmed.".
-      RETURN.
-    }
-  } ELSE {
-    PRINT "IFC: auto-arm enabled (IFC_AUTO_ARM_TAKEOFF).".
-  }
-  PRINT "IFC: ARMED.".
-  PRINT " ".
-
-  // ── Initialise state ────────────────────────────────
   IFC_INIT_STATE().
   SET IFC_PHASE    TO PHASE_TAKEOFF.
   SET IFC_SUBPHASE TO SUBPHASE_TO_PREFLIGHT.
-  SET ACTIVE_ILS_ID TO ils_id.
+  SET ACTIVE_ILS_ID  TO ils_id.
   SET ACTIVE_RWY_HDG TO ils["hdg"].
-  SET TO_RWY_HDG   TO ils["hdg"].
+  SET TO_RWY_HDG     TO ils["hdg"].
+
+  UI_INIT().
+
   IF DEFINED VR_PROBE_HOOKS_READY AND VR_PROBE_HOOKS_READY {
     VR_PROBE_INIT("IFC_TAKEOFF_RWY_" + rwy_id).
     // Emit an initial sample immediately so a CSV exists even if AA init fails later.
@@ -416,17 +352,14 @@ FUNCTION RUN_TAKEOFF_IFC {
   SAS OFF.
   LOCK THROTTLE TO THROTTLE_CMD.
 
-  PRINT "IFC: entering TAKEOFF  (subphase: TO_PREFLIGHT)".
-  PRINT "     Runway hdg " + ROUND(ils["hdg"], 1) + "  V_R " + ROUND(v_r, 1) + " m/s".
-  PRINT " ".
-  PRINT "Press CTRL+C at any time to abort and take manual control.".
-  PRINT "────────────────────────────────────────".
-
-  // ── Main loop ───────────────────────────────────────
+  // ── Main loop ─────────────────────────────────────────
   UNTIL IFC_PHASE = PHASE_DONE {
     LOCAL actual_dt IS TIME:SECONDS - IFC_CYCLE_UT.
     SET IFC_CYCLE_UT  TO TIME:SECONDS.
     SET IFC_ACTUAL_DT TO CLAMP(actual_dt, 0.01, 0.5).
+
+    LOCAL menu_result IS MENU_TICK().
+    IF menu_result = "QUIT" { SET IFC_PHASE TO PHASE_DONE. }
 
     RUN_TAKEOFF().
     IF DEFINED VR_PROBE_HOOKS_READY AND VR_PROBE_HOOKS_READY {
@@ -434,11 +367,11 @@ FUNCTION RUN_TAKEOFF_IFC {
     }
 
     LOGGER_WRITE().
-    PRINT_TELEMETRY().
+    DISPLAY_TICK().
     WAIT IFC_LOOP_DT.
   }
 
-  // ── Shutdown ────────────────────────────────────────
+  // ── Shutdown ──────────────────────────────────────────
   UNLOCK THROTTLE.
   UNLOCK STEERING.
   UNLOCK WHEELSTEERING.
@@ -448,7 +381,9 @@ FUNCTION RUN_TAKEOFF_IFC {
     VR_PROBE_FINALIZE().
   }
 
-  PRINT " ".
-  PRINT "IFC: TAKEOFF COMPLETE — RWY " + rwy_id + ".".
-  PRINT "     Airborne at T+" + ROUND(TIME:SECONDS - IFC_MISSION_START_UT, 1) + " s.".
+  // Force a final full render of the completion screen.
+  SET LAST_DISPLAY_UT  TO 0.
+  SET LAST_HEADER_UT   TO 0.
+  SET LAST_LOGGER_UT   TO 0.
+  DISPLAY_TICK().
 }

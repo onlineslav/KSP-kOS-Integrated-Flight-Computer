@@ -14,6 +14,7 @@ GLOBAL IFC_TELEMETRY_PERIOD IS 1.0.   // s  between HUD refreshes
 // ----------------------------
 // Phase names  (top-level)
 // ----------------------------
+GLOBAL PHASE_PREARM     IS "PRE-ARM".
 GLOBAL PHASE_APPROACH   IS "APPROACH".
 GLOBAL PHASE_FLARE      IS "FLARE".
 GLOBAL PHASE_TOUCHDOWN  IS "TOUCHDOWN".
@@ -240,3 +241,26 @@ GLOBAL BTYPE_ILS  IS "ILS".
 GLOBAL BTYPE_VOR  IS "VOR".
 GLOBAL BTYPE_IAF  IS "IAF".  // Initial Approach Fix
 GLOBAL BTYPE_FAF  IS "FAF".  // Final Approach Fix
+
+// ----------------------------
+// UI layout  (row numbers for AT(col,row) positioning)
+// Separators drawn at rows: 0, 2, 4, 11, 15, 17, 19, 21
+// ----------------------------
+GLOBAL UI_HDR_ROW    IS 1.   // aircraft + timer header
+GLOBAL UI_CRUMB_ROW  IS 3.   // phase breadcrumb
+GLOBAL UI_PRI_TOP    IS 5.   // primary data zone, first row
+GLOBAL UI_PRI_BOT    IS 10.  // primary data zone, last row
+GLOBAL UI_SEC_TOP    IS 12.  // secondary/debug zone, first row
+GLOBAL UI_SEC_BOT    IS 14.  // secondary/debug zone, last row
+GLOBAL UI_ALERT_ROW  IS 16.  // alert / event bar
+GLOBAL UI_LOG_ROW    IS 18.  // logger status bar
+GLOBAL UI_HINT_ROW   IS 20.  // key hint bar
+
+// ----------------------------
+// Display update rates
+// ----------------------------
+GLOBAL IFC_DISPLAY_PERIOD   IS 0.5.  // s  primary zone (2 Hz)
+GLOBAL IFC_HEADER_PERIOD    IS 1.0.  // s  header + breadcrumb (1 Hz)
+GLOBAL IFC_SECONDARY_PERIOD IS 1.0.  // s  debug panel (1 Hz)
+GLOBAL IFC_LOGGER_PERIOD    IS 2.0.  // s  logger bar (0.5 Hz)
+GLOBAL IFC_ALERT_EXPIRE_S   IS 5.0.  // s  auto-clear alert after this long

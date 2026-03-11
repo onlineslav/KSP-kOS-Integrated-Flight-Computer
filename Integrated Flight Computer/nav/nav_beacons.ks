@@ -74,7 +74,8 @@ FUNCTION REGISTER_BEACON {
 FUNCTION GET_BEACON {
   PARAMETER id.
   IF NOT NAV_BEACON_DB:HASKEY(id) {
-    PRINT "NAV ERROR: unknown beacon '" + id + "'".
+    SET IFC_ALERT_TEXT TO "NAV: unknown beacon '" + id + "'".
+    SET IFC_ALERT_UT   TO TIME:SECONDS.
     RETURN LEXICON().
   }
   RETURN NAV_BEACON_DB[id].
@@ -255,6 +256,7 @@ FUNCTION GET_PLATE_FOR_RUNWAY {
     IF short_approach { RETURN PLATE_KSC_ILS27_SHORT. }
     RETURN PLATE_KSC_ILS27.
   }
-  PRINT "NAV ERROR: no plate for runway '" + rwy_id + "'".
+  SET IFC_ALERT_TEXT TO "NAV: no plate for runway '" + rwy_id + "'".
+  SET IFC_ALERT_UT   TO TIME:SECONDS.
   RETURN 0.
 }

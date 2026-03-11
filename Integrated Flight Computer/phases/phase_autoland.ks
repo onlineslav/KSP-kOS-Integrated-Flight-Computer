@@ -61,7 +61,8 @@ FUNCTION _CHECK_BOUNCE_RECOVERY {
       SET FLARE_PITCH_CMD TO ARCTAN(SHIP:VERTICALSPEED / entry_ias).
       SET FLARE_ENTRY_VS  TO CLAMP(SHIP:VERTICALSPEED, FLARE_MIN_ENTRY_SINK_VS, -0.05).
       SET FLARE_ENTRY_AGL TO MAX(agl, 1).
-      PRINT "  BOUNCE recovery: returning to FLARE (AGL " + ROUND(agl, 1) + " m)".
+      SET IFC_ALERT_TEXT TO "BOUNCE recovery: returning to FLARE (" + ROUND(agl, 1) + " m)".
+      SET IFC_ALERT_UT   TO TIME:SECONDS.
       SET_PHASE(PHASE_FLARE).
       RETURN TRUE.
     }
@@ -267,9 +268,9 @@ FUNCTION _RUN_TOUCHDOWN {
     // We'll blend from touchdown heading -> runway heading as speed decays.
     SET ROLLOUT_ENTRY_HDG TO GET_COMPASS_HDG().
     LOCK WHEELSTEERING TO ROLLOUT_ENTRY_HDG.
-    PRINT "  ROLLOUT armed: hdg " + ROUND(ROLLOUT_ENTRY_HDG, 1)
-        + " deg, IAS " + ROUND(GET_IAS(), 1) + " m/s"
-        + ", pitch_ref " + ROUND(ROLLOUT_PITCH_REF_DEG, 2) + " deg".
+    SET IFC_ALERT_TEXT TO "ROLLOUT armed: hdg " + ROUND(ROLLOUT_ENTRY_HDG, 1)
+        + " IAS " + ROUND(GET_IAS(), 1) + " m/s".
+    SET IFC_ALERT_UT   TO TIME:SECONDS.
 
     SET TOUCHDOWN_INIT_DONE TO TRUE.
   }

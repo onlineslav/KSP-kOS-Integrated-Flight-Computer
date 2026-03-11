@@ -36,9 +36,6 @@ FUNCTION AA_INIT {
   SET CONFIG:SUPPRESSAUTOPILOT TO FALSE.
 
   IF AA_AVAILABLE {
-    IF aa_tries > 0 {
-      PRINT "AA: handle became ready after " + aa_tries + " ticks.".
-    }
     // Enable Fly-By-Wire for stability augmentation.
     SET aa:FBW TO TRUE.
     SET AA_FBW_ON TO TRUE.
@@ -76,9 +73,13 @@ FUNCTION AA_INIT {
     IF aa:HASSUFFIX("MAXROLL") { SET aa:MAXROLL TO lim_bank. }
     IF aa:HASSUFFIX("MAXBANK") { SET aa:MAXBANK TO lim_bank. }
 
-    PRINT "AA: FBW enabled  AoA<=" + lim_aoa + " G<=" + lim_g + " slip<=" + lim_sideslip + " sideG<=" + lim_side_g + " bank<=" + lim_bank.
+    LOCAL ready_str IS "".
+    IF aa_tries > 0 { SET ready_str TO " (+" + aa_tries + "t)". }
+    SET IFC_ALERT_TEXT TO "AA: FBW ok" + ready_str + "  AoA<=" + lim_aoa + "  G<=" + lim_g.
+    SET IFC_ALERT_UT   TO TIME:SECONDS.
   } ELSE {
-    PRINT "AA: addon not available - kOS steering fallback active.".
+    SET IFC_ALERT_TEXT TO "AA: unavailable - kOS steering fallback".
+    SET IFC_ALERT_UT   TO TIME:SECONDS.
   }
 }
 

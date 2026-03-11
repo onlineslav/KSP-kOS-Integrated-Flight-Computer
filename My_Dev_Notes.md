@@ -82,3 +82,7 @@ $m_{to} = 99025kg$
 $\alpha_{tailstrike} \approx10 deg$
 
 $\alpha_{CR,TO}\approx 45deg$
+
+---
+
+add telemetry logging boolean to aircraft cfgs

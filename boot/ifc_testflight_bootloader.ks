@@ -22,7 +22,7 @@ LOCAL sync_local_scripts IS TRUE.
 FUNCTION _SYNC_ONE {
   PARAMETER src_path, dst_path.
   IF EXISTS(src_path) {
-    COPY src_path TO dst_path.
+    COPYPATH(src_path, dst_path).
     PRINT "IFC test sync: " + src_path + " -> " + dst_path.
   } ELSE {
     PRINT "IFC test sync: missing source " + src_path.

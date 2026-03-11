@@ -114,7 +114,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "takeoff_rotate_pitch_min_cmd", 0.14, // minimum up-command while below rotate target
     "takeoff_rotate_pitch_max_cmd", 0.72, //PREV 0.42 // max pitch cmd while on wheels
     "takeoff_rotate_pitch_slew_per_s", 2.6, // pitch cmd slew while on wheels
-    "takeoff_climb_fpa",   10.0,  // deg  climb FPA for climb-out
+    "takeoff_climb_fpa",   7.0,  // deg  climb FPA for climb-out
     "takeoff_throttle",    1.0,  // 0..1 takeoff throttle setting
     "takeoff_done_agl",  300.0,  // m AGL to end takeoff phase
     "takeoff_airborne_agl",  3.0, // m AGL threshold for airborne detect
@@ -131,23 +131,25 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "takeoff_loc_kp",          0.050, // deg/m centerline correction gain
     "takeoff_loc_guard_m",   140.0, // m loc error clamp for steering
     "takeoff_steer_max_corr", 10.0, // deg max wheelsteering heading correction
-    "takeoff_steer_hdg_rate_kd", 0.28, // steering heading-rate damping to reduce weave
+    "takeoff_steer_hdg_rate_kd", 0.18, // steering heading-rate damping to reduce weave
     "takeoff_dir_max_corr",    6.0, // deg max director heading correction
     "takeoff_yaw_start_ias",   0.0, // m/s IAS where yaw assist starts
     "takeoff_yaw_full_ias",   45.0, // m/s IAS where yaw assist reaches full gain
     "takeoff_yaw_min_scale",   0.55, // 0..1 rudder authority floor from rollout start
-    "takeoff_yaw_kp",          0.055, // rudder cmd per deg heading error
-    "takeoff_yaw_kd",          0.012, // rudder cmd per deg/s heading-rate error (damping)
+    "takeoff_yaw_kp",          0.038, // rudder cmd per deg heading error
+    "takeoff_yaw_kd",          0.018, // rudder cmd per deg/s heading-rate error (damping)
     "takeoff_yaw_boost_err_deg", 0.40, // heading error where yaw boost reaches +1x
-    "takeoff_yaw_boost_max",   1.20, // cap extra yaw gain from heading-error boost
-    "takeoff_yaw_max_cmd",     0.65, // max rudder cmd magnitude
-    "takeoff_yaw_slew_per_s",  4.0, // rudder cmd slew rate
+    "takeoff_yaw_boost_max",   0.25, // cap extra yaw gain from heading-error boost
+    "takeoff_yaw_max_cmd",     0.40, // max rudder cmd magnitude
+    "takeoff_yaw_slew_per_s",  3.0, // rudder cmd slew rate
     "takeoff_yaw_sign",       -1,   // command sign for your control layout
     "takeoff_climb_min_throttle", 0.82, // throttle floor during climb
     "takeoff_climb_spd_thr_gain", 0.010, // throttle trim gain vs (V2-IAS)
     "takeoff_climb_fpa_spd_gain", 0.08, // deg FPA reduction per m/s below V2
-    "takeoff_climb_fpa_min",   3.0, // deg minimum climb FPA under speed protection
-    "takeoff_climb_fpa_slew_dps", 1.4, // deg/s FPA slew for rotate->climb handoff
+    "takeoff_climb_fpa_min",   4.5, // deg minimum climb FPA under speed protection
+    "takeoff_climb_fpa_slew_dps", 2.8, // deg/s FPA slew for rotate->climb handoff
+    "takeoff_aoa_protect_frac", 0.85, // AoA protection threshold as fraction of a_crit
+    "takeoff_aoa_fpa_gain", 0.90, // deg FPA pull-down per deg AoA above threshold
 
     // ── AA Moderators ─────────────────────────────────────
     // Per-aircraft overrides for AtmosphereAutopilot FBW limits.

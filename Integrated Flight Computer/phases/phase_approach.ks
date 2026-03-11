@@ -89,7 +89,8 @@ FUNCTION _UPDATE_APPROACH_SPEED_TARGET {
       IF APP_FINAL_ARM_UT < 0 { SET APP_FINAL_ARM_UT TO TIME:SECONDS. }
       IF NOT APP_ON_FINAL AND TIME:SECONDS - APP_FINAL_ARM_UT >= APP_FINAL_CAPTURE_CONFIRM_S {
         SET APP_ON_FINAL TO TRUE.
-        PRINT "  APP SPD mode -> FINAL  tgt " + ROUND(vapp, 1) + " m/s".
+        SET IFC_ALERT_TEXT TO "APP SPD -> FINAL  tgt " + ROUND(vapp, 1) + " m/s".
+        SET IFC_ALERT_UT   TO TIME:SECONDS.
       }
     } ELSE {
       SET APP_FINAL_ARM_UT TO -1.
@@ -97,7 +98,8 @@ FUNCTION _UPDATE_APPROACH_SPEED_TARGET {
       LOCAL gs_rel  IS gs_cap * APP_FINAL_RELEASE_FACTOR.
       IF APP_ON_FINAL AND (ABS(ILS_LOC_DEV) > loc_rel OR ABS(ILS_GS_DEV) > gs_rel) {
         SET APP_ON_FINAL TO FALSE.
-        PRINT "  APP SPD mode -> INTERCEPT  tgt " + ROUND(vint, 1) + " m/s".
+        SET IFC_ALERT_TEXT TO "APP SPD -> INTERCEPT  tgt " + ROUND(vint, 1) + " m/s".
+        SET IFC_ALERT_UT   TO TIME:SECONDS.
       }
     }
   } ELSE {
@@ -227,7 +229,8 @@ FUNCTION _RUN_FLY_TO_FIX {
 
   // Capture: move to the next fix when within capture radius.
   IF dist < FIX_CAPTURE_RADIUS {
-    PRINT "  FIX captured: " + fix_id + "  (dist=" + ROUND(dist) + " m)".
+    SET IFC_ALERT_TEXT TO "FIX captured: " + fix_id + "  (" + ROUND(dist) + " m)".
+    SET IFC_ALERT_UT   TO TIME:SECONDS.
     SET FIX_INDEX TO FIX_INDEX + 1.
     // If this was the last fix, immediately transition to ILS tracking.
     IF FIX_INDEX >= ACTIVE_FIXES:LENGTH {
@@ -386,8 +389,9 @@ FUNCTION _CHECK_FLAP_DEPLOYMENT {
   SET FLAPS_TARGET_DETENT TO target_det.
 
   IF FLAPS_TARGET_DETENT <> FLAPS_LAST_TARGET_LOGGED {
-    PRINT "  FLAPS target detent " + FLAPS_TARGET_DETENT
-        + " (IAS " + ROUND(ias, 1) + " m/s, D " + ROUND(dist_km, 1) + " km)".
+    SET IFC_ALERT_TEXT TO "FLAPS tgt detent " + FLAPS_TARGET_DETENT
+        + "  IAS " + ROUND(ias, 1) + " D " + ROUND(dist_km, 1) + "km".
+    SET IFC_ALERT_UT   TO TIME:SECONDS.
     SET FLAPS_LAST_TARGET_LOGGED TO FLAPS_TARGET_DETENT.
   }
 
@@ -397,11 +401,13 @@ FUNCTION _CHECK_FLAP_DEPLOYMENT {
   IF FLAPS_CURRENT_DETENT < FLAPS_TARGET_DETENT {
     PULSE_AG(ag_step_up).
     SET FLAPS_CURRENT_DETENT TO CLAMP(FLAPS_CURRENT_DETENT + 1, 0, max_det).
-    PRINT "  FLAPS step UP -> detent " + FLAPS_CURRENT_DETENT.
+    SET IFC_ALERT_TEXT TO "FLAPS UP -> detent " + FLAPS_CURRENT_DETENT.
+    SET IFC_ALERT_UT   TO TIME:SECONDS.
   } ELSE {
     PULSE_AG(ag_step_dn).
     SET FLAPS_CURRENT_DETENT TO CLAMP(FLAPS_CURRENT_DETENT - 1, 0, max_det).
-    PRINT "  FLAPS step DN -> detent " + FLAPS_CURRENT_DETENT.
+    SET IFC_ALERT_TEXT TO "FLAPS DN -> detent " + FLAPS_CURRENT_DETENT.
+    SET IFC_ALERT_UT   TO TIME:SECONDS.
   }
 
   SET FLAPS_LAST_STEP_UT TO TIME:SECONDS.
@@ -424,7 +430,8 @@ FUNCTION _CHECK_APPROACH_SPOILERS {
   IF dist_km <= arm_km {
     TRIGGER_AG(arm_ag, TRUE).
     SET APP_SPOILERS_ARMED TO TRUE.
-    PRINT "  SPOILERS armed at " + ROUND(dist_km, 1) + " km.".
+    SET IFC_ALERT_TEXT TO "SPOILERS armed at " + ROUND(dist_km, 1) + " km".
+    SET IFC_ALERT_UT   TO TIME:SECONDS.
   }
 }
 

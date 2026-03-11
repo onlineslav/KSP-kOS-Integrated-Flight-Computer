@@ -8,7 +8,8 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:api.github.com)",
-      "Read(//c/Portable Programs/Kerbal Space Program/Ships/Script/**)"
+      "Read(//c/Portable Programs/Kerbal Space Program/Ships/Script/**)",
+      "Bash(find 'c:/Portable Programs/Kerbal Space Program/Ships/Script/Integrated Flight Computer/aircraft' -type f -name *.ks)"
     ]
   }
 }

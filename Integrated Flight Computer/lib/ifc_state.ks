@@ -82,9 +82,22 @@ GLOBAL IFC_CYCLE_UT  IS 0.    // TIME:SECONDS at start of last cycle (for real d
 GLOBAL IFC_ACTUAL_DT IS 0.05. // measured elapsed time of the most recent loop cycle (s)
 
 // ----------------------------
-// Telemetry
+// Telemetry (legacy rate-limiter; kept for ifc_telemetry.ks compat)
 // ----------------------------
 GLOBAL LAST_TELEM_UT IS 0.
+
+// ----------------------------
+// Display / UI state
+// ----------------------------
+GLOBAL UI_W               IS 50.     // terminal width, set by UI_INIT
+GLOBAL IFC_DEBUG_PANEL_ON IS FALSE.  // show secondary debug zone
+GLOBAL LAST_DISPLAY_UT    IS 0.      // primary zone rate-limiter
+GLOBAL LAST_HEADER_UT     IS 0.      // header rate-limiter
+GLOBAL LAST_SECONDARY_UT  IS 0.      // secondary zone rate-limiter
+GLOBAL LAST_LOGGER_UT     IS 0.      // logger bar rate-limiter
+GLOBAL IFC_ALERT_TEXT     IS "".     // current alert message
+GLOBAL IFC_ALERT_UT       IS -99.    // UT when alert was set (for expiry)
+GLOBAL IFC_MENU_OPEN      IS FALSE.  // TRUE when menu overlay is visible
 
 // ----------------------------
 // Telemetry export
@@ -200,8 +213,15 @@ FUNCTION IFC_INIT_STATE {
   SET AA_FBW_ON      TO FALSE.
   SET FAR_AVAILABLE  TO FALSE.
 
-  SET LAST_TELEM_UT TO TIME:SECONDS.
-  SET IFC_CYCLE_UT  TO TIME:SECONDS.
+  SET LAST_TELEM_UT    TO TIME:SECONDS.
+  SET LAST_DISPLAY_UT  TO 0.
+  SET LAST_HEADER_UT   TO 0.
+  SET LAST_SECONDARY_UT TO 0.
+  SET LAST_LOGGER_UT   TO 0.
+  SET IFC_ALERT_TEXT   TO "".
+  SET IFC_ALERT_UT     TO -99.
+  SET IFC_MENU_OPEN    TO FALSE.
+  SET IFC_CYCLE_UT     TO TIME:SECONDS.
   SET IFC_ACTUAL_DT TO IFC_LOOP_DT.
   SET FLARE_PITCH_CMD  TO 0.
   SET FLARE_ENTRY_VS   TO 0.
