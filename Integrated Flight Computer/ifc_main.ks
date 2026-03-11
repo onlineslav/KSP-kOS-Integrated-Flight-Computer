@@ -42,11 +42,16 @@ RUNONCEPATH(ifc_root + "lib/ifc_menu.ks").
 RUNONCEPATH(ifc_root + "lib/ifc_display.ks").
 RUNONCEPATH(ifc_root + "lib/ifc_aa.ks").
 RUNONCEPATH(ifc_root + "lib/ifc_logger.ks").
+RUNONCEPATH(ifc_root + "lib/ifc_fms.ks").
 RUNONCEPATH(ifc_root + "nav/nav_math.ks").
 RUNONCEPATH(ifc_root + "nav/nav_beacons.ks").
 RUNONCEPATH(ifc_root + "phases/phase_approach.ks").
 RUNONCEPATH(ifc_root + "phases/phase_autoland.ks").
 RUNONCEPATH(ifc_root + "phases/phase_takeoff.ks").
+RUNONCEPATH(ifc_root + "phases/phase_ascent.ks").
+RUNONCEPATH(ifc_root + "phases/phase_reentry.ks").
+RUNONCEPATH(ifc_root + "nav/nav_routes.ks").
+RUNONCEPATH(ifc_root + "phases/phase_cruise.ks").
 
 // ── Default aircraft config (if not set externally) ───────
 // Matches aircraft_template.ks structure; safe defaults only.
@@ -188,9 +193,210 @@ FUNCTION _TRY_LOAD_AIRCRAFT_CONFIG {
   RETURN FALSE.
 }
 
+// ── Build flight plan from current menu state ─────────────
+FUNCTION _BUILD_PLAN_FROM_MENU {
+  LOCAL plan IS LIST().
+  LOCAL rwy_str IS "09".
+  IF IFC_MENU_OPT_RWY = 1 { SET rwy_str TO "27". }
+
+  IF IFC_MENU_OPT_PROC = 0 {
+    // Approach-only procedure
+    LOCAL short_app IS IFC_MENU_OPT_DIST = 1.
+    plan:ADD(LEXICON(
+      "type",   LEG_APPROACH,
+      "params", LEXICON("rwy_id", rwy_str, "short_approach", short_app)
+    )).
+  } ELSE {
+    // Takeoff procedure
+    plan:ADD(LEXICON(
+      "type",   LEG_TAKEOFF,
+      "params", LEXICON("rwy_id", rwy_str)
+    )).
+    // Optional cruise + approach to destination
+    IF IFC_MENU_OPT_DEST = 1 {
+      LOCAL route IS ROUTE_KSC_TO_ISL.
+      plan:ADD(LEXICON(
+        "type",   LEG_CRUISE,
+        "params", LEXICON("route", route)
+      )).
+      plan:ADD(LEXICON(
+        "type",   LEG_APPROACH,
+        "params", LEXICON("plate", route["dest_plate"])
+      )).
+    }
+  }
+  RETURN plan.
+}
+
+// ── Initialise a single flight-plan leg ───────────────────
+// Sets up phase state then calls SET_PHASE for the new phase.
+FUNCTION _INIT_LEG {
+  PARAMETER leg.
+  LOCAL leg_type IS leg["type"].
+  LOCAL params   IS leg["params"].
+
+  IF leg_type = LEG_TAKEOFF {
+    LOCAL rwy_id IS params["rwy_id"].
+    LOCAL ils_id IS "KSC_ILS_" + rwy_id.
+    LOCAL ils IS GET_BEACON(ils_id).
+    IF NOT ils:HASKEY("ll") {
+      SET IFC_ALERT_TEXT TO "ABORT: no beacon for RWY " + rwy_id.
+      SET IFC_ALERT_UT   TO TIME:SECONDS.
+      SET_PHASE(PHASE_DONE).
+      RETURN.
+    }
+    SET ACTIVE_ILS_ID  TO ils_id.
+    SET ACTIVE_RWY_HDG TO ils["hdg"].
+    SET TO_RWY_HDG     TO ils["hdg"].
+    // Apply v-speed overrides into aircraft config
+    IF IFC_MENU_OPT_VR > 0 { SET ACTIVE_AIRCRAFT["v_r"] TO IFC_MENU_OPT_VR. }
+    IF IFC_MENU_OPT_V2 > 0 { SET ACTIVE_AIRCRAFT["v2"]  TO IFC_MENU_OPT_V2. }
+    SET_PHASE(PHASE_TAKEOFF).
+    SET IFC_SUBPHASE TO SUBPHASE_TO_PREFLIGHT.
+
+  } ELSE IF leg_type = LEG_CRUISE {
+    LOCAL route IS params["route"].
+    SET CRUISE_WAYPOINTS  TO route["waypoints"].
+    SET CRUISE_ALT_M      TO route["cruise_alt_m"].
+    SET CRUISE_SPD_MPS    TO route["cruise_spd"].
+    SET CRUISE_DEST_PLATE TO route["dest_plate"].
+    SET CRUISE_WP_INDEX   TO 0.
+    SET THR_INTEGRAL      TO 0.
+    SET A_ACTUAL_FILT     TO 0.
+    SET_PHASE(PHASE_CRUISE).
+
+  } ELSE IF leg_type = LEG_APPROACH {
+    LOCAL plate IS 0.
+    IF params:HASKEY("plate") {
+      SET plate TO params["plate"].
+    } ELSE {
+      LOCAL rwy_id    IS params["rwy_id"].
+      LOCAL short_app IS params["short_approach"].
+      SET plate TO GET_PLATE_FOR_RUNWAY(rwy_id, short_app).
+    }
+    IF plate = 0 {
+      SET IFC_ALERT_TEXT TO "ABORT: no plate for approach leg".
+      SET IFC_ALERT_UT   TO TIME:SECONDS.
+      SET_PHASE(PHASE_DONE).
+      RETURN.
+    }
+    SET ACTIVE_PLATE TO plate.
+    IFC_LOAD_PLATE().
+    // Flush speed-controller state to avoid cruise trim carry-over
+    SET THR_INTEGRAL  TO 0.
+    SET PREV_IAS      TO GET_IAS().
+    SET A_ACTUAL_FILT TO 0.
+    // Apply Vapp override after plate load
+    IF IFC_MENU_OPT_VAPP > 0 {
+      SET ACTIVE_V_APP   TO IFC_MENU_OPT_VAPP.
+      SET ACTIVE_V_TGT   TO IFC_MENU_OPT_VAPP.
+      SET APP_VREF_TGT   TO IFC_MENU_OPT_VAPP - 10.
+      SET APP_VINT_TGT   TO IFC_MENU_OPT_VAPP.
+      SET APP_BASE_V_TGT TO IFC_MENU_OPT_VAPP.
+    }
+    SET_PHASE(PHASE_APPROACH).
+
+  } ELSE IF leg_type = LEG_ASCENT {
+    SET_PHASE(PHASE_ASCENT).
+
+  } ELSE IF leg_type = LEG_REENTRY {
+    SET_PHASE(PHASE_REENTRY).
+  }
+}
+
+// ── Unified flight plan executor ──────────────────────────
+// Runs init, then drives the leg queue until all legs complete.
+FUNCTION _RUN_FLIGHT_PLAN {
+  PARAMETER plan.
+
+  IF plan:LENGTH = 0 {
+    SET IFC_ALERT_TEXT TO "Empty flight plan".
+    SET IFC_ALERT_UT   TO TIME:SECONDS.
+    RETURN.
+  }
+
+  IFC_INIT_STATE().
+  UI_INIT().
+
+  IF DEFINED VR_PROBE_HOOKS_READY AND VR_PROBE_HOOKS_READY {
+    VR_PROBE_INIT("IFC_FLIGHT_PLAN").
+    VR_PROBE_TICK().
+  }
+  AA_INIT().
+  LOGGER_INIT().
+
+  SAS OFF.
+  LOCK THROTTLE TO THROTTLE_CMD.
+
+  SET FLIGHT_PLAN       TO plan.
+  SET FLIGHT_PLAN_INDEX TO 0.
+  _INIT_LEG(plan[0]).
+
+  // ── Main loop ─────────────────────────────────────────
+  UNTIL IFC_PHASE = PHASE_DONE {
+    LOCAL actual_dt IS TIME:SECONDS - IFC_CYCLE_UT.
+    SET IFC_CYCLE_UT  TO TIME:SECONDS.
+    SET IFC_ACTUAL_DT TO CLAMP(actual_dt, 0.01, 0.5).
+
+    LOCAL menu_result IS MENU_TICK().
+    IF menu_result = "QUIT" { SET IFC_PHASE TO PHASE_DONE. }
+
+    IF NOT IFC_MANUAL_MODE {
+      IF IFC_PHASE = PHASE_TAKEOFF {
+        RUN_TAKEOFF().
+        IF DEFINED VR_PROBE_HOOKS_READY AND VR_PROBE_HOOKS_READY {
+          VR_PROBE_TICK().
+        }
+      } ELSE IF IFC_PHASE = PHASE_CRUISE {
+        RUN_CRUISE().
+      } ELSE IF IFC_PHASE = PHASE_APPROACH {
+        RUN_APPROACH().
+      } ELSE IF IFC_PHASE = PHASE_FLARE     OR
+                IFC_PHASE = PHASE_TOUCHDOWN OR
+                IFC_PHASE = PHASE_ROLLOUT {
+        RUN_AUTOLAND().
+      } ELSE IF IFC_PHASE = PHASE_ASCENT {
+        RUN_ASCENT().
+      } ELSE IF IFC_PHASE = PHASE_REENTRY {
+        RUN_REENTRY().
+      }
+    }
+
+    // Leg queue advancement: when a leg sets PHASE_DONE naturally, start
+    // the next leg.  Skip advancement on QUIT so the loop exits cleanly.
+    IF IFC_PHASE = PHASE_DONE AND menu_result <> "QUIT" {
+      SET FLIGHT_PLAN_INDEX TO FLIGHT_PLAN_INDEX + 1.
+      IF FLIGHT_PLAN_INDEX < FLIGHT_PLAN:LENGTH {
+        _INIT_LEG(plan[FLIGHT_PLAN_INDEX]).
+      }
+      // If still PHASE_DONE (no more legs or _INIT_LEG aborted), loop exits.
+    }
+
+    LOGGER_WRITE().
+    DISPLAY_TICK().
+    WAIT IFC_LOOP_DT.
+  }
+
+  // ── Shutdown ──────────────────────────────────────────
+  UNLOCK THROTTLE.
+  UNLOCK STEERING.
+  UNLOCK WHEELSTEERING.
+  AA_DISABLE_ALL().
+  BRAKES ON.
+  LOGGER_CLOSE().
+  IF DEFINED VR_PROBE_HOOKS_READY AND VR_PROBE_HOOKS_READY {
+    VR_PROBE_FINALIZE().
+  }
+
+  SET LAST_DISPLAY_UT  TO 0.
+  SET LAST_HEADER_UT   TO 0.
+  SET LAST_LOGGER_UT   TO 0.
+  DISPLAY_TICK().
+}
+
 // ── Interactive startup (FMS pre-arm screen) ──────────────
 // Shows the pre-arm page, opens the FMS menu, and waits for
-// the user to ARM or QUIT.  Dispatches to RUN_IFC / RUN_TAKEOFF_IFC.
+// the user to ARM or QUIT.  On ARM, calls _RUN_FLIGHT_PLAN.
 FUNCTION _IFC_INTERACTIVE_START {
   SET IFC_MISSION_START_UT TO TIME:SECONDS.
   SET IFC_PHASE    TO PHASE_PREARM.
@@ -206,7 +412,7 @@ FUNCTION _IFC_INTERACTIVE_START {
   DISPLAY_HEADER().
   DISPLAY_BREADCRUMB().
   DISPLAY_KEY_HINTS().
-  DISPLAY_PREARM(IFC_MENU_OPT_PROC, IFC_MENU_OPT_RWY, IFC_MENU_OPT_DIST).
+  DISPLAY_PREARM(IFC_MENU_OPT_PROC, IFC_MENU_OPT_RWY, IFC_MENU_OPT_DIST, IFC_MENU_OPT_DEST).
   DISPLAY_ALERT_BAR().
 
   // Open FMS menu immediately so the user can navigate.
@@ -218,7 +424,7 @@ FUNCTION _IFC_INTERACTIVE_START {
     SET result TO MENU_TICK().
     // Refresh pre-arm page whenever the menu is closed.
     IF NOT IFC_MENU_OPEN {
-      DISPLAY_PREARM(IFC_MENU_OPT_PROC, IFC_MENU_OPT_RWY, IFC_MENU_OPT_DIST).
+      DISPLAY_PREARM(IFC_MENU_OPT_PROC, IFC_MENU_OPT_RWY, IFC_MENU_OPT_DIST, IFC_MENU_OPT_DEST).
     }
     DISPLAY_TICK().
     WAIT 0.05.
@@ -226,15 +432,7 @@ FUNCTION _IFC_INTERACTIVE_START {
 
   IF result = "QUIT" { RETURN. }
 
-  LOCAL rwy_str IS "09".
-  IF IFC_MENU_OPT_RWY = 1 { SET rwy_str TO "27". }
-  LOCAL short_app IS IFC_MENU_OPT_DIST = 1.
-
-  IF IFC_MENU_OPT_PROC = 0 {
-    RUN_IFC(rwy_str, short_app).
-  } ELSE {
-    RUN_TAKEOFF_IFC(rwy_str).
-  }
+  _RUN_FLIGHT_PLAN(_BUILD_PLAN_FROM_MENU()).
 }
 
 // Boot scripts can set GLOBAL IFC_SKIP_INTERACTIVE IS TRUE. before loading
@@ -243,147 +441,46 @@ IF NOT (DEFINED IFC_SKIP_INTERACTIVE AND IFC_SKIP_INTERACTIVE) {
   _IFC_INTERACTIVE_START().
 }
 
-// ── Main entry point ──────────────────────────────────────
+// ── Legacy entry points (wrappers around _RUN_FLIGHT_PLAN) ─
+// These remain for external scripts that call RUN_IFC or
+// RUN_TAKEOFF_IFC directly.
+
 FUNCTION RUN_IFC {
   PARAMETER rwy_id, short_approach.
-
-  // Resolve aircraft config (highest priority wins):
-  //   1. Externally set before calling RUN_IFC (manual override)
-  //   2. Auto-loaded from aircraft/<vessel_name>_cfg.ks
-  //   3. Built-in defaults
   IF ACTIVE_AIRCRAFT = 0 {
     IF NOT _TRY_LOAD_AIRCRAFT_CONFIG() {
       SET ACTIVE_AIRCRAFT TO _DEFAULT_AIRCRAFT.
     }
   }
-
-  LOCAL plate IS GET_PLATE_FOR_RUNWAY(rwy_id, short_approach).
-  IF plate = 0 {
-    SET IFC_ALERT_TEXT TO "ABORT: no plate for RWY " + rwy_id.
-    SET IFC_ALERT_UT   TO TIME:SECONDS.
-    RETURN.
-  }
-  SET plate["vapp"] TO ACTIVE_AIRCRAFT["v_app"].
-  SET ACTIVE_PLATE  TO plate.
-  SET ACTIVE_V_APP  TO ACTIVE_AIRCRAFT["v_app"].
-
-  IFC_INIT_STATE().
-  IFC_LOAD_PLATE().
-  UI_INIT().
-  AA_INIT().
-  LOGGER_INIT().
-
-  SAS OFF.
-  LOCK THROTTLE TO THROTTLE_CMD.
-
-  // ── Main loop ──────────────────────────────────────────
-  UNTIL IFC_PHASE = PHASE_DONE {
-
-    LOCAL actual_dt IS TIME:SECONDS - IFC_CYCLE_UT.
-    SET IFC_CYCLE_UT  TO TIME:SECONDS.
-    SET IFC_ACTUAL_DT TO CLAMP(actual_dt, 0.01, 0.5).
-
-    LOCAL menu_result IS MENU_TICK().
-    IF menu_result = "QUIT" { SET IFC_PHASE TO PHASE_DONE. }
-
-    IF IFC_PHASE = PHASE_APPROACH {
-      RUN_APPROACH().
-    } ELSE IF IFC_PHASE = PHASE_FLARE     OR
-              IFC_PHASE = PHASE_TOUCHDOWN OR
-              IFC_PHASE = PHASE_ROLLOUT {
-      RUN_AUTOLAND().
-    }
-
-    LOGGER_WRITE().
-    DISPLAY_TICK().
-    WAIT IFC_LOOP_DT.
-  }
-
-  // ── Shutdown ───────────────────────────────────────────
-  UNLOCK THROTTLE.
-  UNLOCK STEERING.
-  UNLOCK WHEELSTEERING.
-  AA_DISABLE_ALL().
-  BRAKES ON.
-  LOGGER_CLOSE().
-
-  // Force a final full render of the completion screen.
-  SET LAST_DISPLAY_UT  TO 0.
-  SET LAST_HEADER_UT   TO 0.
-  SET LAST_LOGGER_UT   TO 0.
-  DISPLAY_TICK().
+  LOCAL plan IS LIST(LEXICON(
+    "type",   LEG_APPROACH,
+    "params", LEXICON("rwy_id", rwy_id, "short_approach", short_approach)
+  )).
+  _RUN_FLIGHT_PLAN(plan).
 }
 
-// ── Takeoff entry point ────────────────────────────────────
+// route: a route LEXICON from nav_routes.ks, or 0 for takeoff-only.
 FUNCTION RUN_TAKEOFF_IFC {
   PARAMETER rwy_id.
-
+  PARAMETER route IS 0.
   IF ACTIVE_AIRCRAFT = 0 {
     IF NOT _TRY_LOAD_AIRCRAFT_CONFIG() {
       SET ACTIVE_AIRCRAFT TO _DEFAULT_AIRCRAFT.
     }
   }
-
-  LOCAL ils_id IS "KSC_ILS_" + rwy_id.
-  LOCAL ils IS GET_BEACON(ils_id).
-  IF NOT ils:HASKEY("ll") {
-    SET IFC_ALERT_TEXT TO "ABORT: no beacon for RWY " + rwy_id.
-    SET IFC_ALERT_UT   TO TIME:SECONDS.
-    RETURN.
+  LOCAL plan IS LIST(LEXICON(
+    "type",   LEG_TAKEOFF,
+    "params", LEXICON("rwy_id", rwy_id)
+  )).
+  IF route <> 0 {
+    plan:ADD(LEXICON(
+      "type",   LEG_CRUISE,
+      "params", LEXICON("route", route)
+    )).
+    plan:ADD(LEXICON(
+      "type",   LEG_APPROACH,
+      "params", LEXICON("plate", route["dest_plate"])
+    )).
   }
-
-  IFC_INIT_STATE().
-  SET IFC_PHASE    TO PHASE_TAKEOFF.
-  SET IFC_SUBPHASE TO SUBPHASE_TO_PREFLIGHT.
-  SET ACTIVE_ILS_ID  TO ils_id.
-  SET ACTIVE_RWY_HDG TO ils["hdg"].
-  SET TO_RWY_HDG     TO ils["hdg"].
-
-  UI_INIT().
-
-  IF DEFINED VR_PROBE_HOOKS_READY AND VR_PROBE_HOOKS_READY {
-    VR_PROBE_INIT("IFC_TAKEOFF_RWY_" + rwy_id).
-    // Emit an initial sample immediately so a CSV exists even if AA init fails later.
-    VR_PROBE_TICK().
-  }
-  AA_INIT().
-  LOGGER_INIT().
-
-  SAS OFF.
-  LOCK THROTTLE TO THROTTLE_CMD.
-
-  // ── Main loop ─────────────────────────────────────────
-  UNTIL IFC_PHASE = PHASE_DONE {
-    LOCAL actual_dt IS TIME:SECONDS - IFC_CYCLE_UT.
-    SET IFC_CYCLE_UT  TO TIME:SECONDS.
-    SET IFC_ACTUAL_DT TO CLAMP(actual_dt, 0.01, 0.5).
-
-    LOCAL menu_result IS MENU_TICK().
-    IF menu_result = "QUIT" { SET IFC_PHASE TO PHASE_DONE. }
-
-    RUN_TAKEOFF().
-    IF DEFINED VR_PROBE_HOOKS_READY AND VR_PROBE_HOOKS_READY {
-      VR_PROBE_TICK().
-    }
-
-    LOGGER_WRITE().
-    DISPLAY_TICK().
-    WAIT IFC_LOOP_DT.
-  }
-
-  // ── Shutdown ──────────────────────────────────────────
-  UNLOCK THROTTLE.
-  UNLOCK STEERING.
-  UNLOCK WHEELSTEERING.
-  AA_DISABLE_ALL().
-  LOGGER_CLOSE().
-  IF DEFINED VR_PROBE_HOOKS_READY AND VR_PROBE_HOOKS_READY {
-    VR_PROBE_FINALIZE().
-  }
-
-  // Force a final full render of the completion screen.
-  SET LAST_DISPLAY_UT  TO 0.
-  SET LAST_HEADER_UT   TO 0.
-  SET LAST_LOGGER_UT   TO 0.
-  DISPLAY_TICK().
+  _RUN_FLIGHT_PLAN(plan).
 }

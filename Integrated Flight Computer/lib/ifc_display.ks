@@ -39,7 +39,8 @@ FUNCTION DISPLAY_HEADER {
   }
   LOCAL t_str IS "T+" + UI_FORMAT_TIME(TIME:SECONDS - IFC_MISSION_START_UT).
   LOCAL arm_str IS "[ARM]".
-  IF IFC_PHASE = PHASE_DONE { SET arm_str TO "[DONE]". }
+  IF IFC_PHASE = PHASE_DONE    { SET arm_str TO "[DONE]". }
+  IF IFC_MANUAL_MODE           { SET arm_str TO "[MANUAL]". }
   // Build header: "IFC 2.0  <name>         T+ 00:00:00  [ARM]"
   LOCAL left  IS "IFC 2.0  " + ac_name.
   LOCAL right IS t_str + "  " + arm_str.
@@ -82,7 +83,7 @@ FUNCTION _DISPLAY_AIR_DATA {
 // Shown before ARM is confirmed.
 
 FUNCTION DISPLAY_PREARM {
-  PARAMETER proc_idx, rwy_idx, dist_idx.
+  PARAMETER proc_idx, rwy_idx, dist_idx, dest_idx.
   LOCAL ac_name IS "Unknown".
   LOCAL mass_t  IS ROUND(SHIP:MASS, 1).
   IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("name") {
@@ -118,16 +119,40 @@ FUNCTION DISPLAY_PREARM {
   }
 
   UI_P("  AIRCRAFT  " + STR_PAD(ac_name, 24) + "MASS  " + mass_t + " t", UI_PRI_TOP).
-  LOCAL dist_str IS "".
-  IF proc_idx = 0 { SET dist_str TO "   " + dist_names[dist_idx]. }
+  LOCAL slot2_str IS "".
+  IF proc_idx = 0 { SET slot2_str TO "   " + dist_names[dist_idx]. }
+  ELSE IF dest_idx = 1 { SET slot2_str TO "   → ISLAND". }
   UI_P("  PROCEDURE " + proc_names[proc_idx] +
        "   " + rwy_names[rwy_idx] +
-       dist_str, UI_PRI_TOP + 1).
+       slot2_str, UI_PRI_TOP + 1).
   UI_CLR(UI_PRI_TOP + 2).
   UI_P("  SPEEDS  Vapp " + vapp + "  Vref " + vref +
        "  VR " + vr + "  V2 " + v2 + "  m/s", UI_PRI_TOP + 3).
   UI_P("  FLAPS   TAKEOFF (detent " + det_to + ")   " + vfe_str, UI_PRI_TOP + 4).
   UI_CLR(UI_PRI_TOP + 5).
+}
+
+// CRUISE ──────────────────────────────────────────────────
+FUNCTION DISPLAY_CRUISE {
+  _DISPLAY_AIR_DATA().
+  UI_CLR(UI_PRI_TOP + 2).
+  IF CRUISE_WP_INDEX < CRUISE_WAYPOINTS:LENGTH {
+    LOCAL wp_id  IS CRUISE_WAYPOINTS[CRUISE_WP_INDEX].
+    LOCAL wp     IS GET_BEACON(wp_id).
+    LOCAL dist_km IS ROUND(GEO_DISTANCE(SHIP:GEOPOSITION, wp["ll"]) / 1000, 1).
+    LOCAL brg    IS ROUND(GEO_BEARING(SHIP:GEOPOSITION, wp["ll"]), 1).
+    LOCAL wp_num IS CRUISE_WP_INDEX + 1.
+    UI_P("  WPT " + wp_num + "/" + CRUISE_WAYPOINTS:LENGTH + "  " +
+         STR_PAD(wp_id, 16) + "BRG " + STR_RJUST("" + brg, 5) +
+         "°  DIST " + dist_km + " km", UI_PRI_TOP + 3).
+    UI_P("  CRUISE ALT " + ROUND(CRUISE_ALT_M) +
+         " m   MSL " + ROUND(SHIP:ALTITUDE) + " m", UI_PRI_TOP + 4).
+  } ELSE {
+    UI_P("  CRUISE complete — transitioning to approach", UI_PRI_TOP + 3).
+    UI_CLR(UI_PRI_TOP + 4).
+  }
+  UI_P("  SPD TGT " + ROUND(CRUISE_SPD_MPS, 0) +
+       " m/s   THR " + STR_RJUST("" + ROUND(THROTTLE_CMD, 2), 4), UI_PRI_TOP + 5).
 }
 
 // FLY TO FIX ─────────────────────────────────────────────
@@ -386,6 +411,19 @@ FUNCTION DISPLAY_SECONDARY {
          "  locC " + ROUND(TELEM_RO_LOC_CORR, 3) +
          "  rollAsst " + ROUND(TELEM_RO_ROLL_ASSIST, 0), UI_SEC_TOP + 2).
 
+  } ELSE IF IFC_PHASE = PHASE_CRUISE {
+    LOCAL wp_id IS "---".
+    IF CRUISE_WP_INDEX < CRUISE_WAYPOINTS:LENGTH { SET wp_id TO CRUISE_WAYPOINTS[CRUISE_WP_INDEX]. }
+    UI_P("  wpt " + (CRUISE_WP_INDEX + 1) + "/" + CRUISE_WAYPOINTS:LENGTH +
+         "  id " + wp_id +
+         "  alt " + ROUND(CRUISE_ALT_M, 0) +
+         "  spd " + ROUND(CRUISE_SPD_MPS, 0), UI_SEC_TOP).
+    UI_P("  hdg " + ROUND(TELEM_AA_HDG_CMD, 1) +
+         "  fpa " + ROUND(TELEM_AA_FPA_CMD, 2) +
+         "  VS " + ROUND(SHIP:VERTICALSPEED, 1) +
+         "  ThrI " + ROUND(THR_INTEGRAL, 3), UI_SEC_TOP + 1).
+    UI_CLR(UI_SEC_TOP + 2).
+
   } ELSE IF IFC_PHASE = PHASE_TAKEOFF {
     LOCAL v_r IS AC_PARAM("v_r", TAKEOFF_V_R_DEFAULT, 0.001).
     LOCAL v2  IS AC_PARAM("v2",  TAKEOFF_V2_DEFAULT,  0.001).
@@ -446,7 +484,7 @@ FUNCTION DISPLAY_LOGGER_BAR {
 // ── Key hints bar (row 20) ────────────────────────────────
 
 FUNCTION DISPLAY_KEY_HINTS {
-  LOCAL hints IS "  [M]Menu  [D]Debug  [G]Gear  [F/f]Flap  [S]Spoil  [L]Log  [Q]Quit".
+  LOCAL hints IS "  [M]Menu  [C]CWS  [D]Debug  [G]Gear  [F/f]Flap  [S]Spoil  [L]Log  [Q]Quit".
   IF IFC_PHASE = PHASE_ROLLOUT OR IFC_PHASE = PHASE_TOUCHDOWN {
     SET hints TO "  [M]Menu  [D]Debug  [B]Brakes  [L]Log  [Q]Quit".
   } ELSE IF IFC_PHASE = PHASE_DONE {
@@ -491,8 +529,22 @@ FUNCTION DISPLAY_TICK {
     DISPLAY_TOUCHDOWN().
   } ELSE IF IFC_PHASE = PHASE_ROLLOUT {
     DISPLAY_ROLLOUT().
+  } ELSE IF IFC_PHASE = PHASE_CRUISE {
+    DISPLAY_CRUISE().
   } ELSE IF IFC_PHASE = PHASE_TAKEOFF {
     DISPLAY_TAKEOFF().
+  } ELSE IF IFC_PHASE = PHASE_ASCENT {
+    _DISPLAY_AIR_DATA().
+    UI_CLR(UI_PRI_TOP + 2).
+    UI_P("  ASCENT  —  not yet implemented", UI_PRI_TOP + 3).
+    UI_CLR(UI_PRI_TOP + 4).
+    UI_CLR(UI_PRI_TOP + 5).
+  } ELSE IF IFC_PHASE = PHASE_REENTRY {
+    _DISPLAY_AIR_DATA().
+    UI_CLR(UI_PRI_TOP + 2).
+    UI_P("  REENTRY  —  not yet implemented", UI_PRI_TOP + 3).
+    UI_CLR(UI_PRI_TOP + 4).
+    UI_CLR(UI_PRI_TOP + 5).
   } ELSE IF IFC_PHASE = PHASE_DONE {
     DISPLAY_COMPLETE().
   }

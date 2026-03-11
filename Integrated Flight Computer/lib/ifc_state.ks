@@ -150,6 +150,26 @@ GLOBAL TO_SPOOL_PREV_AVAIL IS 0.   // previous-cycle available thrust during pre
 GLOBAL TO_SPOOL_STABLE_UT  IS -1.  // UT when thrust first entered steady-state window
 
 // ----------------------------
+// Flight plan / leg queue
+// ----------------------------
+GLOBAL FLIGHT_PLAN       IS LIST(). // ordered LIST of leg LEXICONs
+GLOBAL FLIGHT_PLAN_INDEX IS 0.      // index of currently executing leg
+
+// ----------------------------
+// Manual override (CWS)
+// ----------------------------
+GLOBAL IFC_MANUAL_MODE IS FALSE. // TRUE = autopilot suspended, pilot has control
+
+// ----------------------------
+// Cruise phase state
+// ----------------------------
+GLOBAL CRUISE_WAYPOINTS   IS LIST().  // ordered list of beacon IDs to navigate
+GLOBAL CRUISE_WP_INDEX    IS 0.       // current index into CRUISE_WAYPOINTS
+GLOBAL CRUISE_ALT_M       IS 3000.    // target cruise altitude MSL (m)
+GLOBAL CRUISE_SPD_MPS     IS 150.     // target cruise IAS (m/s)
+GLOBAL CRUISE_DEST_PLATE  IS 0.       // (legacy) approach plate for destination
+
+// ----------------------------
 // Autoland phase state
 // ----------------------------
 GLOBAL FLARE_PITCH_CMD  IS 0.   // current commanded FPA during flare (deg, smoothed)
@@ -268,6 +288,16 @@ FUNCTION IFC_INIT_STATE {
   SET FLAPS_TARGET_DETENT      TO initial_det.
   SET FLAPS_LAST_STEP_UT       TO TIME:SECONDS.
   SET FLAPS_LAST_TARGET_LOGGED TO -1.
+
+  SET FLIGHT_PLAN       TO LIST().
+  SET FLIGHT_PLAN_INDEX TO 0.
+  SET IFC_MANUAL_MODE   TO FALSE.
+
+  SET CRUISE_WAYPOINTS  TO LIST().
+  SET CRUISE_WP_INDEX   TO 0.
+  SET CRUISE_ALT_M      TO 3000.
+  SET CRUISE_SPD_MPS    TO CRUISE_DEFAULT_SPD.
+  SET CRUISE_DEST_PLATE TO 0.
 
   SET APP_SPOILERS_ARMED  TO FALSE.
   SET TO_RWY_HDG          TO 90.

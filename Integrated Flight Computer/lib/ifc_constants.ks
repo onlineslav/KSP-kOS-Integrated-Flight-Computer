@@ -20,6 +20,9 @@ GLOBAL PHASE_FLARE      IS "FLARE".
 GLOBAL PHASE_TOUCHDOWN  IS "TOUCHDOWN".
 GLOBAL PHASE_ROLLOUT    IS "ROLLOUT".
 GLOBAL PHASE_TAKEOFF    IS "TAKEOFF".
+GLOBAL PHASE_CRUISE     IS "CRUISE".
+GLOBAL PHASE_ASCENT     IS "ASCENT".
+GLOBAL PHASE_REENTRY    IS "REENTRY".
 GLOBAL PHASE_DONE       IS "DONE".
 
 // ----------------------------
@@ -233,6 +236,21 @@ GLOBAL TAKEOFF_CLIMB_SPD_THR_GAIN IS 0.010. // throttle trim per m/s (V2-IAS) in
 GLOBAL TAKEOFF_CLIMB_FPA_SPD_GAIN IS 0.08. // deg FPA reduction per m/s below V2
 GLOBAL TAKEOFF_CLIMB_FPA_MIN      IS 3.0.  // deg minimum climb FPA when speed-protecting
 GLOBAL TAKEOFF_CLIMB_FPA_SLEW_DPS IS 1.6.  // deg/s max FPA change rate for rotate->climb handoff
+
+// ----------------------------
+// Cruise phase defaults
+// ----------------------------
+GLOBAL CRUISE_DEFAULT_SPD     IS 150.    // m/s  default cruise IAS
+GLOBAL CRUISE_DESCENT_START_M IS 15000.  // m    begin blending toward waypoint alt within this range
+
+// ----------------------------
+// Flight plan leg type tags
+// ----------------------------
+GLOBAL LEG_TAKEOFF  IS "TAKEOFF".
+GLOBAL LEG_CRUISE   IS "CRUISE".
+GLOBAL LEG_APPROACH IS "APPROACH".
+GLOBAL LEG_ASCENT   IS "ASCENT".
+GLOBAL LEG_REENTRY  IS "REENTRY".
 
 // ----------------------------
 // Beacon type tags

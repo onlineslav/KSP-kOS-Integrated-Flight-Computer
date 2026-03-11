@@ -15,6 +15,7 @@
 //
 // Live keys (when menu is closed, in-flight):
 //   M         = open menu
+//   C         = toggle manual override (CWS)
 //   D         = toggle debug panel
 //   G         = toggle gear
 //   F / f     = flap step up / down
@@ -32,12 +33,19 @@
 // ----------------------------
 GLOBAL IFC_MENU_OPT_PROC IS 0.  // 0 = ILS Approach, 1 = Takeoff
 GLOBAL IFC_MENU_OPT_RWY  IS 0.  // 0 = RWY 09,       1 = RWY 27
-GLOBAL IFC_MENU_OPT_DIST IS 0.  // 0 = Long 60 km,   1 = Short 30 km
+GLOBAL IFC_MENU_OPT_DIST IS 0.  // 0 = Long 60 km,   1 = Short 30 km  (approach only)
+GLOBAL IFC_MENU_OPT_DEST IS 0.  // 0 = KSC return,   1 = Island        (takeoff only)
+GLOBAL IFC_MENU_OPT_VR   IS 0.  // 0 = use config default, else override m/s
+GLOBAL IFC_MENU_OPT_V2   IS 0.  // 0 = use config default, else override m/s
+GLOBAL IFC_MENU_OPT_VAPP IS 0.  // 0 = use config default, else override m/s
 
 // Menu cursor position (0-based index into item list).
 GLOBAL IFC_MENU_CURSOR IS 0.
 
-LOCAL _MENU_NITEMS IS 7.
+LOCAL _MENU_NITEMS IS 12.
+
+// V-speed step size used by A/D keys
+LOCAL _VSpd_STEP IS 5.  // m/s
 
 // ----------------------------
 // Action-group helpers
@@ -121,6 +129,20 @@ FUNCTION MENU_DO_LOGGER {
   IF LOG_ACTIVE { LOGGER_CLOSE(). } ELSE { LOGGER_INIT(). }
 }
 
+FUNCTION MENU_DO_MANUAL {
+  SET IFC_MANUAL_MODE TO NOT IFC_MANUAL_MODE.
+  IF IFC_MANUAL_MODE {
+    AA_DISABLE_ALL().
+    LOCK THROTTLE TO SHIP:THROTTLE.
+    SET IFC_ALERT_TEXT TO "MANUAL OVERRIDE  —  autopilot suspended".
+  } ELSE {
+    LOCK THROTTLE TO THROTTLE_CMD.
+    AA_INIT().
+    SET IFC_ALERT_TEXT TO "AUTO  —  autopilot resumed".
+  }
+  SET IFC_ALERT_UT TO TIME:SECONDS.
+}
+
 // ----------------------------
 // Menu render (overlay into primary + secondary zone)
 // ----------------------------
@@ -138,19 +160,36 @@ FUNCTION MENU_RENDER {
   IF LOG_ACTIVE { SET log_str TO "ACTIVE ". }
 
   LOCAL dist_item IS "DISTANCE   [" + dist_str + "]".
-  IF IFC_MENU_OPT_PROC = 1 { SET dist_item TO "  (distance: n/a for takeoff)". }
+  IF IFC_MENU_OPT_PROC = 1 {
+    LOCAL dest_label IS "KSC RTRN".
+    IF IFC_MENU_OPT_DEST = 1 { SET dest_label TO "ISLAND  ". }
+    SET dist_item TO "DESTINATION[" + dest_label + "]".
+  }
+
+  // V-speed display: show current override or "---" (= use config)
+  LOCAL vr_str   IS "---".
+  LOCAL v2_str   IS "---".
+  LOCAL vapp_str IS "---".
+  IF IFC_MENU_OPT_VR   > 0 { SET vr_str   TO "" + IFC_MENU_OPT_VR   + " m/s". }
+  IF IFC_MENU_OPT_V2   > 0 { SET v2_str   TO "" + IFC_MENU_OPT_V2   + " m/s". }
+  IF IFC_MENU_OPT_VAPP > 0 { SET vapp_str TO "" + IFC_MENU_OPT_VAPP + " m/s". }
 
   LOCAL items IS LIST(
     "PROCEDURE  [" + proc_str + "]",
     "RUNWAY     [" + rwy_str  + "]",
     dist_item,
+    "VR         [" + STR_PAD(vr_str, 8)   + "]",
+    "V2         [" + STR_PAD(v2_str, 8)   + "]",
+    "VAPP       [" + STR_PAD(vapp_str, 8) + "]",
     "─── ARM ────────────────── [Y]",
     "DEBUG PANEL  [" + dbg_str + "]",
     "LOGGER       [" + log_str + "]",
+    "SAVE PLAN ──────────────── [Y]",
+    "LOAD PLAN ──────────────── [Y]",
     "─── ABORT IFC ───────────── [Q]"
   ).
 
-  // Menu box: occupies primary zone rows UI_PRI_TOP..UI_PRI_BOT
+  // Menu box: starts at UI_PRI_TOP
   LOCAL box_w IS MIN(UI_W - 4, 44).
   LOCAL border IS "  ╔" + STR_REPEAT("═", box_w) + "╗".
   UI_P(border, UI_PRI_TOP).
@@ -200,24 +239,34 @@ FUNCTION MENU_TICK {
       IF IFC_MENU_CURSOR = 0 { SET IFC_MENU_OPT_PROC TO MOD(IFC_MENU_OPT_PROC - 1 + 2, 2). }
       IF IFC_MENU_CURSOR = 1 { SET IFC_MENU_OPT_RWY  TO MOD(IFC_MENU_OPT_RWY  - 1 + 2, 2). }
       IF IFC_MENU_CURSOR = 2 AND IFC_MENU_OPT_PROC = 0 { SET IFC_MENU_OPT_DIST TO MOD(IFC_MENU_OPT_DIST - 1 + 2, 2). }
-      IF IFC_MENU_CURSOR = 4 { SET IFC_DEBUG_PANEL_ON TO NOT IFC_DEBUG_PANEL_ON. }
-      IF IFC_MENU_CURSOR = 5 { MENU_DO_LOGGER(). }
+      IF IFC_MENU_CURSOR = 2 AND IFC_MENU_OPT_PROC = 1 { SET IFC_MENU_OPT_DEST TO MOD(IFC_MENU_OPT_DEST - 1 + 2, 2). }
+      IF IFC_MENU_CURSOR = 3 { SET IFC_MENU_OPT_VR   TO MAX(0, IFC_MENU_OPT_VR   - _VSpd_STEP). }
+      IF IFC_MENU_CURSOR = 4 { SET IFC_MENU_OPT_V2   TO MAX(0, IFC_MENU_OPT_V2   - _VSpd_STEP). }
+      IF IFC_MENU_CURSOR = 5 { SET IFC_MENU_OPT_VAPP TO MAX(0, IFC_MENU_OPT_VAPP - _VSpd_STEP). }
+      IF IFC_MENU_CURSOR = 7 { SET IFC_DEBUG_PANEL_ON TO NOT IFC_DEBUG_PANEL_ON. }
+      IF IFC_MENU_CURSOR = 8 { MENU_DO_LOGGER(). }
       MENU_RENDER().
 
     } ELSE IF ch = "d" OR ch = "D" {
       IF IFC_MENU_CURSOR = 0 { SET IFC_MENU_OPT_PROC TO MOD(IFC_MENU_OPT_PROC + 1, 2). }
       IF IFC_MENU_CURSOR = 1 { SET IFC_MENU_OPT_RWY  TO MOD(IFC_MENU_OPT_RWY  + 1, 2). }
       IF IFC_MENU_CURSOR = 2 AND IFC_MENU_OPT_PROC = 0 { SET IFC_MENU_OPT_DIST TO MOD(IFC_MENU_OPT_DIST + 1, 2). }
-      IF IFC_MENU_CURSOR = 4 { SET IFC_DEBUG_PANEL_ON TO NOT IFC_DEBUG_PANEL_ON. }
-      IF IFC_MENU_CURSOR = 5 { MENU_DO_LOGGER(). }
+      IF IFC_MENU_CURSOR = 2 AND IFC_MENU_OPT_PROC = 1 { SET IFC_MENU_OPT_DEST TO MOD(IFC_MENU_OPT_DEST + 1, 2). }
+      IF IFC_MENU_CURSOR = 3 { SET IFC_MENU_OPT_VR   TO MAX(_VSpd_STEP, IFC_MENU_OPT_VR   + _VSpd_STEP). }
+      IF IFC_MENU_CURSOR = 4 { SET IFC_MENU_OPT_V2   TO MAX(_VSpd_STEP, IFC_MENU_OPT_V2   + _VSpd_STEP). }
+      IF IFC_MENU_CURSOR = 5 { SET IFC_MENU_OPT_VAPP TO MAX(_VSpd_STEP, IFC_MENU_OPT_VAPP + _VSpd_STEP). }
+      IF IFC_MENU_CURSOR = 7 { SET IFC_DEBUG_PANEL_ON TO NOT IFC_DEBUG_PANEL_ON. }
+      IF IFC_MENU_CURSOR = 8 { MENU_DO_LOGGER(). }
       MENU_RENDER().
 
     } ELSE IF ch = "y" OR ch = "Y" OR ch = CHAR(13) {
       SET IFC_MENU_OPEN     TO FALSE.
       SET LAST_SECONDARY_UT TO 1.
       SET LAST_DISPLAY_UT   TO 0.
-      IF IFC_MENU_CURSOR = 3 { RETURN "ARM". }
-      IF IFC_MENU_CURSOR = 6 { RETURN "QUIT". }
+      IF IFC_MENU_CURSOR = 6  { RETURN "ARM". }
+      IF IFC_MENU_CURSOR = 9  { FMS_SAVE_PLAN(). }
+      IF IFC_MENU_CURSOR = 10 { FMS_LOAD_PLAN(). MENU_RENDER(). SET IFC_MENU_OPEN TO TRUE. }
+      IF IFC_MENU_CURSOR = 11 { RETURN "QUIT". }
 
     } ELSE IF ch = "m" OR ch = "M" OR ch = "x" OR ch = "X" {
       SET IFC_MENU_OPEN     TO FALSE.
@@ -231,6 +280,8 @@ FUNCTION MENU_TICK {
   IF      ch = "m" OR ch = "M" {
     SET IFC_MENU_OPEN TO TRUE.
     MENU_RENDER().
+  } ELSE IF ch = "c" OR ch = "C" {
+    MENU_DO_MANUAL().
   } ELSE IF ch = "d" OR ch = "D" {
     SET IFC_DEBUG_PANEL_ON TO NOT IFC_DEBUG_PANEL_ON.
     LOCAL s IS "OFF". IF IFC_DEBUG_PANEL_ON { SET s TO "ON". }

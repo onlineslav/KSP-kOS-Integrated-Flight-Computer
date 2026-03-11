@@ -135,6 +135,62 @@ REGISTER_BEACON(MAKE_BEACON(
 )).
 
 // ----------------------------
+// KSC Island Airstrip approach fixes
+// Same geometry as KSC: IAF30 at 30 km, FAF at 8 km on extended centreline.
+// Elevation 134 m MSL.
+// ----------------------------
+LOCAL isl09_iaf30_ll IS GEO_DESTINATION(isl_rwy09_thr, 270, 30000).
+LOCAL isl09_faf_ll   IS GEO_DESTINATION(isl_rwy09_thr, 270,  8000).
+LOCAL isl27_iaf30_ll IS GEO_DESTINATION(isl_rwy27_thr,  90, 30000).
+LOCAL isl27_faf_ll   IS GEO_DESTINATION(isl_rwy27_thr,  90,  8000).
+LOCAL isl_faf_alt IS isl_elev + ROUND(8000 * TAN(3.0), 0).
+
+REGISTER_BEACON(MAKE_BEACON(
+  "ISL_IAF_09_30", BTYPE_IAF,
+  isl09_iaf30_ll, 1500,
+  LEXICON("name", "ISL RWY09 IAF 30km", "runway", "IS09")
+)).
+REGISTER_BEACON(MAKE_BEACON(
+  "ISL_FAF_09", BTYPE_FAF,
+  isl09_faf_ll, isl_faf_alt,
+  LEXICON("name", "ISL RWY09 FAF 8km", "runway", "IS09")
+)).
+REGISTER_BEACON(MAKE_BEACON(
+  "ISL_IAF_27_30", BTYPE_IAF,
+  isl27_iaf30_ll, 1500,
+  LEXICON("name", "ISL RWY27 IAF 30km", "runway", "IS27")
+)).
+REGISTER_BEACON(MAKE_BEACON(
+  "ISL_FAF_27", BTYPE_FAF,
+  isl27_faf_ll, isl_faf_alt,
+  LEXICON("name", "ISL RWY27 FAF 8km", "runway", "IS27")
+)).
+
+// ----------------------------
+// ISL approach plates
+// ----------------------------
+GLOBAL PLATE_ISL_ILS09 IS MAKE_PLATE(
+  "ISL ILS RWY IS09",
+  "ISL_ILS_09",
+  LIST("ISL_IAF_09_30", "ISL_FAF_09"),
+  70,
+  LEXICON(
+    "ISL_IAF_09_30", 1500,
+    "ISL_FAF_09",    isl_faf_alt
+  )
+).
+GLOBAL PLATE_ISL_ILS27 IS MAKE_PLATE(
+  "ISL ILS RWY IS27",
+  "ISL_ILS_27",
+  LIST("ISL_IAF_27_30", "ISL_FAF_27"),
+  70,
+  LEXICON(
+    "ISL_IAF_27_30", 1500,
+    "ISL_FAF_27",    isl_faf_alt
+  )
+).
+
+// ----------------------------
 // KSC RWY 09 approach fixes
 // IAF-60 and IAF-30 are on the extended centreline west of the threshold.
 // FAF is the glideslope intercept point ~8 km out.
@@ -243,6 +299,28 @@ GLOBAL PLATE_KSC_ILS27_SHORT IS MAKE_PLATE(
     "KSC_FAF_27",    ksc27_faf_alt
   )
 ).
+
+// ----------------------------
+// Plate registry  (for serialisable plan save/load)
+// Maps string ID -> plate LEXICON so legs can store plate_id as a string.
+// ----------------------------
+GLOBAL PLATE_REGISTRY IS LEXICON().
+PLATE_REGISTRY:ADD("PLATE_KSC_ILS09",       PLATE_KSC_ILS09).
+PLATE_REGISTRY:ADD("PLATE_KSC_ILS27",       PLATE_KSC_ILS27).
+PLATE_REGISTRY:ADD("PLATE_KSC_ILS09_SHORT", PLATE_KSC_ILS09_SHORT).
+PLATE_REGISTRY:ADD("PLATE_KSC_ILS27_SHORT", PLATE_KSC_ILS27_SHORT).
+PLATE_REGISTRY:ADD("PLATE_ISL_ILS09",       PLATE_ISL_ILS09).
+PLATE_REGISTRY:ADD("PLATE_ISL_ILS27",       PLATE_ISL_ILS27).
+
+FUNCTION GET_PLATE {
+  PARAMETER id.
+  IF NOT PLATE_REGISTRY:HASKEY(id) {
+    SET IFC_ALERT_TEXT TO "NAV: unknown plate '" + id + "'".
+    SET IFC_ALERT_UT   TO TIME:SECONDS.
+    RETURN 0.
+  }
+  RETURN PLATE_REGISTRY[id].
+}
 
 // ----------------------------
 // Approach plate lookup
