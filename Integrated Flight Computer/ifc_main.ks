@@ -34,24 +34,24 @@
 // ── Load libraries ────────────────────────────────────────
 LOCAL ifc_root IS "0:/Integrated Flight Computer/".
 
-RUNONCEPATH(ifc_root + "lib/ifc_constants.ks").
-RUNONCEPATH(ifc_root + "lib/ifc_state.ks").
-RUNONCEPATH(ifc_root + "lib/ifc_helpers.ks").
-RUNONCEPATH(ifc_root + "lib/ifc_ui.ks").
-RUNONCEPATH(ifc_root + "lib/ifc_menu.ks").
-RUNONCEPATH(ifc_root + "lib/ifc_display.ks").
-RUNONCEPATH(ifc_root + "lib/ifc_aa.ks").
-RUNONCEPATH(ifc_root + "lib/ifc_logger.ks").
-RUNONCEPATH(ifc_root + "lib/ifc_fms.ks").
-RUNONCEPATH(ifc_root + "nav/nav_math.ks").
-RUNONCEPATH(ifc_root + "nav/nav_beacons.ks").
-RUNONCEPATH(ifc_root + "phases/phase_approach.ks").
-RUNONCEPATH(ifc_root + "phases/phase_autoland.ks").
-RUNONCEPATH(ifc_root + "phases/phase_takeoff.ks").
-RUNONCEPATH(ifc_root + "phases/phase_ascent.ks").
-RUNONCEPATH(ifc_root + "phases/phase_reentry.ks").
-RUNONCEPATH(ifc_root + "nav/nav_routes.ks").
-RUNONCEPATH(ifc_root + "phases/phase_cruise.ks").
+RUNPATH(ifc_root + "lib/ifc_constants.ks").
+RUNPATH(ifc_root + "lib/ifc_state.ks").
+RUNPATH(ifc_root + "lib/ifc_helpers.ks").
+RUNPATH(ifc_root + "lib/ifc_ui.ks").
+RUNPATH(ifc_root + "lib/ifc_menu.ks").
+RUNPATH(ifc_root + "lib/ifc_display.ks").
+RUNPATH(ifc_root + "lib/ifc_aa.ks").
+RUNPATH(ifc_root + "lib/ifc_logger.ks").
+RUNPATH(ifc_root + "lib/ifc_fms.ks").
+RUNPATH(ifc_root + "nav/nav_math.ks").
+RUNPATH(ifc_root + "nav/nav_beacons.ks").
+RUNPATH(ifc_root + "phases/phase_approach.ks").
+RUNPATH(ifc_root + "phases/phase_autoland.ks").
+RUNPATH(ifc_root + "phases/phase_takeoff.ks").
+RUNPATH(ifc_root + "phases/phase_ascent.ks").
+RUNPATH(ifc_root + "phases/phase_reentry.ks").
+RUNPATH(ifc_root + "nav/nav_routes.ks").
+RUNPATH(ifc_root + "phases/phase_cruise.ks").
 
 // ── Default aircraft config (if not set externally) ───────
 // Matches aircraft_template.ks structure; safe defaults only.
@@ -181,15 +181,13 @@ FUNCTION _TRY_LOAD_AIRCRAFT_CONFIG {
   LOCAL cfg IS ifc_root + "aircraft/" + vessel_name_key + "_cfg.ks".
 
   IF EXISTS(cfg) {
-    RUNONCEPATH(cfg).
+    RUNPATH(cfg).
     SET ACTIVE_AIRCRAFT TO BUILD_AIRCRAFT_CONFIG().
-    SET IFC_ALERT_TEXT TO "Loaded config: " + SHIP:NAME.
-    SET IFC_ALERT_UT   TO TIME:SECONDS.
+    IFC_SET_ALERT("Loaded config: " + SHIP:NAME).
     RETURN TRUE.
   }
 
-  SET IFC_ALERT_TEXT TO "No config for '" + SHIP:NAME + "' — defaults".
-  SET IFC_ALERT_UT   TO TIME:SECONDS.
+  IFC_SET_ALERT("No config for '" + SHIP:NAME + "' - defaults", "WARN").
   RETURN FALSE.
 }
 
@@ -240,8 +238,7 @@ FUNCTION _INIT_LEG {
     LOCAL ils_id IS "KSC_ILS_" + rwy_id.
     LOCAL ils IS GET_BEACON(ils_id).
     IF NOT ils:HASKEY("ll") {
-      SET IFC_ALERT_TEXT TO "ABORT: no beacon for RWY " + rwy_id.
-      SET IFC_ALERT_UT   TO TIME:SECONDS.
+      IFC_SET_ALERT("ABORT: no beacon for RWY " + rwy_id, "ERROR").
       SET_PHASE(PHASE_DONE).
       RETURN.
     }
@@ -275,8 +272,7 @@ FUNCTION _INIT_LEG {
       SET plate TO GET_PLATE_FOR_RUNWAY(rwy_id, short_app).
     }
     IF plate = 0 {
-      SET IFC_ALERT_TEXT TO "ABORT: no plate for approach leg".
-      SET IFC_ALERT_UT   TO TIME:SECONDS.
+      IFC_SET_ALERT("ABORT: no plate for approach leg", "ERROR").
       SET_PHASE(PHASE_DONE).
       RETURN.
     }
@@ -310,8 +306,7 @@ FUNCTION _RUN_FLIGHT_PLAN {
   PARAMETER plan.
 
   IF plan:LENGTH = 0 {
-    SET IFC_ALERT_TEXT TO "Empty flight plan".
-    SET IFC_ALERT_UT   TO TIME:SECONDS.
+    IFC_SET_ALERT("Empty flight plan", "ERROR").
     RETURN.
   }
 
@@ -331,6 +326,7 @@ FUNCTION _RUN_FLIGHT_PLAN {
   SET FLIGHT_PLAN       TO plan.
   SET FLIGHT_PLAN_INDEX TO 0.
   _INIT_LEG(plan[0]).
+  IFC_SET_UI_MODE(UI_MODE_AUTOFLOW).
 
   // ── Main loop ─────────────────────────────────────────
   UNTIL IFC_PHASE = PHASE_DONE {
@@ -339,7 +335,10 @@ FUNCTION _RUN_FLIGHT_PLAN {
     SET IFC_ACTUAL_DT TO CLAMP(actual_dt, 0.01, 0.5).
 
     LOCAL menu_result IS MENU_TICK().
-    IF menu_result = "QUIT" { SET IFC_PHASE TO PHASE_DONE. }
+    IF menu_result = "QUIT" {
+      SET IFC_PHASE TO PHASE_DONE.
+      IFC_SET_UI_MODE(UI_MODE_COMPLETE).
+    }
 
     IF NOT IFC_MANUAL_MODE {
       IF IFC_PHASE = PHASE_TAKEOFF {
@@ -368,6 +367,7 @@ FUNCTION _RUN_FLIGHT_PLAN {
       SET FLIGHT_PLAN_INDEX TO FLIGHT_PLAN_INDEX + 1.
       IF FLIGHT_PLAN_INDEX < FLIGHT_PLAN:LENGTH {
         _INIT_LEG(plan[FLIGHT_PLAN_INDEX]).
+        IF NOT IFC_MANUAL_MODE { IFC_SET_UI_MODE(UI_MODE_AUTOFLOW). }
       }
       // If still PHASE_DONE (no more legs or _INIT_LEG aborted), loop exits.
     }
@@ -388,6 +388,8 @@ FUNCTION _RUN_FLIGHT_PLAN {
     VR_PROBE_FINALIZE().
   }
 
+  IFC_SET_UI_MODE(UI_MODE_COMPLETE).
+
   SET LAST_DISPLAY_UT  TO 0.
   SET LAST_HEADER_UT   TO 0.
   SET LAST_LOGGER_UT   TO 0.
@@ -398,9 +400,11 @@ FUNCTION _RUN_FLIGHT_PLAN {
 // Shows the pre-arm page, opens the FMS menu, and waits for
 // the user to ARM or QUIT.  On ARM, calls _RUN_FLIGHT_PLAN.
 FUNCTION _IFC_INTERACTIVE_START {
+  IFC_INIT_STATE().
   SET IFC_MISSION_START_UT TO TIME:SECONDS.
   SET IFC_PHASE    TO PHASE_PREARM.
   SET IFC_SUBPHASE TO "".
+  IFC_SET_UI_MODE(UI_MODE_PREARM).
   UI_INIT().
 
   IF ACTIVE_AIRCRAFT = 0 {
@@ -416,18 +420,17 @@ FUNCTION _IFC_INTERACTIVE_START {
   DISPLAY_ALERT_BAR().
 
   // Open FMS menu immediately so the user can navigate.
-  SET IFC_MENU_OPEN TO TRUE.
-  MENU_RENDER().
+  MENU_OPEN().
 
   LOCAL result IS "".
   UNTIL result = "ARM" OR result = "QUIT" {
     SET result TO MENU_TICK().
     // Refresh pre-arm page whenever the menu is closed.
-    IF NOT IFC_MENU_OPEN {
+    IF IFC_UI_MODE <> UI_MODE_MENU_OVERLAY {
       DISPLAY_PREARM(IFC_MENU_OPT_PROC, IFC_MENU_OPT_RWY, IFC_MENU_OPT_DIST, IFC_MENU_OPT_DEST).
     }
     DISPLAY_TICK().
-    WAIT 0.05.
+    WAIT IFC_LOOP_DT.
   }
 
   IF result = "QUIT" { RETURN. }

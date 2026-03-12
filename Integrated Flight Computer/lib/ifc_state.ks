@@ -97,7 +97,14 @@ GLOBAL LAST_SECONDARY_UT  IS 0.      // secondary zone rate-limiter
 GLOBAL LAST_LOGGER_UT     IS 0.      // logger bar rate-limiter
 GLOBAL IFC_ALERT_TEXT     IS "".     // current alert message
 GLOBAL IFC_ALERT_UT       IS -99.    // UT when alert was set (for expiry)
+GLOBAL IFC_ALERT_LAST_LINE IS "__INIT__". // last rendered alert row text (prevents redundant UI writes)
 GLOBAL IFC_MENU_OPEN      IS FALSE.  // TRUE when menu overlay is visible
+GLOBAL IFC_MENU_DIRTY     IS FALSE.  // TRUE when overlay needs redraw
+GLOBAL IFC_UI_MODE        IS "".     // active interaction mode (UI_MODE_*)
+GLOBAL IFC_EVENT_QUEUE    IS LIST(). // recent events, newest at end
+GLOBAL IFC_EVENT_LAST_UT  IS -99.    // last alert UT mirrored into queue
+GLOBAL IFC_EVENT_LAST_TEXT IS "".    // last mirrored alert text
+GLOBAL IFC_EVENT_VIEW_IDX IS 0.      // newest event index shown in history view
 
 // ----------------------------
 // Telemetry export
@@ -240,7 +247,14 @@ FUNCTION IFC_INIT_STATE {
   SET LAST_LOGGER_UT   TO 0.
   SET IFC_ALERT_TEXT   TO "".
   SET IFC_ALERT_UT     TO -99.
+  SET IFC_ALERT_LAST_LINE TO "__INIT__".
   SET IFC_MENU_OPEN    TO FALSE.
+  SET IFC_MENU_DIRTY   TO FALSE.
+  SET IFC_UI_MODE      TO UI_MODE_PREARM.
+  SET IFC_EVENT_QUEUE  TO LIST().
+  SET IFC_EVENT_LAST_UT TO -99.
+  SET IFC_EVENT_LAST_TEXT TO "".
+  SET IFC_EVENT_VIEW_IDX TO 0.
   SET IFC_CYCLE_UT     TO TIME:SECONDS.
   SET IFC_ACTUAL_DT TO IFC_LOOP_DT.
   SET FLARE_PITCH_CMD  TO 0.

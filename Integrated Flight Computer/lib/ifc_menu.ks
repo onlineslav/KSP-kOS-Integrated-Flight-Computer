@@ -2,76 +2,396 @@
 
 // ============================================================
 // ifc_menu.ks  -  Integrated Flight Computer
-// FMS menu navigation state and keyboard input handler.
-//
-// MENU_TICK() is called once per main loop cycle (non-blocking).
-// In-flight live keys are handled here too.
-//
-// Menu navigation (when menu is open):
-//   W / S     = cursor up / down
-//   A / D     = cycle value left / right for [value] items
-//   Y / Enter = execute selected item
-//   M / X     = close menu without action
-//
-// Live keys (when menu is closed, in-flight):
-//   M         = open menu
-//   C         = toggle manual override (CWS)
-//   D         = toggle debug panel
-//   G         = toggle gear
-//   F / f     = flap step up / down
-//   S         = toggle spoilers
-//   T         = toggle thrust reversers
-//   P         = toggle drogue chute
-//   B         = toggle wheel brakes
-//   L         = start / stop logger
-//   Q         = abort IFC (returns "QUIT")
+// Data-driven menu + command dispatcher.
 // ============================================================
 
-// ----------------------------
-// Persistent selection state
-// (used by startup screen and retained in-flight for re-arm)
-// ----------------------------
-GLOBAL IFC_MENU_OPT_PROC IS 0.  // 0 = ILS Approach, 1 = Takeoff
-GLOBAL IFC_MENU_OPT_RWY  IS 0.  // 0 = RWY 09,       1 = RWY 27
-GLOBAL IFC_MENU_OPT_DIST IS 0.  // 0 = Long 60 km,   1 = Short 30 km  (approach only)
-GLOBAL IFC_MENU_OPT_DEST IS 0.  // 0 = KSC return,   1 = Island        (takeoff only)
-GLOBAL IFC_MENU_OPT_VR   IS 0.  // 0 = use config default, else override m/s
-GLOBAL IFC_MENU_OPT_V2   IS 0.  // 0 = use config default, else override m/s
-GLOBAL IFC_MENU_OPT_VAPP IS 0.  // 0 = use config default, else override m/s
+GLOBAL IFC_MENU_OPT_PROC IS 0.  // 0 = approach, 1 = takeoff
+GLOBAL IFC_MENU_OPT_RWY  IS 0.  // 0 = 09, 1 = 27
+GLOBAL IFC_MENU_OPT_DIST IS 0.  // 0 = long, 1 = short
+GLOBAL IFC_MENU_OPT_DEST IS 0.  // 0 = KSC, 1 = island
+GLOBAL IFC_MENU_OPT_VR   IS 0.  // 0 = config default
+GLOBAL IFC_MENU_OPT_V2   IS 0.  // 0 = config default
+GLOBAL IFC_MENU_OPT_VAPP IS 0.  // 0 = config default
 
-// Menu cursor position (0-based index into item list).
+GLOBAL IFC_MENU_STG_PROC IS 0.
+GLOBAL IFC_MENU_STG_RWY  IS 0.
+GLOBAL IFC_MENU_STG_DIST IS 0.
+GLOBAL IFC_MENU_STG_DEST IS 0.
+GLOBAL IFC_MENU_STG_VR   IS 0.
+GLOBAL IFC_MENU_STG_V2   IS 0.
+GLOBAL IFC_MENU_STG_VAPP IS 0.
+
+GLOBAL IFC_MENU_SLOT   IS 1.
 GLOBAL IFC_MENU_CURSOR IS 0.
+GLOBAL IFC_MENU_SCROLL IS 0.
+GLOBAL IFC_MENU_PAGE   IS "MAIN". // MAIN or EVENTS
+GLOBAL IFC_MENU_ITEMS  IS LIST().
 
-LOCAL _MENU_NITEMS IS 12.
+LOCAL _VSPD_STEP IS 5.
 
-// V-speed step size used by A/D keys
-LOCAL _VSpd_STEP IS 5.  // m/s
+FUNCTION MENU_STAGE_FROM_LIVE {
+  SET IFC_MENU_STG_PROC TO IFC_MENU_OPT_PROC.
+  SET IFC_MENU_STG_RWY  TO IFC_MENU_OPT_RWY.
+  SET IFC_MENU_STG_DIST TO IFC_MENU_OPT_DIST.
+  SET IFC_MENU_STG_DEST TO IFC_MENU_OPT_DEST.
+  SET IFC_MENU_STG_VR   TO IFC_MENU_OPT_VR.
+  SET IFC_MENU_STG_V2   TO IFC_MENU_OPT_V2.
+  SET IFC_MENU_STG_VAPP TO IFC_MENU_OPT_VAPP.
+}
 
-// ----------------------------
-// Action-group helpers
-// (called by both live keys and menu execute)
-// ----------------------------
+FUNCTION MENU_STAGE_COMMIT {
+  SET IFC_MENU_OPT_PROC TO IFC_MENU_STG_PROC.
+  SET IFC_MENU_OPT_RWY  TO IFC_MENU_STG_RWY.
+  SET IFC_MENU_OPT_DIST TO IFC_MENU_STG_DIST.
+  SET IFC_MENU_OPT_DEST TO IFC_MENU_STG_DEST.
+  SET IFC_MENU_OPT_VR   TO IFC_MENU_STG_VR.
+  SET IFC_MENU_OPT_V2   TO IFC_MENU_STG_V2.
+  SET IFC_MENU_OPT_VAPP TO IFC_MENU_STG_VAPP.
+}
+
+FUNCTION MENU_VALIDATE_STAGE {
+  IF IFC_MENU_STG_PROC = 0 {
+    IF IFC_MENU_STG_VAPP > 0 AND IFC_MENU_STG_VAPP < 35 { RETURN "VAPP too low". }
+  } ELSE {
+    IF IFC_MENU_STG_VR > 0 AND IFC_MENU_STG_V2 > 0 AND IFC_MENU_STG_VR >= IFC_MENU_STG_V2 {
+      RETURN "VR must be below V2".
+    }
+  }
+  RETURN "".
+}
+
+FUNCTION _MENU_GET_VALUE {
+  PARAMETER key.
+
+  IF key = "proc" { RETURN IFC_MENU_STG_PROC. }
+  IF key = "rwy"  { RETURN IFC_MENU_STG_RWY. }
+  IF key = "dist" { RETURN IFC_MENU_STG_DIST. }
+  IF key = "dest" { RETURN IFC_MENU_STG_DEST. }
+  IF key = "vr"   { RETURN IFC_MENU_STG_VR. }
+  IF key = "v2"   { RETURN IFC_MENU_STG_V2. }
+  IF key = "vapp" { RETURN IFC_MENU_STG_VAPP. }
+  IF key = "slot" { RETURN IFC_MENU_SLOT. }
+
+  IF key = "debug" {
+    IF IFC_DEBUG_PANEL_ON { RETURN 1. }
+    RETURN 0.
+  }
+  IF key = "logger" {
+    IF LOG_ACTIVE { RETURN 1. }
+    RETURN 0.
+  }
+  IF key = "manual" {
+    IF IFC_MANUAL_MODE { RETURN 1. }
+    RETURN 0.
+  }
+  RETURN 0.
+}
+
+FUNCTION _MENU_SET_VALUE {
+  PARAMETER key, val.
+
+  IF key = "proc" {
+    SET IFC_MENU_STG_PROC TO MOD(MAX(ROUND(val, 0), 0), 2).
+    RETURN.
+  }
+  IF key = "rwy" {
+    SET IFC_MENU_STG_RWY TO MOD(MAX(ROUND(val, 0), 0), 2).
+    RETURN.
+  }
+  IF key = "dist" {
+    SET IFC_MENU_STG_DIST TO MOD(MAX(ROUND(val, 0), 0), 2).
+    RETURN.
+  }
+  IF key = "dest" {
+    SET IFC_MENU_STG_DEST TO MOD(MAX(ROUND(val, 0), 0), 2).
+    RETURN.
+  }
+  IF key = "vr" {
+    SET IFC_MENU_STG_VR TO MAX(0, ROUND(val, 0)).
+    RETURN.
+  }
+  IF key = "v2" {
+    SET IFC_MENU_STG_V2 TO MAX(0, ROUND(val, 0)).
+    RETURN.
+  }
+  IF key = "vapp" {
+    SET IFC_MENU_STG_VAPP TO MAX(0, ROUND(val, 0)).
+    RETURN.
+  }
+  IF key = "slot" {
+    SET IFC_MENU_SLOT TO CLAMP(ROUND(val, 0), FMS_SLOT_MIN, FMS_SLOT_MAX).
+    RETURN.
+  }
+
+  IF key = "debug" {
+    SET IFC_DEBUG_PANEL_ON TO val > 0.
+    LOCAL s IS "OFF".
+    IF IFC_DEBUG_PANEL_ON { SET s TO "ON". }
+    IFC_SET_ALERT("Debug panel " + s).
+    RETURN.
+  }
+
+  IF key = "logger" {
+    IF val > 0 {
+      IF NOT LOG_ACTIVE { LOGGER_INIT(). }
+    } ELSE {
+      IF LOG_ACTIVE { LOGGER_CLOSE(). }
+    }
+    RETURN.
+  }
+
+  IF key = "manual" {
+    IF val > 0 AND NOT IFC_MANUAL_MODE { MENU_DO_MANUAL(). }
+    IF val <= 0 AND IFC_MANUAL_MODE { MENU_DO_MANUAL(). }
+    RETURN.
+  }
+}
+
+FUNCTION _MENU_ADD_ITEM {
+  PARAMETER item.
+  IFC_MENU_ITEMS:ADD(item).
+}
+
+FUNCTION MENU_BUILD_ITEMS {
+  SET IFC_MENU_ITEMS TO LIST().
+
+  IF IFC_PHASE = PHASE_PREARM {
+    LOCAL ac_name IS "Unknown".
+    IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("name") {
+      SET ac_name TO ACTIVE_AIRCRAFT["name"].
+    }
+    LOCAL aa_str IS "NO".
+    IF AA_AVAILABLE { SET aa_str TO "YES". }
+    LOCAL far_str IS "NO".
+    IF FAR_AVAILABLE { SET far_str TO "YES". }
+    LOCAL proc_preview IS "APPROACH".
+    IF IFC_MENU_STG_PROC = 1 { SET proc_preview TO "TAKEOFF". }
+    LOCAL rwy_preview IS "09".
+    IF IFC_MENU_STG_RWY = 1 { SET rwy_preview TO "27". }
+
+    _MENU_ADD_ITEM(LEXICON("type","choice","key","proc","label","Procedure","choices",LIST("ILS Approach","Takeoff"))).
+    _MENU_ADD_ITEM(LEXICON("type","choice","key","rwy","label","Runway","choices",LIST("RWY 09","RWY 27"))).
+    IF IFC_MENU_STG_PROC = 0 {
+      _MENU_ADD_ITEM(LEXICON("type","choice","key","dist","label","Start Dist","choices",LIST("Long 60 km","Short 30 km"))).
+    } ELSE {
+      _MENU_ADD_ITEM(LEXICON("type","choice","key","dest","label","Destination","choices",LIST("KSC Return","Island"))).
+    }
+    _MENU_ADD_ITEM(LEXICON("type","numeric","key","vr","label","VR (m/s)","min",0,"max",220,"step",_VSPD_STEP,"auto",1)).
+    _MENU_ADD_ITEM(LEXICON("type","numeric","key","v2","label","V2 (m/s)","min",0,"max",260,"step",_VSPD_STEP,"auto",1)).
+    _MENU_ADD_ITEM(LEXICON("type","numeric","key","vapp","label","VAPP (m/s)","min",0,"max",220,"step",_VSPD_STEP,"auto",1)).
+    _MENU_ADD_ITEM(LEXICON("type","numeric","key","slot","label","Plan Slot","min",FMS_SLOT_MIN,"max",FMS_SLOT_MAX,"step",1,"auto",0)).
+    _MENU_ADD_ITEM(LEXICON("type","toggle","key","debug","label","Debug Panel")).
+    _MENU_ADD_ITEM(LEXICON("type","toggle","key","logger","label","Logger")).
+    _MENU_ADD_ITEM(LEXICON("type","action","key","save","label","Save Slot")).
+    _MENU_ADD_ITEM(LEXICON("type","action","key","load","label","Load Slot")).
+    _MENU_ADD_ITEM(LEXICON("type","action","key","events","label","Event History")).
+    _MENU_ADD_ITEM(LEXICON("type","action","key","arm","label","ARM IFC")).
+    _MENU_ADD_ITEM(LEXICON("type","action","key","quit","label","Quit")).
+    _MENU_ADD_ITEM(LEXICON("type","info","label","--- Prearm Summary ---")).
+    _MENU_ADD_ITEM(LEXICON("type","info","label","Aircraft: " + ac_name)).
+    _MENU_ADD_ITEM(LEXICON("type","info","label","Procedure preview: " + proc_preview + " RWY " + rwy_preview)).
+    _MENU_ADD_ITEM(LEXICON("type","info","label","Cfg VAPP " + ROUND(AC_PARAM("v_app", 75, 0.001), 0) + "  VREF " + ROUND(AC_PARAM("v_ref", 65, 0.001), 0))).
+    _MENU_ADD_ITEM(LEXICON("type","info","label","Cfg VR " + ROUND(AC_PARAM("v_r", TAKEOFF_V_R_DEFAULT, 0.001), 0) + "  V2 " + ROUND(AC_PARAM("v2", TAKEOFF_V2_DEFAULT, 0.001), 0))).
+    _MENU_ADD_ITEM(LEXICON("type","info","label","AA detected: " + aa_str + "   FAR detected: " + far_str)).
+    _MENU_ADD_ITEM(LEXICON("type","info","label","Use ARM only after validation passes.")).
+    RETURN.
+  }
+
+  _MENU_ADD_ITEM(LEXICON("type","action","key","gear","label","Toggle Gear")).
+  _MENU_ADD_ITEM(LEXICON("type","action","key","flap_up","label","Flaps Step Up")).
+  _MENU_ADD_ITEM(LEXICON("type","action","key","flap_dn","label","Flaps Step Down")).
+  _MENU_ADD_ITEM(LEXICON("type","action","key","spoilers","label","Toggle Spoilers")).
+  _MENU_ADD_ITEM(LEXICON("type","action","key","brakes","label","Toggle Brakes")).
+  _MENU_ADD_ITEM(LEXICON("type","action","key","thrust_rev","label","Toggle Thrust Rev")).
+  _MENU_ADD_ITEM(LEXICON("type","action","key","drogue","label","Toggle Drogue")).
+  _MENU_ADD_ITEM(LEXICON("type","toggle","key","manual","label","Manual Override")).
+  _MENU_ADD_ITEM(LEXICON("type","toggle","key","debug","label","Debug Panel")).
+  _MENU_ADD_ITEM(LEXICON("type","toggle","key","logger","label","Logger")).
+  _MENU_ADD_ITEM(LEXICON("type","action","key","events","label","Event History")).
+  _MENU_ADD_ITEM(LEXICON("type","action","key","close","label","Close Menu")).
+  _MENU_ADD_ITEM(LEXICON("type","action","key","quit","label","Quit IFC")).
+}
+
+FUNCTION _MENU_ITEM_VALUE_TEXT {
+  PARAMETER item.
+  LOCAL t IS item["type"].
+  LOCAL key IS item["key"].
+
+  IF t = "choice" {
+    LOCAL idx IS ROUND(_MENU_GET_VALUE(key), 0).
+    LOCAL opts IS item["choices"].
+    IF idx < 0 { SET idx TO 0. }
+    IF idx >= opts:LENGTH { SET idx TO opts:LENGTH - 1. }
+    RETURN opts[idx].
+  }
+
+  IF t = "numeric" {
+    LOCAL num_val IS ROUND(_MENU_GET_VALUE(key), 0).
+    IF item["auto"] = 1 AND num_val <= 0 { RETURN "AUTO". }
+    RETURN "" + num_val.
+  }
+
+  IF t = "toggle" {
+    IF _MENU_GET_VALUE(key) > 0 { RETURN "ON". }
+    RETURN "OFF".
+  }
+
+  RETURN "".
+}
+
+FUNCTION _MENU_ITEM_LINE {
+  PARAMETER item.
+  LOCAL t IS item["type"].
+  LOCAL label IS item["label"].
+  IF t = "action" { RETURN label. }
+  IF t = "info" { RETURN label. }
+  RETURN label + ": " + _MENU_ITEM_VALUE_TEXT(item).
+}
+
+FUNCTION _MENU_VISIBLE_ROWS {
+  // Dynamic: fill the full menu box height between primary/secondary bounds.
+  // rows used by frame/header/tail:
+  //   top border, title row, tail row, bottom border.
+  LOCAL rows_avail IS UI_SEC_BOT - UI_PRI_TOP - 3.
+  RETURN MAX(rows_avail, 4).
+}
+
+FUNCTION _MENU_CURSOR_CLAMP {
+  IF IFC_MENU_ITEMS:LENGTH <= 0 {
+    SET IFC_MENU_CURSOR TO 0.
+    SET IFC_MENU_SCROLL TO 0.
+    RETURN.
+  }
+
+  SET IFC_MENU_CURSOR TO CLAMP(IFC_MENU_CURSOR, 0, IFC_MENU_ITEMS:LENGTH - 1).
+  LOCAL vis IS _MENU_VISIBLE_ROWS().
+  IF IFC_MENU_CURSOR < IFC_MENU_SCROLL { SET IFC_MENU_SCROLL TO IFC_MENU_CURSOR. }
+  IF IFC_MENU_CURSOR >= IFC_MENU_SCROLL + vis {
+    SET IFC_MENU_SCROLL TO IFC_MENU_CURSOR - vis + 1.
+  }
+  LOCAL max_scroll IS MAX(IFC_MENU_ITEMS:LENGTH - vis, 0).
+  SET IFC_MENU_SCROLL TO CLAMP(IFC_MENU_SCROLL, 0, max_scroll).
+}
+
+FUNCTION _MENU_RENDER_MAIN_ROW {
+  PARAMETER idx.
+
+  LOCAL vis_rows IS _MENU_VISIBLE_ROWS().
+  IF idx < IFC_MENU_SCROLL OR idx >= IFC_MENU_SCROLL + vis_rows { RETURN. }
+  IF idx < 0 OR idx >= IFC_MENU_ITEMS:LENGTH { RETURN. }
+
+  LOCAL inner_w IS MAX(UI_W - 4, 30).
+  LOCAL row_idx IS UI_PRI_TOP + 2 + (idx - IFC_MENU_SCROLL).
+  LOCAL prefix IS "  ".
+  IF idx = IFC_MENU_CURSOR { SET prefix TO "> ". }
+  LOCAL txt IS prefix + _MENU_ITEM_LINE(IFC_MENU_ITEMS[idx]).
+  UI_P("  | " + STR_PAD(txt, inner_w - 1) + "|", row_idx).
+}
+
+FUNCTION _MENU_RENDER_MAIN_TAIL {
+  LOCAL inner_w IS MAX(UI_W - 4, 30).
+  LOCAL vis_rows IS _MENU_VISIBLE_ROWS().
+
+  LOCAL tail IS "items " + (IFC_MENU_CURSOR + 1) + "/" + IFC_MENU_ITEMS:LENGTH.
+  IF IFC_PHASE = PHASE_PREARM {
+    LOCAL msg IS MENU_VALIDATE_STAGE().
+    IF msg <> "" { SET tail TO "validation: " + msg. }
+  }
+  UI_P("  | " + STR_PAD(tail, inner_w - 1) + "|", UI_PRI_TOP + 2 + vis_rows).
+}
+
+FUNCTION _MENU_RENDER_CURSOR_FAST {
+  PARAMETER prev_cursor, prev_scroll.
+
+  IF IFC_MENU_PAGE <> "MAIN" { MENU_RENDER(). RETURN. }
+  IF prev_scroll <> IFC_MENU_SCROLL { MENU_RENDER(). RETURN. }
+
+  _MENU_RENDER_MAIN_ROW(prev_cursor).
+  _MENU_RENDER_MAIN_ROW(IFC_MENU_CURSOR).
+  _MENU_RENDER_MAIN_TAIL().
+  SET IFC_MENU_DIRTY TO FALSE.
+}
+
+FUNCTION MENU_RENDER {
+  LOCAL top IS UI_PRI_TOP.
+  LOCAL bot IS UI_SEC_BOT.
+  LOCAL inner_w IS MAX(UI_W - 4, 30).
+
+  IF IFC_MENU_PAGE = "EVENTS" {
+    UI_P("  +" + STR_REPEAT("-", inner_w) + "+", top).
+    UI_P("  | " + STR_PAD("Event History (W/S scroll, Y/M back)", inner_w - 1) + "|", top + 1).
+
+    LOCAL rows IS IFC_EVENT_HISTORY_ROWS.
+    LOCAL row_idx IS 0.
+    UNTIL row_idx >= rows {
+      LOCAL idx IS IFC_EVENT_VIEW_IDX - row_idx.
+      LOCAL line IS "".
+      IF idx >= 0 AND idx < IFC_EVENT_QUEUE:LENGTH {
+        LOCAL e IS IFC_EVENT_QUEUE[idx].
+        LOCAL t IS UI_FORMAT_TIME(e["ut"] - IFC_MISSION_START_UT).
+        SET line TO "T+" + t + " " + e["sev"] + " " + e["msg"].
+      }
+      UI_P("  | " + STR_PAD(line, inner_w - 1) + "|", top + 2 + row_idx).
+      SET row_idx TO row_idx + 1.
+    }
+
+    UI_P("  | " + STR_PAD("Use W/S then Y to return", inner_w - 1) + "|", top + 2 + rows).
+    UI_P("  +" + STR_REPEAT("-", inner_w) + "+", bot).
+    SET IFC_MENU_DIRTY TO FALSE.
+    RETURN.
+  }
+
+  MENU_BUILD_ITEMS().
+  _MENU_CURSOR_CLAMP().
+
+  UI_P("  +" + STR_REPEAT("-", inner_w) + "+", top).
+  LOCAL title IS "FMS MENU".
+  IF IFC_PHASE = PHASE_PREARM { SET title TO "FMS PREARM". }
+  UI_P("  | " + STR_PAD(title + "  [W/S move  A/D change  Y exec  M close]", inner_w - 1) + "|", top + 1).
+
+  LOCAL vis IS _MENU_VISIBLE_ROWS().
+  LOCAL i IS 0.
+  UNTIL i >= vis {
+    LOCAL idx IS IFC_MENU_SCROLL + i.
+    LOCAL line IS "".
+    IF idx < IFC_MENU_ITEMS:LENGTH {
+      LOCAL prefix IS "  ".
+      IF idx = IFC_MENU_CURSOR { SET prefix TO "> ". }
+      SET line TO prefix + _MENU_ITEM_LINE(IFC_MENU_ITEMS[idx]).
+    }
+    UI_P("  | " + STR_PAD(line, inner_w - 1) + "|", top + 2 + i).
+    SET i TO i + 1.
+  }
+
+  LOCAL tail IS "items " + (IFC_MENU_CURSOR + 1) + "/" + IFC_MENU_ITEMS:LENGTH.
+  IF IFC_PHASE = PHASE_PREARM {
+    LOCAL msg IS MENU_VALIDATE_STAGE().
+    IF msg <> "" { SET tail TO "validation: " + msg. }
+  }
+  UI_P("  | " + STR_PAD(tail, inner_w - 1) + "|", top + 2 + vis).
+  UI_P("  +" + STR_REPEAT("-", inner_w) + "+", bot).
+  SET IFC_MENU_DIRTY TO FALSE.
+}
 
 FUNCTION MENU_DO_FLAP_UP {
   IF ACTIVE_AIRCRAFT = 0 { RETURN. }
   LOCAL ag IS 0.
   IF ACTIVE_AIRCRAFT:HASKEY("ag_flaps_step_up") { SET ag TO ACTIVE_AIRCRAFT["ag_flaps_step_up"]. }
-  IF ag <= 0 { RETURN. }
+  IF ag <= 0 { IFC_SET_ALERT("No flap-up AG configured", "WARN"). RETURN. }
   LOCAL max_det IS ROUND(AC_PARAM("flaps_max_detent", 3, 0)).
   IF FLAPS_CURRENT_DETENT >= max_det { RETURN. }
   PULSE_AG(ag).
   SET FLAPS_CURRENT_DETENT TO CLAMP(FLAPS_CURRENT_DETENT + 1, 0, max_det).
   SET FLAPS_TARGET_DETENT  TO FLAPS_CURRENT_DETENT.
   SET FLAPS_LAST_STEP_UT   TO TIME:SECONDS.
-  SET IFC_ALERT_TEXT TO "FLAP UP -> detent " + FLAPS_CURRENT_DETENT.
-  SET IFC_ALERT_UT   TO TIME:SECONDS.
+  IFC_SET_ALERT("Flaps up -> detent " + FLAPS_CURRENT_DETENT).
 }
 
 FUNCTION MENU_DO_FLAP_DN {
   IF ACTIVE_AIRCRAFT = 0 { RETURN. }
   LOCAL ag IS 0.
   IF ACTIVE_AIRCRAFT:HASKEY("ag_flaps_step_down") { SET ag TO ACTIVE_AIRCRAFT["ag_flaps_step_down"]. }
-  IF ag <= 0 { RETURN. }
+  IF ag <= 0 { IFC_SET_ALERT("No flap-down AG configured", "WARN"). RETURN. }
   LOCAL det_up IS ROUND(AC_PARAM("flaps_detent_up", 0, 0)).
   IF FLAPS_CURRENT_DETENT <= det_up { RETURN. }
   LOCAL max_det IS ROUND(AC_PARAM("flaps_max_detent", 3, 0)).
@@ -79,50 +399,44 @@ FUNCTION MENU_DO_FLAP_DN {
   SET FLAPS_CURRENT_DETENT TO CLAMP(FLAPS_CURRENT_DETENT - 1, 0, max_det).
   SET FLAPS_TARGET_DETENT  TO FLAPS_CURRENT_DETENT.
   SET FLAPS_LAST_STEP_UT   TO TIME:SECONDS.
-  SET IFC_ALERT_TEXT TO "FLAP DN -> detent " + FLAPS_CURRENT_DETENT.
-  SET IFC_ALERT_UT   TO TIME:SECONDS.
+  IFC_SET_ALERT("Flaps down -> detent " + FLAPS_CURRENT_DETENT).
 }
 
 FUNCTION MENU_DO_SPOILERS {
   IF ACTIVE_AIRCRAFT = 0 { RETURN. }
   LOCAL ag IS 0.
   IF ACTIVE_AIRCRAFT:HASKEY("ag_spoilers") { SET ag TO ACTIVE_AIRCRAFT["ag_spoilers"]. }
-  IF ag <= 0 { RETURN. }
+  IF ag <= 0 { IFC_SET_ALERT("No spoiler AG configured", "WARN"). RETURN. }
   PULSE_AG(ag).
-  SET IFC_ALERT_TEXT TO "SPOILERS toggled (AG" + ag + ")".
-  SET IFC_ALERT_UT   TO TIME:SECONDS.
+  IFC_SET_ALERT("Spoilers toggled (AG" + ag + ")").
 }
 
 FUNCTION MENU_DO_GEAR {
   IF GEAR { GEAR OFF. } ELSE { GEAR ON. }
-  SET IFC_ALERT_TEXT TO "GEAR toggled".
-  SET IFC_ALERT_UT   TO TIME:SECONDS.
+  IFC_SET_ALERT("Gear toggled").
 }
 
 FUNCTION MENU_DO_THRUST_REV {
   IF ACTIVE_AIRCRAFT = 0 { RETURN. }
   LOCAL ag IS 0.
   IF ACTIVE_AIRCRAFT:HASKEY("ag_thrust_rev") { SET ag TO ACTIVE_AIRCRAFT["ag_thrust_rev"]. }
-  IF ag <= 0 { RETURN. }
+  IF ag <= 0 { IFC_SET_ALERT("No thrust-reverse AG configured", "WARN"). RETURN. }
   PULSE_AG(ag).
-  SET IFC_ALERT_TEXT TO "THRUST REV (AG" + ag + ")".
-  SET IFC_ALERT_UT   TO TIME:SECONDS.
+  IFC_SET_ALERT("Thrust reverse toggled (AG" + ag + ")").
 }
 
 FUNCTION MENU_DO_DROGUE {
   IF ACTIVE_AIRCRAFT = 0 { RETURN. }
   LOCAL ag IS 0.
   IF ACTIVE_AIRCRAFT:HASKEY("ag_drogue") { SET ag TO ACTIVE_AIRCRAFT["ag_drogue"]. }
-  IF ag <= 0 { RETURN. }
+  IF ag <= 0 { IFC_SET_ALERT("No drogue AG configured", "WARN"). RETURN. }
   PULSE_AG(ag).
-  SET IFC_ALERT_TEXT TO "DROGUE toggled (AG" + ag + ")".
-  SET IFC_ALERT_UT   TO TIME:SECONDS.
+  IFC_SET_ALERT("Drogue toggled (AG" + ag + ")").
 }
 
 FUNCTION MENU_DO_BRAKES {
   IF BRAKES { BRAKES OFF. } ELSE { BRAKES ON. }
-  SET IFC_ALERT_TEXT TO "BRAKES toggled".
-  SET IFC_ALERT_UT   TO TIME:SECONDS.
+  IFC_SET_ALERT("Brakes toggled").
 }
 
 FUNCTION MENU_DO_LOGGER {
@@ -134,178 +448,254 @@ FUNCTION MENU_DO_MANUAL {
   IF IFC_MANUAL_MODE {
     AA_DISABLE_ALL().
     LOCK THROTTLE TO SHIP:THROTTLE.
-    SET IFC_ALERT_TEXT TO "MANUAL OVERRIDE  —  autopilot suspended".
+    IFC_SET_ALERT("Manual override active", "WARN").
+    IF IFC_UI_MODE <> UI_MODE_MENU_OVERLAY {
+      IFC_SET_UI_MODE(UI_MODE_MANUAL_OVERRIDE).
+    }
   } ELSE {
     LOCK THROTTLE TO THROTTLE_CMD.
     AA_INIT().
-    SET IFC_ALERT_TEXT TO "AUTO  —  autopilot resumed".
-  }
-  SET IFC_ALERT_UT TO TIME:SECONDS.
-}
-
-// ----------------------------
-// Menu render (overlay into primary + secondary zone)
-// ----------------------------
-
-FUNCTION MENU_RENDER {
-  LOCAL proc_str IS "ILS APPROACH".
-  IF IFC_MENU_OPT_PROC = 1 { SET proc_str TO "TAKEOFF     ". }
-  LOCAL rwy_str IS "RWY 09".
-  IF IFC_MENU_OPT_RWY = 1  { SET rwy_str  TO "RWY 27". }
-  LOCAL dist_str IS "LONG  60 km ".
-  IF IFC_MENU_OPT_DIST = 1 { SET dist_str TO "SHORT 30 km". }
-  LOCAL dbg_str IS "OFF".
-  IF IFC_DEBUG_PANEL_ON { SET dbg_str TO "ON ". }
-  LOCAL log_str IS "STOPPED".
-  IF LOG_ACTIVE { SET log_str TO "ACTIVE ". }
-
-  LOCAL dist_item IS "DISTANCE   [" + dist_str + "]".
-  IF IFC_MENU_OPT_PROC = 1 {
-    LOCAL dest_label IS "KSC RTRN".
-    IF IFC_MENU_OPT_DEST = 1 { SET dest_label TO "ISLAND  ". }
-    SET dist_item TO "DESTINATION[" + dest_label + "]".
-  }
-
-  // V-speed display: show current override or "---" (= use config)
-  LOCAL vr_str   IS "---".
-  LOCAL v2_str   IS "---".
-  LOCAL vapp_str IS "---".
-  IF IFC_MENU_OPT_VR   > 0 { SET vr_str   TO "" + IFC_MENU_OPT_VR   + " m/s". }
-  IF IFC_MENU_OPT_V2   > 0 { SET v2_str   TO "" + IFC_MENU_OPT_V2   + " m/s". }
-  IF IFC_MENU_OPT_VAPP > 0 { SET vapp_str TO "" + IFC_MENU_OPT_VAPP + " m/s". }
-
-  LOCAL items IS LIST(
-    "PROCEDURE  [" + proc_str + "]",
-    "RUNWAY     [" + rwy_str  + "]",
-    dist_item,
-    "VR         [" + STR_PAD(vr_str, 8)   + "]",
-    "V2         [" + STR_PAD(v2_str, 8)   + "]",
-    "VAPP       [" + STR_PAD(vapp_str, 8) + "]",
-    "─── ARM ────────────────── [Y]",
-    "DEBUG PANEL  [" + dbg_str + "]",
-    "LOGGER       [" + log_str + "]",
-    "SAVE PLAN ──────────────── [Y]",
-    "LOAD PLAN ──────────────── [Y]",
-    "─── ABORT IFC ───────────── [Q]"
-  ).
-
-  // Menu box: starts at UI_PRI_TOP
-  LOCAL box_w IS MIN(UI_W - 4, 44).
-  LOCAL border IS "  ╔" + STR_REPEAT("═", box_w) + "╗".
-  UI_P(border, UI_PRI_TOP).
-
-  LOCAL row IS UI_PRI_TOP + 1.
-  LOCAL i IS 0.
-  UNTIL i >= items:LENGTH {
-    LOCAL cursor IS "  ║  ".
-    IF i = IFC_MENU_CURSOR { SET cursor TO "  ║▶ ". }
-    UI_P(cursor + STR_PAD(items[i], box_w - 1) + "║", row).
-    SET row TO row + 1.
-    SET i   TO i + 1.
-  }
-
-  UI_P("  ╚" + STR_REPEAT("═", box_w) + "╝", row).
-  UI_P(STR_PAD("  W/S=navigate  A/D=change  Y=execute  M=close", UI_W), row + 1).
-
-  // Clear any leftover lines in the primary zone below the box
-  SET row TO row + 2.
-  UNTIL row > UI_PRI_BOT {
-    UI_CLR(row).
-    SET row TO row + 1.
+    IFC_SET_ALERT("Autoflow resumed").
+    IF IFC_UI_MODE <> UI_MODE_MENU_OVERLAY {
+      IFC_SET_UI_MODE(UI_MODE_AUTOFLOW).
+    }
   }
 }
 
-// ----------------------------
-// Main tick  (call once per loop cycle)
-// ----------------------------
-// Returns "" normally, "ARM" when user confirmed ARM in menu,
-// or "QUIT" when user pressed Q / selected Abort.
+FUNCTION MENU_DISPATCH {
+  PARAMETER cmd.
 
-FUNCTION MENU_TICK {
-  IF NOT TERMINAL:INPUT:HASCHAR { RETURN "". }
-  LOCAL ch IS TERMINAL:INPUT:GETCHAR().
+  IF cmd = "gear" { MENU_DO_GEAR(). RETURN. }
+  IF cmd = "flap_up" { MENU_DO_FLAP_UP(). RETURN. }
+  IF cmd = "flap_dn" { MENU_DO_FLAP_DN(). RETURN. }
+  IF cmd = "spoilers" { MENU_DO_SPOILERS(). RETURN. }
+  IF cmd = "brakes" { MENU_DO_BRAKES(). RETURN. }
+  IF cmd = "thrust_rev" { MENU_DO_THRUST_REV(). RETURN. }
+  IF cmd = "drogue" { MENU_DO_DROGUE(). RETURN. }
+  IF cmd = "manual" { MENU_DO_MANUAL(). RETURN. }
+  IF cmd = "logger" { MENU_DO_LOGGER(). RETURN. }
 
-  IF IFC_MENU_OPEN {
-    // ── Menu navigation ──────────────────────────────────
-    IF ch = "w" OR ch = "W" {
-      SET IFC_MENU_CURSOR TO MOD(IFC_MENU_CURSOR - 1 + _MENU_NITEMS, _MENU_NITEMS).
-      MENU_RENDER().
+  IF cmd = "debug" {
+    SET IFC_DEBUG_PANEL_ON TO NOT IFC_DEBUG_PANEL_ON.
+    LOCAL s IS "OFF".
+    IF IFC_DEBUG_PANEL_ON { SET s TO "ON". }
+    IFC_SET_ALERT("Debug panel " + s).
+    RETURN.
+  }
+}
 
-    } ELSE IF ch = "s" OR ch = "S" {
-      SET IFC_MENU_CURSOR TO MOD(IFC_MENU_CURSOR + 1, _MENU_NITEMS).
-      MENU_RENDER().
+FUNCTION MENU_OPEN {
+  IF IFC_PHASE = PHASE_PREARM {
+    MENU_STAGE_FROM_LIVE().
+  }
+  SET IFC_MENU_PAGE TO "MAIN".
+  SET IFC_MENU_CURSOR TO 0.
+  SET IFC_MENU_SCROLL TO 0.
+  SET IFC_MENU_DIRTY TO TRUE.
+  IFC_SET_UI_MODE(UI_MODE_MENU_OVERLAY).
+  MENU_RENDER().
+}
 
-    } ELSE IF ch = "a" OR ch = "A" {
-      IF IFC_MENU_CURSOR = 0 { SET IFC_MENU_OPT_PROC TO MOD(IFC_MENU_OPT_PROC - 1 + 2, 2). }
-      IF IFC_MENU_CURSOR = 1 { SET IFC_MENU_OPT_RWY  TO MOD(IFC_MENU_OPT_RWY  - 1 + 2, 2). }
-      IF IFC_MENU_CURSOR = 2 AND IFC_MENU_OPT_PROC = 0 { SET IFC_MENU_OPT_DIST TO MOD(IFC_MENU_OPT_DIST - 1 + 2, 2). }
-      IF IFC_MENU_CURSOR = 2 AND IFC_MENU_OPT_PROC = 1 { SET IFC_MENU_OPT_DEST TO MOD(IFC_MENU_OPT_DEST - 1 + 2, 2). }
-      IF IFC_MENU_CURSOR = 3 { SET IFC_MENU_OPT_VR   TO MAX(0, IFC_MENU_OPT_VR   - _VSpd_STEP). }
-      IF IFC_MENU_CURSOR = 4 { SET IFC_MENU_OPT_V2   TO MAX(0, IFC_MENU_OPT_V2   - _VSpd_STEP). }
-      IF IFC_MENU_CURSOR = 5 { SET IFC_MENU_OPT_VAPP TO MAX(0, IFC_MENU_OPT_VAPP - _VSpd_STEP). }
-      IF IFC_MENU_CURSOR = 7 { SET IFC_DEBUG_PANEL_ON TO NOT IFC_DEBUG_PANEL_ON. }
-      IF IFC_MENU_CURSOR = 8 { MENU_DO_LOGGER(). }
-      MENU_RENDER().
+FUNCTION MENU_CLOSE {
+  IF IFC_PHASE = PHASE_PREARM {
+    IFC_SET_UI_MODE(UI_MODE_PREARM).
+  } ELSE IF IFC_PHASE = PHASE_DONE {
+    IFC_SET_UI_MODE(UI_MODE_COMPLETE).
+  } ELSE IF IFC_MANUAL_MODE {
+    IFC_SET_UI_MODE(UI_MODE_MANUAL_OVERRIDE).
+  } ELSE {
+    IFC_SET_UI_MODE(UI_MODE_AUTOFLOW).
+  }
+  SET IFC_MENU_PAGE TO "MAIN".
+  SET IFC_MENU_DIRTY TO TRUE.
+  SET LAST_DISPLAY_UT TO 0.
+  SET LAST_SECONDARY_UT TO 1.
+}
 
-    } ELSE IF ch = "d" OR ch = "D" {
-      IF IFC_MENU_CURSOR = 0 { SET IFC_MENU_OPT_PROC TO MOD(IFC_MENU_OPT_PROC + 1, 2). }
-      IF IFC_MENU_CURSOR = 1 { SET IFC_MENU_OPT_RWY  TO MOD(IFC_MENU_OPT_RWY  + 1, 2). }
-      IF IFC_MENU_CURSOR = 2 AND IFC_MENU_OPT_PROC = 0 { SET IFC_MENU_OPT_DIST TO MOD(IFC_MENU_OPT_DIST + 1, 2). }
-      IF IFC_MENU_CURSOR = 2 AND IFC_MENU_OPT_PROC = 1 { SET IFC_MENU_OPT_DEST TO MOD(IFC_MENU_OPT_DEST + 1, 2). }
-      IF IFC_MENU_CURSOR = 3 { SET IFC_MENU_OPT_VR   TO MAX(_VSpd_STEP, IFC_MENU_OPT_VR   + _VSpd_STEP). }
-      IF IFC_MENU_CURSOR = 4 { SET IFC_MENU_OPT_V2   TO MAX(_VSpd_STEP, IFC_MENU_OPT_V2   + _VSpd_STEP). }
-      IF IFC_MENU_CURSOR = 5 { SET IFC_MENU_OPT_VAPP TO MAX(_VSpd_STEP, IFC_MENU_OPT_VAPP + _VSpd_STEP). }
-      IF IFC_MENU_CURSOR = 7 { SET IFC_DEBUG_PANEL_ON TO NOT IFC_DEBUG_PANEL_ON. }
-      IF IFC_MENU_CURSOR = 8 { MENU_DO_LOGGER(). }
-      MENU_RENDER().
+FUNCTION _MENU_ADJUST_CURRENT {
+  PARAMETER dir.
+  IF IFC_MENU_CURSOR < 0 OR IFC_MENU_CURSOR >= IFC_MENU_ITEMS:LENGTH { RETURN. }
 
-    } ELSE IF ch = "y" OR ch = "Y" OR ch = CHAR(13) {
-      SET IFC_MENU_OPEN     TO FALSE.
-      SET LAST_SECONDARY_UT TO 1.
-      SET LAST_DISPLAY_UT   TO 0.
-      IF IFC_MENU_CURSOR = 6  { RETURN "ARM". }
-      IF IFC_MENU_CURSOR = 9  { FMS_SAVE_PLAN(). }
-      IF IFC_MENU_CURSOR = 10 { FMS_LOAD_PLAN(). MENU_RENDER(). SET IFC_MENU_OPEN TO TRUE. }
-      IF IFC_MENU_CURSOR = 11 { RETURN "QUIT". }
+  LOCAL item IS IFC_MENU_ITEMS[IFC_MENU_CURSOR].
+  LOCAL t IS item["type"].
+  LOCAL key IS item["key"].
 
-    } ELSE IF ch = "m" OR ch = "M" OR ch = "x" OR ch = "X" {
-      SET IFC_MENU_OPEN     TO FALSE.
-      SET LAST_SECONDARY_UT TO 1.
-      SET LAST_DISPLAY_UT   TO 0.
+  IF t = "choice" {
+    LOCAL opts IS item["choices"].
+    LOCAL n IS MAX(opts:LENGTH, 1).
+    LOCAL cur IS ROUND(_MENU_GET_VALUE(key), 0).
+    SET cur TO MOD(cur + dir + n, n).
+    _MENU_SET_VALUE(key, cur).
+    RETURN.
+  }
+
+  IF t = "numeric" {
+    LOCAL cur IS ROUND(_MENU_GET_VALUE(key), 0).
+    LOCAL step IS ROUND(item["step"], 0).
+    LOCAL mn IS ROUND(item["min"], 0).
+    LOCAL mx IS ROUND(item["max"], 0).
+    SET cur TO CLAMP(cur + dir * step, mn, mx).
+    IF item["auto"] = 1 AND cur < step { SET cur TO 0. }
+    _MENU_SET_VALUE(key, cur).
+    RETURN.
+  }
+
+  IF t = "toggle" {
+    IF _MENU_GET_VALUE(key) > 0 { _MENU_SET_VALUE(key, 0). }
+    ELSE { _MENU_SET_VALUE(key, 1). }
+    RETURN.
+  }
+}
+
+FUNCTION _MENU_EXEC_CURRENT {
+  IF IFC_MENU_CURSOR < 0 OR IFC_MENU_CURSOR >= IFC_MENU_ITEMS:LENGTH { RETURN "". }
+
+  LOCAL item IS IFC_MENU_ITEMS[IFC_MENU_CURSOR].
+  LOCAL t IS item["type"].
+  LOCAL key IS item["key"].
+
+  IF t = "toggle" {
+    _MENU_ADJUST_CURRENT(1).
+    RETURN "".
+  }
+  IF t <> "action" { RETURN "". }
+
+  IF key = "save" { FMS_SAVE_PLAN(IFC_MENU_SLOT). RETURN "". }
+
+  IF key = "load" {
+    IF FMS_LOAD_PLAN(IFC_MENU_SLOT) AND IFC_PHASE = PHASE_PREARM {
+      MENU_STAGE_FROM_LIVE().
     }
     RETURN "".
   }
 
-  // ── Live flight keys (menu closed) ──────────────────────
-  IF      ch = "m" OR ch = "M" {
-    SET IFC_MENU_OPEN TO TRUE.
-    MENU_RENDER().
-  } ELSE IF ch = "c" OR ch = "C" {
-    MENU_DO_MANUAL().
-  } ELSE IF ch = "d" OR ch = "D" {
-    SET IFC_DEBUG_PANEL_ON TO NOT IFC_DEBUG_PANEL_ON.
-    LOCAL s IS "OFF". IF IFC_DEBUG_PANEL_ON { SET s TO "ON". }
-    SET IFC_ALERT_TEXT TO "Debug panel " + s.
-    SET IFC_ALERT_UT   TO TIME:SECONDS.
-  } ELSE IF ch = "g" OR ch = "G" {
-    MENU_DO_GEAR().
-  } ELSE IF ch = "F" {
-    MENU_DO_FLAP_UP().
-  } ELSE IF ch = "f" {
-    MENU_DO_FLAP_DN().
-  } ELSE IF ch = "s" OR ch = "S" {
-    MENU_DO_SPOILERS().
-  } ELSE IF ch = "t" OR ch = "T" {
-    MENU_DO_THRUST_REV().
-  } ELSE IF ch = "p" OR ch = "P" {
-    MENU_DO_DROGUE().
-  } ELSE IF ch = "b" OR ch = "B" {
-    MENU_DO_BRAKES().
-  } ELSE IF ch = "l" OR ch = "L" {
-    MENU_DO_LOGGER().
-  } ELSE IF ch = "q" OR ch = "Q" {
-    RETURN "QUIT".
+  IF key = "events" {
+    SET IFC_MENU_PAGE TO "EVENTS".
+    SET IFC_EVENT_VIEW_IDX TO MAX(IFC_EVENT_QUEUE:LENGTH - 1, 0).
+    RETURN "".
   }
 
+  IF key = "close" {
+    MENU_CLOSE().
+    RETURN "".
+  }
+
+  IF key = "quit" { RETURN "QUIT". }
+
+  IF key = "arm" {
+    LOCAL vmsg IS MENU_VALIDATE_STAGE().
+    IF vmsg <> "" {
+      IFC_SET_ALERT("Cannot ARM: " + vmsg, "ERROR").
+      RETURN "".
+    }
+    MENU_STAGE_COMMIT().
+    MENU_CLOSE().
+    IFC_SET_ALERT("IFC armed from prearm menu").
+    RETURN "ARM".
+  }
+
+  MENU_DISPATCH(key).
   RETURN "".
+}
+
+FUNCTION MENU_TICK {
+  IFC_SYNC_ALERT_QUEUE().
+
+  IF NOT TERMINAL:INPUT:HASCHAR { RETURN "". }
+
+  LOCAL result IS "".
+  LOCAL processed IS 0.
+  LOCAL max_chars IS IFC_MENU_MAX_CHARS_TICK.
+  LOCAL needs_full_render IS FALSE.
+  LOCAL nav_changed IS FALSE.
+  LOCAL nav_prev_cursor IS IFC_MENU_CURSOR.
+  LOCAL nav_prev_scroll IS IFC_MENU_SCROLL.
+
+  UNTIL NOT TERMINAL:INPUT:HASCHAR OR processed >= max_chars OR result <> "" {
+    LOCAL ch IS TERMINAL:INPUT:GETCHAR().
+    SET processed TO processed + 1.
+
+    IF IFC_UI_MODE = UI_MODE_MENU_OVERLAY {
+      IF IFC_MENU_PAGE = "EVENTS" {
+        IF ch = "q" OR ch = "Q" {
+          SET result TO "QUIT".
+        } ELSE IF ch = "w" OR ch = "W" {
+          SET IFC_EVENT_VIEW_IDX TO CLAMP(IFC_EVENT_VIEW_IDX + 1, 0, MAX(IFC_EVENT_QUEUE:LENGTH - 1, 0)).
+          SET needs_full_render TO TRUE.
+        } ELSE IF ch = "s" OR ch = "S" {
+          SET IFC_EVENT_VIEW_IDX TO CLAMP(IFC_EVENT_VIEW_IDX - 1, 0, MAX(IFC_EVENT_QUEUE:LENGTH - 1, 0)).
+          SET needs_full_render TO TRUE.
+        } ELSE IF ch = "y" OR ch = "Y" OR ch = CHAR(13) OR ch = "m" OR ch = "M" OR ch = "x" OR ch = "X" {
+          SET IFC_MENU_PAGE TO "MAIN".
+          SET needs_full_render TO TRUE.
+        }
+      } ELSE {
+        IF ch = "q" OR ch = "Q" {
+          SET result TO "QUIT".
+        } ELSE IF ch = "w" OR ch = "W" {
+          IF NOT nav_changed {
+            SET nav_prev_cursor TO IFC_MENU_CURSOR.
+            SET nav_prev_scroll TO IFC_MENU_SCROLL.
+            SET nav_changed TO TRUE.
+          }
+          SET IFC_MENU_CURSOR TO IFC_MENU_CURSOR - 1.
+          _MENU_CURSOR_CLAMP().
+        } ELSE IF ch = "s" OR ch = "S" {
+          IF NOT nav_changed {
+            SET nav_prev_cursor TO IFC_MENU_CURSOR.
+            SET nav_prev_scroll TO IFC_MENU_SCROLL.
+            SET nav_changed TO TRUE.
+          }
+          SET IFC_MENU_CURSOR TO IFC_MENU_CURSOR + 1.
+          _MENU_CURSOR_CLAMP().
+        } ELSE IF ch = "a" OR ch = "A" {
+          _MENU_ADJUST_CURRENT(-1).
+          SET needs_full_render TO TRUE.
+        } ELSE IF ch = "d" OR ch = "D" {
+          _MENU_ADJUST_CURRENT(1).
+          SET needs_full_render TO TRUE.
+        } ELSE IF ch = "y" OR ch = "Y" OR ch = CHAR(13) {
+          SET result TO _MENU_EXEC_CURRENT().
+          IF IFC_UI_MODE = UI_MODE_MENU_OVERLAY { SET needs_full_render TO TRUE. }
+        } ELSE IF ch = "m" OR ch = "M" OR ch = "x" OR ch = "X" {
+          MENU_CLOSE().
+        }
+      }
+    } ELSE {
+      IF ch = "m" OR ch = "M" {
+        MENU_OPEN().
+      } ELSE IF ch = "q" OR ch = "Q" {
+        SET result TO "QUIT".
+      } ELSE IF ch = "d" OR ch = "D" {
+        MENU_DISPATCH("debug").
+      } ELSE IF ch = "l" OR ch = "L" {
+        MENU_DISPATCH("logger").
+      } ELSE IF ch = "c" OR ch = "C" {
+        MENU_DISPATCH("manual").
+      } ELSE IF ch = "g" OR ch = "G" {
+        MENU_DISPATCH("gear").
+      } ELSE IF ch = "F" {
+        MENU_DISPATCH("flap_up").
+      } ELSE IF ch = "f" {
+        MENU_DISPATCH("flap_dn").
+      } ELSE IF ch = "s" OR ch = "S" {
+        MENU_DISPATCH("spoilers").
+      } ELSE IF ch = "t" OR ch = "T" {
+        MENU_DISPATCH("thrust_rev").
+      } ELSE IF ch = "p" OR ch = "P" {
+        MENU_DISPATCH("drogue").
+      } ELSE IF ch = "b" OR ch = "B" {
+        MENU_DISPATCH("brakes").
+      }
+    }
+  }
+
+  IF IFC_UI_MODE = UI_MODE_MENU_OVERLAY {
+    IF needs_full_render OR IFC_MENU_DIRTY {
+      MENU_RENDER().
+    } ELSE IF nav_changed {
+      _MENU_RENDER_CURSOR_FAST(nav_prev_cursor, nav_prev_scroll).
+    }
+  }
+  RETURN result.
 }

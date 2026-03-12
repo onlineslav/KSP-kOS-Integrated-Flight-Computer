@@ -16,7 +16,7 @@ FUNCTION PRINT_TELEMETRY {
   LOCAL agl IS ROUND(GET_AGL(), 0).
   LOCAL vs  IS ROUND(SHIP:VERTICALSPEED, 1).
   LOCAL hdg IS ROUND(SHIP:HEADING, 1).
-  LOCAL pitch IS ROUND(GET_PITCH(), 1).
+  LOCAL pitch_deg IS ROUND(GET_PITCH(), 1).
   LOCAL thr IS ROUND(THROTTLE_CMD, 2).
 
   // ── Line 1: flight state ─────────────────────────────────
@@ -27,7 +27,7 @@ FUNCTION PRINT_TELEMETRY {
       + "   FLP " + FLAPS_CURRENT_DETENT + "->" + FLAPS_TARGET_DETENT AT (0,1).
 
   // ── Line 3: attitude ─────────────────────────────────────
-  PRINT "HDG " + hdg + " deg   PITCH " + pitch + " deg                    " AT (0,2).
+  PRINT "HDG " + hdg + " deg   PITCH " + pitch_deg + " deg                    " AT (0,2).
 
   // ── Line 4: ILS deviations (only meaningful during ILS_TRACK) ──
   IF IFC_SUBPHASE = SUBPHASE_ILS_TRACK OR IFC_PHASE = PHASE_FLARE {
@@ -88,7 +88,7 @@ FUNCTION PRINT_TELEMETRY {
       + "  frac " + ROUND(TELEM_FLARE_FRAC, 2)
       + "  FPAcmd " + ROUND(FLARE_PITCH_CMD, 2) AT (0,4).
     PRINT "AOA " + ROUND(GET_AOA(), 2)
-      + "  pitch " + pitch
+      + "  pitch " + pitch_deg
       + "  IAS " + ias
       + "  agl " + agl AT (0,5).
   } ELSE IF IFC_PHASE = PHASE_TOUCHDOWN OR IFC_PHASE = PHASE_ROLLOUT {

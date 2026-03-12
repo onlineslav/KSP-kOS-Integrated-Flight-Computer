@@ -8,7 +8,7 @@
 // ----------------------------
 // Loop timing
 // ----------------------------
-GLOBAL IFC_LOOP_DT         IS 0.05.   // s  (20 Hz)
+GLOBAL IFC_LOOP_DT         IS 0.02.   // s  (50 Hz)
 GLOBAL IFC_TELEMETRY_PERIOD IS 1.0.   // s  between HUD refreshes
 
 // ----------------------------
@@ -277,8 +277,24 @@ GLOBAL UI_HINT_ROW   IS 20.  // key hint bar
 // ----------------------------
 // Display update rates
 // ----------------------------
-GLOBAL IFC_DISPLAY_PERIOD   IS 0.5.  // s  primary zone (2 Hz)
-GLOBAL IFC_HEADER_PERIOD    IS 1.0.  // s  header + breadcrumb (1 Hz)
-GLOBAL IFC_SECONDARY_PERIOD IS 1.0.  // s  debug panel (1 Hz)
-GLOBAL IFC_LOGGER_PERIOD    IS 2.0.  // s  logger bar (0.5 Hz)
+GLOBAL IFC_DISPLAY_PERIOD   IS 0.10. // s  primary zone (10 Hz)
+GLOBAL IFC_HEADER_PERIOD    IS 0.20. // s  header + breadcrumb (5 Hz)
+GLOBAL IFC_SECONDARY_PERIOD IS 0.20. // s  debug panel (5 Hz)
+GLOBAL IFC_LOGGER_PERIOD    IS 0.50. // s  logger bar (2 Hz)
 GLOBAL IFC_ALERT_EXPIRE_S   IS 5.0.  // s  auto-clear alert after this long
+
+// ----------------------------
+// UI interaction modes
+// ----------------------------
+GLOBAL UI_MODE_PREARM         IS "MODE_PREARM".
+GLOBAL UI_MODE_AUTOFLOW       IS "MODE_AUTOFLOW".
+GLOBAL UI_MODE_MENU_OVERLAY   IS "MODE_MENU_OVERLAY".
+GLOBAL UI_MODE_MANUAL_OVERRIDE IS "MODE_MANUAL_OVERRIDE".
+GLOBAL UI_MODE_COMPLETE       IS "MODE_COMPLETE".
+
+// ----------------------------
+// UI event queue
+// ----------------------------
+GLOBAL IFC_EVENT_MAX            IS 16. // max retained alert/event entries
+GLOBAL IFC_EVENT_HISTORY_ROWS   IS 6.  // history rows shown in menu overlay
+GLOBAL IFC_MENU_MAX_CHARS_TICK  IS 64. // max queued keypresses consumed per MENU_TICK

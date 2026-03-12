@@ -37,6 +37,72 @@ FUNCTION WRAP_360 {
 }
 
 // ----------------------------
+// UI mode + event/alert helpers
+// ----------------------------
+FUNCTION IFC_SET_UI_MODE {
+  PARAMETER mode.
+  SET IFC_UI_MODE TO mode.
+  SET IFC_MENU_OPEN TO mode = UI_MODE_MENU_OVERLAY.
+}
+
+FUNCTION _IFC_GUESS_SEVERITY {
+  PARAMETER msg.
+  LOCAL msg_upper IS msg:TOUPPER.
+  IF msg_upper:FIND("ABORT") >= 0 OR msg_upper:FIND("ERROR") >= 0 { RETURN "ERROR". }
+  IF msg_upper:FIND("WARN") >= 0 OR msg_upper:FIND("UNAVAIL") >= 0 { RETURN "WARN". }
+  RETURN "INFO".
+}
+
+FUNCTION IFC_PUSH_EVENT {
+  PARAMETER msg.
+  PARAMETER sev IS "INFO".
+  LOCAL e IS LEXICON(
+    "ut", TIME:SECONDS,
+    "sev", sev,
+    "msg", msg
+  ).
+  IFC_EVENT_QUEUE:ADD(e).
+  UNTIL IFC_EVENT_QUEUE:LENGTH <= IFC_EVENT_MAX {
+    IFC_EVENT_QUEUE:REMOVE(0).
+  }
+  SET IFC_EVENT_VIEW_IDX TO MAX(IFC_EVENT_QUEUE:LENGTH - 1, 0).
+  SET IFC_ALERT_TEXT TO "[" + sev + "] " + msg.
+  SET IFC_ALERT_UT   TO TIME:SECONDS.
+  SET IFC_EVENT_LAST_UT TO IFC_ALERT_UT.
+  SET IFC_EVENT_LAST_TEXT TO IFC_ALERT_TEXT.
+}
+
+FUNCTION IFC_SET_ALERT {
+  PARAMETER msg.
+  PARAMETER sev IS "INFO".
+  IFC_PUSH_EVENT(msg, sev).
+}
+
+// Mirror legacy direct IFC_ALERT_TEXT/IFC_ALERT_UT writes into the event queue.
+FUNCTION IFC_SYNC_ALERT_QUEUE {
+  IF IFC_ALERT_UT < IFC_EVENT_LAST_UT { RETURN. }
+  IF IFC_ALERT_UT = IFC_EVENT_LAST_UT AND IFC_ALERT_TEXT = IFC_EVENT_LAST_TEXT { RETURN. }
+  IF IFC_ALERT_TEXT = "" {
+    SET IFC_EVENT_LAST_UT TO IFC_ALERT_UT.
+    SET IFC_EVENT_LAST_TEXT TO "".
+    RETURN.
+  }
+  LOCAL sev IS _IFC_GUESS_SEVERITY(IFC_ALERT_TEXT).
+  LOCAL e IS LEXICON(
+    "ut", IFC_ALERT_UT,
+    "sev", sev,
+    "msg", IFC_ALERT_TEXT
+  ).
+  IFC_EVENT_QUEUE:ADD(e).
+  UNTIL IFC_EVENT_QUEUE:LENGTH <= IFC_EVENT_MAX {
+    IFC_EVENT_QUEUE:REMOVE(0).
+  }
+  SET IFC_EVENT_VIEW_IDX TO MAX(IFC_EVENT_QUEUE:LENGTH - 1, 0).
+  SET IFC_EVENT_LAST_UT TO IFC_ALERT_UT.
+  SET IFC_EVENT_LAST_TEXT TO IFC_ALERT_TEXT.
+}
+
+// ----------------------------
 // Phase management
 // ----------------------------
 FUNCTION SET_PHASE {

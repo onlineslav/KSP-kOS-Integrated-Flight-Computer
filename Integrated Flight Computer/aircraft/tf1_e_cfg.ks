@@ -24,7 +24,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Vref: threshold crossing speed (used for display/logging).
     // Reduce Vapp toward Vref during the flare by cutting throttle.
     "v_app",        75.0,
-    "v_ref",        70.0,
+    "v_ref",        60.0,
     // Approach speed schedule shaping:
     // Vint = Vapp + clamp((Vapp - Vref) * gain, min_add, max_add)
     "app_spd_intercept_gain",    0.60,
@@ -91,7 +91,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
                                       // (depends on aircraft control axis convention)
 
     // ── Stall / AoA limits ────────────────────────────────
-    "vs0",      70.0,   // m/s  stall speed in landing configuration
+    "vs0",      54.0,   // m/s  stall speed in landing configuration
     "a_crit",   18.0,   // deg  critical AoA from FAR data (0 = protection disabled)
 
     // ── Spoiler arming (approach) ─────────────────────────

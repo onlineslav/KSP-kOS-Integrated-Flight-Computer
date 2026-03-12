@@ -2,31 +2,33 @@
 
 // ============================================================
 // ifc_fms.ks  -  Integrated Flight Computer
-// Flight plan save / load helpers.
-//
-// Plans are stored as JSON on the kOS volume.  Each plan is a
-// LEXICON with keys:
-//   "name"  : human-readable string
-//   "proc"  : IFC_MENU_OPT_PROC value  (0=approach, 1=takeoff)
-//   "rwy"   : IFC_MENU_OPT_RWY value   (0=09, 1=27)
-//   "dist"  : IFC_MENU_OPT_DIST value  (0=long, 1=short)
-//   "dest"  : IFC_MENU_OPT_DEST value  (0=KSC, 1=Island)
-//   "v_r"   : VR override in m/s
-//   "v2"    : V2 override in m/s
-//   "vapp"  : Vapp override in m/s
-//
-// Only the menu state is serialised.  The full leg list is
-// always rebuilt from these options at ARM time, so plates and
-// waypoints resolve correctly at runtime without embedding
-// kOS objects in the JSON.
+// Save/load menu presets by slot.
 // ============================================================
 
-GLOBAL FMS_SAVE_PATH IS "0:/ifc_plan.json".
+GLOBAL FMS_SLOT_MIN IS 1.
+GLOBAL FMS_SLOT_MAX IS 5.
+GLOBAL FMS_SLOT_PREFIX IS "0:/ifc_plan_".
+GLOBAL FMS_SLOT_SUFFIX IS ".json".
 
-// ── Save current menu options to disk ─────────────────────
+FUNCTION _FMS_CLAMP_SLOT {
+  PARAMETER slot.
+  RETURN CLAMP(ROUND(slot, 0), FMS_SLOT_MIN, FMS_SLOT_MAX).
+}
+
+FUNCTION _FMS_PATH {
+  PARAMETER slot.
+  LOCAL s IS _FMS_CLAMP_SLOT(slot).
+  RETURN FMS_SLOT_PREFIX + s + FMS_SLOT_SUFFIX.
+}
+
 FUNCTION FMS_SAVE_PLAN {
+  PARAMETER slot IS 1.
+  LOCAL s IS _FMS_CLAMP_SLOT(slot).
+  LOCAL slot_path IS _FMS_PATH(s).
+
   LOCAL snapshot IS LEXICON(
-    "name",  "IFC Plan",
+    "name",  "IFC Plan Slot " + s,
+    "slot",  s,
     "proc",  IFC_MENU_OPT_PROC,
     "rwy",   IFC_MENU_OPT_RWY,
     "dist",  IFC_MENU_OPT_DIST,
@@ -35,28 +37,40 @@ FUNCTION FMS_SAVE_PLAN {
     "v2",    IFC_MENU_OPT_V2,
     "vapp",  IFC_MENU_OPT_VAPP
   ).
-  WRITEJSON(snapshot, FMS_SAVE_PATH).
-  SET IFC_ALERT_TEXT TO "PLAN SAVED  →  " + FMS_SAVE_PATH.
-  SET IFC_ALERT_UT   TO TIME:SECONDS.
+  WRITEJSON(snapshot, slot_path).
+  IFC_SET_ALERT("Plan saved: slot " + s + " -> " + slot_path).
+  RETURN TRUE.
 }
 
-// ── Load menu options from disk and apply them ────────────
-// Returns TRUE on success, FALSE if no file exists.
 FUNCTION FMS_LOAD_PLAN {
-  IF NOT EXISTS(FMS_SAVE_PATH) {
-    SET IFC_ALERT_TEXT TO "NO SAVED PLAN".
-    SET IFC_ALERT_UT   TO TIME:SECONDS.
+  PARAMETER slot IS 1.
+  LOCAL s IS _FMS_CLAMP_SLOT(slot).
+  LOCAL slot_path IS _FMS_PATH(s).
+
+  IF NOT EXISTS(slot_path) {
+    IFC_SET_ALERT("No saved plan in slot " + s, "WARN").
     RETURN FALSE.
   }
-  LOCAL p IS READJSON(FMS_SAVE_PATH).
+
+  LOCAL p IS READJSON(slot_path).
   IF p:HASKEY("proc")  { SET IFC_MENU_OPT_PROC TO p["proc"]. }
-  IF p:HASKEY("rwy")   { SET IFC_MENU_OPT_RWY  TO p["rwy"].  }
+  IF p:HASKEY("rwy")   { SET IFC_MENU_OPT_RWY  TO p["rwy"]. }
   IF p:HASKEY("dist")  { SET IFC_MENU_OPT_DIST TO p["dist"]. }
   IF p:HASKEY("dest")  { SET IFC_MENU_OPT_DEST TO p["dest"]. }
-  IF p:HASKEY("v_r")   { SET IFC_MENU_OPT_VR   TO p["v_r"].  }
-  IF p:HASKEY("v2")    { SET IFC_MENU_OPT_V2   TO p["v2"].   }
-  IF p:HASKEY("vapp")  { SET IFC_MENU_OPT_VAPP TO p["vapp"]. }
-  SET IFC_ALERT_TEXT TO "PLAN LOADED".
-  SET IFC_ALERT_UT   TO TIME:SECONDS.
+  IF p:HASKEY("v_r")   { SET IFC_MENU_OPT_VR   TO MAX(0, ROUND(p["v_r"], 0)). }
+  IF p:HASKEY("v2")    { SET IFC_MENU_OPT_V2   TO MAX(0, ROUND(p["v2"], 0)). }
+  IF p:HASKEY("vapp")  { SET IFC_MENU_OPT_VAPP TO MAX(0, ROUND(p["vapp"], 0)). }
+
+  SET IFC_MENU_OPT_PROC TO MOD(MAX(ROUND(IFC_MENU_OPT_PROC, 0), 0), 2).
+  SET IFC_MENU_OPT_RWY  TO MOD(MAX(ROUND(IFC_MENU_OPT_RWY, 0), 0), 2).
+  SET IFC_MENU_OPT_DIST TO MOD(MAX(ROUND(IFC_MENU_OPT_DIST, 0), 0), 2).
+  SET IFC_MENU_OPT_DEST TO MOD(MAX(ROUND(IFC_MENU_OPT_DEST, 0), 0), 2).
+
+  IFC_SET_ALERT("Plan loaded: slot " + s).
   RETURN TRUE.
+}
+
+FUNCTION FMS_SLOT_EXISTS {
+  PARAMETER slot.
+  RETURN EXISTS(_FMS_PATH(slot)).
 }
