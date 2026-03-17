@@ -86,48 +86,67 @@ FUNCTION _DISPLAY_PREARM_CHECKLIST {
   }
 }
 
-FUNCTION DISPLAY_PREARM {
-  PARAMETER proc_idx, rwy_idx, dist_idx, dest_idx.
+FUNCTION DISPLAY_PLAN_EDITOR {
+  LOCAL n IS DRAFT_PLAN:LENGTH.
+  LOCAL inner_w IS MAX(UI_W - 4, 30).
+  LOCAL vis_rows IS 4.  // rows available for legs or fields
 
-  LOCAL proc_sel IS proc_idx.
-  LOCAL rwy_sel IS rwy_idx.
-  LOCAL dist_sel IS dist_idx.
-  LOCAL dest_sel IS dest_idx.
+  IF FMS_EDITING_LEG AND FMS_LEG_CURSOR < n {
+    // ----- Edit view: fields of the selected leg -----
+    LOCAL leg IS DRAFT_PLAN[FMS_LEG_CURSOR].
+    LOCAL fc IS _FMS_LEG_FIELD_COUNT(leg).
+    // Compute field scroll so cursor stays visible.
+    LOCAL fscroll IS 0.
+    IF FMS_EDIT_FIELD >= vis_rows { SET fscroll TO FMS_EDIT_FIELD - vis_rows + 1. }
 
-  IF IFC_PHASE = PHASE_PREARM {
-    SET proc_sel TO IFC_MENU_STG_PROC.
-    SET rwy_sel TO IFC_MENU_STG_RWY.
-    SET dist_sel TO IFC_MENU_STG_DIST.
-    SET dest_sel TO IFC_MENU_STG_DEST.
-  }
+    LOCAL title IS "EDIT LEG " + (FMS_LEG_CURSOR + 1) + "  [W/S:field  A/D:change  E:done]".
+    UI_P("  " + STR_PAD(title, inner_w), UI_PRI_TOP).
 
-  LOCAL ac_name IS "Unknown".
-  IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("name") {
-    SET ac_name TO ACTIVE_AIRCRAFT["name"].
-  }
+    LOCAL i IS 0.
+    UNTIL i >= vis_rows {
+      LOCAL fi IS fscroll + i.
+      LOCAL line IS "".
+      IF fi < fc {
+        LOCAL pfx IS "   ".
+        IF fi = FMS_EDIT_FIELD { SET pfx TO ">> ". }
+        SET line TO pfx + STR_PAD(_FMS_LEG_FIELD_LABEL(leg, fi), 11) + " " + _FMS_LEG_FIELD_VALUE_TEXT(leg, fi).
+      }
+      UI_P("  " + STR_PAD(line, inner_w), UI_PRI_TOP + 1 + i).
+      SET i TO i + 1.
+    }
 
-  LOCAL proc_names IS LIST("ILS APPROACH", "TAKEOFF").
-  LOCAL rwy_names  IS LIST("KSC RWY 09", "KSC RWY 27").
-  LOCAL dist_names IS LIST("LONG 60 km", "SHORT 30 km").
-  LOCAL dest_names IS LIST("KSC RETURN", "ISLAND").
+    LOCAL stat_line IS "Field " + (FMS_EDIT_FIELD + 1) + "/" + fc + "  leg " + (FMS_LEG_CURSOR + 1) + "/" + n.
+    UI_P("  " + STR_PAD(stat_line, inner_w), UI_PRI_TOP + 5).
 
-  LOCAL vapp IS IFC_MENU_STG_VAPP.
-  LOCAL vr IS IFC_MENU_STG_VR.
-  LOCAL v2 IS IFC_MENU_STG_V2.
-  IF vapp <= 0 { SET vapp TO ROUND(AC_PARAM("v_app", 75, 0.001), 0). }
-  IF vr <= 0   { SET vr   TO ROUND(AC_PARAM("v_r", TAKEOFF_V_R_DEFAULT, 0.001), 0). }
-  IF v2 <= 0   { SET v2   TO ROUND(AC_PARAM("v2", TAKEOFF_V2_DEFAULT, 0.001), 0). }
-
-  UI_P("  AIRCRAFT  " + STR_PAD(ac_name, 20) + "MASS " + ROUND(SHIP:MASS, 1) + " t", UI_PRI_TOP).
-  UI_P("  PROC " + proc_names[proc_sel] + "   " + rwy_names[rwy_sel], UI_PRI_TOP + 1).
-
-  IF proc_sel = 0 {
-    UI_P("  START " + dist_names[dist_sel] + "   VAPP " + vapp + " m/s", UI_PRI_TOP + 2).
   } ELSE {
-    UI_P("  DEST " + dest_names[dest_sel] + "   VR " + vr + "   V2 " + v2 + " m/s", UI_PRI_TOP + 2).
-  }
+    // ----- List view: leg summary list -----
+    // Compute scroll so cursor stays visible.
+    LOCAL scroll IS 0.
+    IF FMS_LEG_CURSOR >= vis_rows { SET scroll TO FMS_LEG_CURSOR - vis_rows + 1. }
 
-  _DISPLAY_PREARM_CHECKLIST().
+    LOCAL title IS "FLIGHT PLAN  " + n + " legs  [A:add  X:del  E:edit  M:menu]".
+    UI_P("  " + STR_PAD(title, inner_w), UI_PRI_TOP).
+
+    LOCAL i IS 0.
+    UNTIL i >= vis_rows {
+      LOCAL li IS scroll + i.
+      LOCAL line IS "".
+      IF li < n {
+        LOCAL pfx IS "   ".
+        IF li = FMS_LEG_CURSOR { SET pfx TO ">> ". }
+        SET line TO pfx + (li + 1) + ". " + _FMS_LEG_LINE_TEXT(DRAFT_PLAN[li]).
+      }
+      UI_P("  " + STR_PAD(line, inner_w), UI_PRI_TOP + 1 + i).
+      SET i TO i + 1.
+    }
+
+    // Validation / status row
+    LOCAL val_msg IS MENU_VALIDATE_STAGE().
+    LOCAL stat_line IS "Plan OK  open M menu to ARM".
+    IF n = 0 { SET stat_line TO "Plan empty  press A to add a leg". }
+    ELSE IF val_msg <> "" { SET stat_line TO "! " + val_msg. }
+    UI_P("  " + STR_PAD(stat_line, inner_w), UI_PRI_TOP + 5).
+  }
 }
 
 FUNCTION DISPLAY_CRUISE {
@@ -280,8 +299,15 @@ FUNCTION DISPLAY_QUICK_ACTIONS {
   }
 
   IF IFC_PHASE = PHASE_PREARM {
-    SET row1 TO "  PREARM: W/S move  A/D change  Y execute  M close".
-    SET row2 TO "  ARM requires valid plan settings".
+    LOCAL cfg_ok  IS ACTIVE_AIRCRAFT <> 0.
+    LOCAL aa_ok   IS ADDONS:AVAILABLE("AA").
+    LOCAL far_ok  IS ADDONS:AVAILABLE("FAR").
+    LOCAL c_cfg   IS "[ ] Config". IF cfg_ok  { SET c_cfg  TO "[x] Config". }
+    LOCAL c_aa    IS "[ ] AA".     IF aa_ok   { SET c_aa   TO "[x] AA". }
+    LOCAL c_far   IS "[ ] FAR".    IF far_ok  { SET c_far  TO "[x] FAR". }
+    SET row0 TO "  CHK " + c_cfg + "  " + c_aa + "  " + c_far.
+    SET row1 TO "  W/S:leg  A:add  X:del  E:edit  M:menu  Q:quit".
+    SET row2 TO "  ARM the plan via M > ARM IFC".
   }
 
   UI_P(row0, UI_SEC_TOP).
@@ -335,6 +361,12 @@ FUNCTION DISPLAY_KEY_HINTS {
 
   IF IFC_UI_MODE = UI_MODE_MENU_OVERLAY {
     SET hints TO "  [W/S]Move  [A/D]Change  [Y]Exec  [M]Close  [Q]Quit".
+  } ELSE IF IFC_PHASE = PHASE_PREARM {
+    IF FMS_EDITING_LEG {
+      SET hints TO "  [W/S]Field  [A/D]Change  [E]Done editing".
+    } ELSE {
+      SET hints TO "  [W/S]Leg  [A]Add  [X]Del  [E]Edit  [M]Menu  [Q]Quit".
+    }
   } ELSE IF IFC_PHASE = PHASE_DONE {
     SET hints TO "  [M]Menu  [L]Log toggle  [Q]Exit".
   }
@@ -344,7 +376,7 @@ FUNCTION DISPLAY_KEY_HINTS {
 
 FUNCTION _DISPLAY_PRIMARY_BY_PHASE {
   IF IFC_PHASE = PHASE_PREARM {
-    DISPLAY_PREARM(IFC_MENU_OPT_PROC, IFC_MENU_OPT_RWY, IFC_MENU_OPT_DIST, IFC_MENU_OPT_DEST).
+    DISPLAY_PLAN_EDITOR().
     RETURN.
   }
 

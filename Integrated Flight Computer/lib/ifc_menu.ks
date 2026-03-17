@@ -50,12 +50,10 @@ FUNCTION MENU_STAGE_COMMIT {
 }
 
 FUNCTION MENU_VALIDATE_STAGE {
-  IF IFC_MENU_STG_PROC = 0 {
-    IF IFC_MENU_STG_VAPP > 0 AND IFC_MENU_STG_VAPP < 35 { RETURN "VAPP too low". }
-  } ELSE {
-    IF IFC_MENU_STG_VR > 0 AND IFC_MENU_STG_V2 > 0 AND IFC_MENU_STG_VR >= IFC_MENU_STG_V2 {
-      RETURN "VR must be below V2".
-    }
+  IF DRAFT_PLAN:LENGTH = 0 { RETURN "Flight plan is empty". }
+  IF IFC_MENU_STG_VAPP > 0 AND IFC_MENU_STG_VAPP < 35 { RETURN "VAPP too low". }
+  IF IFC_MENU_STG_VR > 0 AND IFC_MENU_STG_V2 > 0 AND IFC_MENU_STG_VR >= IFC_MENU_STG_V2 {
+    RETURN "VR must be below V2".
   }
   RETURN "".
 }
@@ -160,40 +158,25 @@ FUNCTION MENU_BUILD_ITEMS {
     IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("name") {
       SET ac_name TO ACTIVE_AIRCRAFT["name"].
     }
-    LOCAL aa_str IS "NO".
-    IF AA_AVAILABLE { SET aa_str TO "YES". }
-    LOCAL far_str IS "NO".
-    IF FAR_AVAILABLE { SET far_str TO "YES". }
-    LOCAL proc_preview IS "APPROACH".
-    IF IFC_MENU_STG_PROC = 1 { SET proc_preview TO "TAKEOFF". }
-    LOCAL rwy_preview IS "09".
-    IF IFC_MENU_STG_RWY = 1 { SET rwy_preview TO "27". }
+    LOCAL aa_str IS "NO".  IF AA_AVAILABLE  { SET aa_str  TO "YES". }
+    LOCAL far_str IS "NO". IF FAR_AVAILABLE { SET far_str TO "YES". }
 
-    _MENU_ADD_ITEM(LEXICON("type","choice","key","proc","label","Procedure","choices",LIST("ILS Approach","Takeoff"))).
-    _MENU_ADD_ITEM(LEXICON("type","choice","key","rwy","label","Runway","choices",LIST("RWY 09","RWY 27"))).
-    IF IFC_MENU_STG_PROC = 0 {
-      _MENU_ADD_ITEM(LEXICON("type","choice","key","dist","label","Start Dist","choices",LIST("Long 60 km","Short 30 km"))).
-    } ELSE {
-      _MENU_ADD_ITEM(LEXICON("type","choice","key","dest","label","Destination","choices",LIST("KSC Return","Island"))).
-    }
     _MENU_ADD_ITEM(LEXICON("type","numeric","key","vr","label","VR (m/s)","min",0,"max",220,"step",_VSPD_STEP,"auto",1)).
     _MENU_ADD_ITEM(LEXICON("type","numeric","key","v2","label","V2 (m/s)","min",0,"max",260,"step",_VSPD_STEP,"auto",1)).
     _MENU_ADD_ITEM(LEXICON("type","numeric","key","vapp","label","VAPP (m/s)","min",0,"max",220,"step",_VSPD_STEP,"auto",1)).
     _MENU_ADD_ITEM(LEXICON("type","numeric","key","slot","label","Plan Slot","min",FMS_SLOT_MIN,"max",FMS_SLOT_MAX,"step",1,"auto",0)).
-    _MENU_ADD_ITEM(LEXICON("type","toggle","key","debug","label","Debug Panel")).
-    _MENU_ADD_ITEM(LEXICON("type","toggle","key","logger","label","Logger")).
     _MENU_ADD_ITEM(LEXICON("type","action","key","save","label","Save Slot")).
     _MENU_ADD_ITEM(LEXICON("type","action","key","load","label","Load Slot")).
+    _MENU_ADD_ITEM(LEXICON("type","toggle","key","debug","label","Debug Panel")).
+    _MENU_ADD_ITEM(LEXICON("type","toggle","key","logger","label","Logger")).
     _MENU_ADD_ITEM(LEXICON("type","action","key","events","label","Event History")).
     _MENU_ADD_ITEM(LEXICON("type","action","key","arm","label","ARM IFC")).
     _MENU_ADD_ITEM(LEXICON("type","action","key","quit","label","Quit")).
-    _MENU_ADD_ITEM(LEXICON("type","info","label","--- Prearm Summary ---")).
+    _MENU_ADD_ITEM(LEXICON("type","info","label","--- Summary ---")).
     _MENU_ADD_ITEM(LEXICON("type","info","label","Aircraft: " + ac_name)).
-    _MENU_ADD_ITEM(LEXICON("type","info","label","Procedure preview: " + proc_preview + " RWY " + rwy_preview)).
-    _MENU_ADD_ITEM(LEXICON("type","info","label","Cfg VAPP " + ROUND(AC_PARAM("v_app", 75, 0.001), 0) + "  VREF " + ROUND(AC_PARAM("v_ref", 65, 0.001), 0))).
-    _MENU_ADD_ITEM(LEXICON("type","info","label","Cfg VR " + ROUND(AC_PARAM("v_r", TAKEOFF_V_R_DEFAULT, 0.001), 0) + "  V2 " + ROUND(AC_PARAM("v2", TAKEOFF_V2_DEFAULT, 0.001), 0))).
-    _MENU_ADD_ITEM(LEXICON("type","info","label","AA detected: " + aa_str + "   FAR detected: " + far_str)).
-    _MENU_ADD_ITEM(LEXICON("type","info","label","Use ARM only after validation passes.")).
+    _MENU_ADD_ITEM(LEXICON("type","info","label","Plan: " + DRAFT_PLAN:LENGTH + " legs")).
+    _MENU_ADD_ITEM(LEXICON("type","info","label","AA: " + aa_str + "  FAR: " + far_str)).
+    _MENU_ADD_ITEM(LEXICON("type","info","label","Edit plan on main screen (close menu)")).
     RETURN.
   }
 
@@ -484,6 +467,256 @@ FUNCTION MENU_DISPATCH {
   }
 }
 
+// ============================================================
+// FMS Plan Editor  (pre-arm screen, non-menu-overlay mode)
+// ============================================================
+
+LOCAL _FMS_LEG_TYPES       IS LIST(LEG_TAKEOFF, LEG_CRUISE, LEG_APPROACH).
+LOCAL _FMS_LEG_TYPE_LABELS IS LIST("TAKEOFF", "CRUISE", "APPROACH").
+
+// Returns a fresh leg LEXICON with default params for the given type string.
+FUNCTION _FMS_DEFAULT_LEG {
+  PARAMETER ltype.
+  IF ltype = LEG_TAKEOFF {
+    RETURN LEXICON("type", LEG_TAKEOFF,
+      "params", LEXICON("rwy_idx", 0)).
+  }
+  IF ltype = LEG_CRUISE {
+    RETURN LEXICON("type", LEG_CRUISE,
+      "params", LEXICON("alt_m", CRUISE_DEFAULT_ALT_M, "spd", CRUISE_DEFAULT_SPD,
+                        "wpt0", -1, "wpt1", -1, "wpt2", -1)).
+  }
+  IF ltype = LEG_APPROACH {
+    RETURN LEXICON("type", LEG_APPROACH,
+      "params", LEXICON("plate_idx", 0)).
+  }
+  RETURN LEXICON("type", LEG_TAKEOFF,
+    "params", LEXICON("rwy_idx", 0)).
+}
+
+// Returns the index (0/1/2) of this leg's type in _FMS_LEG_TYPES.
+FUNCTION _FMS_LEG_TYPE_IDX {
+  PARAMETER leg.
+  LOCAL t IS leg["type"].
+  IF t = LEG_TAKEOFF  { RETURN 0. }
+  IF t = LEG_CRUISE   { RETURN 1. }
+  IF t = LEG_APPROACH { RETURN 2. }
+  RETURN 0.
+}
+
+// Number of editable fields for this leg (field 0 is always Type).
+FUNCTION _FMS_LEG_FIELD_COUNT {
+  PARAMETER leg.
+  LOCAL t IS leg["type"].
+  IF t = LEG_TAKEOFF  { RETURN 2. }              // type, rwy
+  IF t = LEG_CRUISE   { RETURN 3 + FMS_WPT_SLOTS. } // type, alt, spd, wpt0..wptN
+  IF t = LEG_APPROACH { RETURN 2. }              // type, plate
+  RETURN 1.
+}
+
+// Label for field fi in leg.
+FUNCTION _FMS_LEG_FIELD_LABEL {
+  PARAMETER leg, fi.
+  IF fi = 0 { RETURN "Type". }
+  LOCAL t IS leg["type"].
+  IF t = LEG_TAKEOFF {
+    IF fi = 1 { RETURN "Runway". }
+  }
+  IF t = LEG_CRUISE {
+    IF fi = 1 { RETURN "Alt (m)". }
+    IF fi = 2 { RETURN "Spd (m/s)". }
+    IF fi = 3 { RETURN "Waypoint 1". }
+    IF fi = 4 { RETURN "Waypoint 2". }
+    IF fi = 5 { RETURN "Waypoint 3". }
+  }
+  IF t = LEG_APPROACH {
+    IF fi = 1 { RETURN "Plate". }
+  }
+  RETURN "---".
+}
+
+// Display value string for field fi in leg.
+FUNCTION _FMS_LEG_FIELD_VALUE_TEXT {
+  PARAMETER leg, fi.
+  LOCAL t   IS leg["type"].
+  LOCAL prm IS leg["params"].
+  IF fi = 0 { RETURN _FMS_LEG_TYPE_LABELS[_FMS_LEG_TYPE_IDX(leg)]. }
+  IF t = LEG_TAKEOFF {
+    IF fi = 1 {
+      IF ROUND(prm["rwy_idx"], 0) = 0 { RETURN "09". }
+      RETURN "27".
+    }
+  }
+  IF t = LEG_CRUISE {
+    IF fi = 1 { RETURN "" + ROUND(prm["alt_m"], 0). }
+    IF fi = 2 { RETURN "" + ROUND(prm["spd"], 0). }
+    IF fi = 3 OR fi = 4 OR fi = 5 {
+      LOCAL wkey IS "wpt" + (fi - 3).
+      LOCAL idx  IS ROUND(prm[wkey], 0).
+      IF idx < 0 OR idx >= CUSTOM_WPT_IDS:LENGTH { RETURN "- none -". }
+      RETURN CUSTOM_WPT_IDS[idx].
+    }
+  }
+  IF t = LEG_APPROACH {
+    IF fi = 1 {
+      LOCAL pidx IS ROUND(prm["plate_idx"], 0).
+      IF pidx >= 0 AND pidx < PLATE_IDS:LENGTH { RETURN PLATE_IDS[pidx]. }
+      RETURN "---".
+    }
+  }
+  RETURN "---".
+}
+
+// Mutate field fi of DRAFT_PLAN[leg_idx] by direction dir (+1 or -1).
+// Changing field 0 (type) replaces the entire leg with a fresh default.
+FUNCTION _FMS_LEG_CHANGE_FIELD {
+  PARAMETER leg_idx, fi, dir.
+  IF leg_idx < 0 OR leg_idx >= DRAFT_PLAN:LENGTH { RETURN. }
+  LOCAL leg IS DRAFT_PLAN[leg_idx].
+  LOCAL t   IS leg["type"].
+  LOCAL prm IS leg["params"].
+  IF fi = 0 {
+    LOCAL cur_ti IS _FMS_LEG_TYPE_IDX(leg).
+    LOCAL new_ti IS MOD(cur_ti + dir + _FMS_LEG_TYPES:LENGTH, _FMS_LEG_TYPES:LENGTH).
+    SET DRAFT_PLAN[leg_idx] TO _FMS_DEFAULT_LEG(_FMS_LEG_TYPES[new_ti]).
+    RETURN.
+  }
+  IF t = LEG_TAKEOFF {
+    IF fi = 1 { SET prm["rwy_idx"] TO ROUND(MOD(ROUND(prm["rwy_idx"], 0) + dir + 2, 2), 0). }
+  }
+  IF t = LEG_CRUISE {
+    IF fi = 1 { SET prm["alt_m"] TO CLAMP(ROUND(prm["alt_m"] + dir * 500, 0), 300, 20000). }
+    IF fi = 2 { SET prm["spd"]   TO CLAMP(ROUND(prm["spd"]   + dir * 10,  0), 50, 500). }
+    IF fi = 3 OR fi = 4 OR fi = 5 {
+      LOCAL wkey IS "wpt" + (fi - 3).
+      LOCAL n    IS CUSTOM_WPT_IDS:LENGTH.
+      LOCAL cur  IS ROUND(prm[wkey], 0) + dir.
+      IF cur < -1 { SET cur TO n - 1. }
+      IF cur >= n { SET cur TO -1. }
+      SET prm[wkey] TO ROUND(cur, 0).
+    }
+  }
+  IF t = LEG_APPROACH {
+    IF fi = 1 {
+      LOCAL n    IS MAX(PLATE_IDS:LENGTH, 1).
+      LOCAL cur  IS ROUND(prm["plate_idx"], 0).
+      SET prm["plate_idx"] TO ROUND(MOD(cur + dir + n, n), 0).
+    }
+  }
+}
+
+// One-line summary text for a leg in the list view.
+FUNCTION _FMS_LEG_LINE_TEXT {
+  PARAMETER leg.
+  IF NOT leg:HASKEY("type")   { RETURN "??? (no type)". }
+  IF NOT leg:HASKEY("params") { RETURN "??? (no params)". }
+  LOCAL t IS leg["type"].
+  LOCAL p IS leg["params"].
+  IF t = LEG_TAKEOFF {
+    LOCAL rwy IS "09".
+    IF p:HASKEY("rwy_idx") AND ROUND(p["rwy_idx"], 0) = 1 { SET rwy TO "27". }
+    RETURN "TAKEOFF   RWY " + rwy.
+  }
+  IF t = LEG_CRUISE {
+    LOCAL wpts IS "".
+    LOCAL slot IS 0.
+    UNTIL slot >= FMS_WPT_SLOTS {
+      LOCAL wkey IS "wpt" + slot.
+      IF p:HASKEY(wkey) AND ROUND(p[wkey], 0) >= 0 {
+        LOCAL widx IS ROUND(p[wkey], 0).
+        IF widx < CUSTOM_WPT_IDS:LENGTH {
+          LOCAL wname IS CUSTOM_WPT_IDS[widx].
+          IF wpts = "" { SET wpts TO wname. }
+          ELSE { SET wpts TO wpts + "+". }
+        }
+      }
+      SET slot TO slot + 1.
+    }
+    LOCAL alt_m_val IS CRUISE_DEFAULT_ALT_M.
+    LOCAL spd_val   IS CRUISE_DEFAULT_SPD.
+    IF p:HASKEY("alt_m") { SET alt_m_val TO p["alt_m"]. }
+    IF p:HASKEY("spd")   { SET spd_val   TO p["spd"]. }
+    LOCAL alt_ft IS ROUND(alt_m_val * 3.281 / 100, 0) * 100.
+    IF wpts = "" { RETURN "CRUISE    " + alt_ft + "ft  " + ROUND(spd_val, 0) + "m/s". }
+    RETURN "CRUISE    " + alt_ft + "ft  " + wpts.
+  }
+  IF t = LEG_APPROACH {
+    LOCAL pidx IS 0.
+    IF p:HASKEY("plate_idx") { SET pidx TO ROUND(p["plate_idx"], 0). }
+    IF pidx >= 0 AND pidx < PLATE_IDS:LENGTH { RETURN "APPROACH  " + PLATE_IDS[pidx]. }
+    RETURN "APPROACH  ---".
+  }
+  RETURN "??? leg".
+}
+
+// Handle a keypress in FMS prearm mode (not menu overlay).
+// Returns "" or "QUIT".
+FUNCTION _FMS_EDITOR_KEY {
+  PARAMETER ch.
+
+  IF ch = "q" OR ch = "Q" { RETURN "QUIT". }
+  IF ch = "m" OR ch = "M" { MENU_OPEN(). RETURN "". }
+
+  IF FMS_EDITING_LEG {
+    // --- Edit-field mode ---
+    IF ch = "w" OR ch = "W" {
+      IF FMS_EDIT_FIELD > 0 { SET FMS_EDIT_FIELD TO FMS_EDIT_FIELD - 1. }
+    } ELSE IF ch = "s" OR ch = "S" {
+      LOCAL fcount IS 1.
+      IF FMS_LEG_CURSOR < DRAFT_PLAN:LENGTH {
+        SET fcount TO _FMS_LEG_FIELD_COUNT(DRAFT_PLAN[FMS_LEG_CURSOR]).
+      }
+      IF FMS_EDIT_FIELD < fcount - 1 { SET FMS_EDIT_FIELD TO FMS_EDIT_FIELD + 1. }
+    } ELSE IF ch = "a" OR ch = "A" {
+      _FMS_LEG_CHANGE_FIELD(FMS_LEG_CURSOR, FMS_EDIT_FIELD, -1).
+      // Clamp field if type changed and new type has fewer fields
+      LOCAL fcount IS _FMS_LEG_FIELD_COUNT(DRAFT_PLAN[FMS_LEG_CURSOR]).
+      IF FMS_EDIT_FIELD >= fcount { SET FMS_EDIT_FIELD TO fcount - 1. }
+    } ELSE IF ch = "d" OR ch = "D" {
+      _FMS_LEG_CHANGE_FIELD(FMS_LEG_CURSOR, FMS_EDIT_FIELD, 1).
+      LOCAL fcount IS _FMS_LEG_FIELD_COUNT(DRAFT_PLAN[FMS_LEG_CURSOR]).
+      IF FMS_EDIT_FIELD >= fcount { SET FMS_EDIT_FIELD TO fcount - 1. }
+    } ELSE IF ch = "e" OR ch = "E" OR ch = "y" OR ch = "Y" OR ch = CHAR(13) OR ch = "x" OR ch = "X" {
+      SET FMS_EDITING_LEG TO FALSE.
+    }
+    SET LAST_DISPLAY_UT TO 0.
+    RETURN "".
+  }
+
+  // --- List mode ---
+  IF ch = "w" OR ch = "W" {
+    IF FMS_LEG_CURSOR > 0 { SET FMS_LEG_CURSOR TO FMS_LEG_CURSOR - 1. }
+  } ELSE IF ch = "s" OR ch = "S" {
+    IF FMS_LEG_CURSOR < DRAFT_PLAN:LENGTH - 1 { SET FMS_LEG_CURSOR TO FMS_LEG_CURSOR + 1. }
+  } ELSE IF ch = "a" OR ch = "A" {
+    // Add a new default leg after cursor (CRUISE by default, or TAKEOFF if list is empty)
+    IF DRAFT_PLAN:LENGTH = 0 {
+      DRAFT_PLAN:ADD(_FMS_DEFAULT_LEG(LEG_TAKEOFF)).
+      SET FMS_LEG_CURSOR TO 0.
+    } ELSE {
+      LOCAL insert_at IS FMS_LEG_CURSOR + 1.
+      DRAFT_PLAN:INSERT(insert_at, _FMS_DEFAULT_LEG(LEG_CRUISE)).
+      SET FMS_LEG_CURSOR TO insert_at.
+    }
+  } ELSE IF ch = "x" OR ch = "X" {
+    // Delete leg at cursor
+    IF DRAFT_PLAN:LENGTH > 0 {
+      DRAFT_PLAN:REMOVE(FMS_LEG_CURSOR).
+      IF FMS_LEG_CURSOR >= DRAFT_PLAN:LENGTH AND FMS_LEG_CURSOR > 0 {
+        SET FMS_LEG_CURSOR TO DRAFT_PLAN:LENGTH - 1.
+      }
+    }
+  } ELSE IF ch = "e" OR ch = "E" OR ch = "y" OR ch = "Y" OR ch = CHAR(13) {
+    // Enter edit mode for current leg
+    IF DRAFT_PLAN:LENGTH > 0 {
+      SET FMS_EDIT_FIELD  TO 0.
+      SET FMS_EDITING_LEG TO TRUE.
+    }
+  }
+  SET LAST_DISPLAY_UT TO 0.
+  RETURN "".
+}
+
 FUNCTION MENU_OPEN {
   IF IFC_PHASE = PHASE_PREARM {
     MENU_STAGE_FROM_LIVE().
@@ -661,6 +894,8 @@ FUNCTION MENU_TICK {
           MENU_CLOSE().
         }
       }
+    } ELSE IF IFC_PHASE = PHASE_PREARM {
+      SET result TO _FMS_EDITOR_KEY(ch).
     } ELSE {
       IF ch = "m" OR ch = "M" {
         MENU_OPEN().

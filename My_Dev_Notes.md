@@ -113,3 +113,7 @@ Other thoughts:
 
 Closing thoughts:
 - I've ideated a lot. I'm not sure what would be the most robust and intuitive way to integrate all of this. I'd like you to reflect on my ideas, as well as give me ideas, suggestions, criticisms, etc.
+
+---
+
+have maximum manuevering speed as a parameter

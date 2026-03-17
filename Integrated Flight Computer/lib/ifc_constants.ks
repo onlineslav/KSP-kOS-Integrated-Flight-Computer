@@ -139,6 +139,7 @@ GLOBAL BOUNCE_RECOVERY_MIN_VS IS 0.6. // m/s minimum upward VS to count as a rea
 GLOBAL BOUNCE_RECOVERY_CONFIRM_S IS 0.30. // s airborne criteria must persist before bounce recovery
 GLOBAL BOUNCE_RECOVERY_MAX_S IS 6.0. // s after touchdown where bounce recovery is allowed
 GLOBAL ROLLOUT_DONE_IAS IS 3.    // m/s IAS to declare rollout complete
+GLOBAL THR_REV_DEACT_IAS IS 5.  // m/s IAS below which thrust reversers are cut and throttle zeroed
 GLOBAL KP_ROLLOUT_ROLL  IS 0.16. // aileron authority per deg of bank (wings level)
 GLOBAL KP_ROLLOUT_YAW   IS 0.05. // rudder authority per deg of heading error
 GLOBAL ROLLOUT_YAW_SLEW_PER_S IS 2.5. // control units/s max rudder command rate change
@@ -241,7 +242,9 @@ GLOBAL TAKEOFF_CLIMB_FPA_SLEW_DPS IS 1.6.  // deg/s max FPA change rate for rota
 // Cruise phase defaults
 // ----------------------------
 GLOBAL CRUISE_DEFAULT_SPD     IS 150.    // m/s  default cruise IAS
+GLOBAL CRUISE_DEFAULT_ALT_M   IS 3000.   // m    default cruise altitude MSL
 GLOBAL CRUISE_DESCENT_START_M IS 15000.  // m    begin blending toward waypoint alt within this range
+GLOBAL FMS_WPT_SLOTS          IS 3.      // cruise waypoint picker slots in plan editor
 
 // ----------------------------
 // Flight plan leg type tags
@@ -259,6 +262,7 @@ GLOBAL BTYPE_ILS  IS "ILS".
 GLOBAL BTYPE_VOR  IS "VOR".
 GLOBAL BTYPE_IAF  IS "IAF".  // Initial Approach Fix
 GLOBAL BTYPE_FAF  IS "FAF".  // Final Approach Fix
+GLOBAL BTYPE_WPT  IS "WPT".  // User-defined waypoint
 
 // ----------------------------
 // UI layout  (row numbers for AT(col,row) positioning)

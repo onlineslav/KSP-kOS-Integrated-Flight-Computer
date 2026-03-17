@@ -315,8 +315,28 @@ FUNCTION _RUN_TOUCHDOWN {
 // - Uses small rudder assist only at lower speeds.
 // ─────────────────────────────────────────────────────────
 FUNCTION _RUN_ROLLOUT {
-  SET THROTTLE_CMD TO 0.
   LOCAL ias IS GET_IAS().
+
+  // Thrust reverser throttle management.
+  // If the aircraft has reversers (ag_thrust_rev > 0), command full throttle
+  // while above the deactivation speed, then cut reversers and throttle once
+  // below it.  Only toggle the action group once (ROLLOUT_REV_DEACTIVATED flag).
+  LOCAL ag_tr IS 0.
+  IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("ag_thrust_rev") {
+    SET ag_tr TO ACTIVE_AIRCRAFT["ag_thrust_rev"].
+  }
+  LOCAL thr_rev_deact IS AC_PARAM("thr_rev_deact_ias", THR_REV_DEACT_IAS, 0).
+  IF ag_tr > 0 AND NOT ROLLOUT_REV_DEACTIVATED {
+    IF ias > thr_rev_deact {
+      SET THROTTLE_CMD TO 1.
+    } ELSE {
+      TRIGGER_AG(ag_tr, FALSE).
+      SET ROLLOUT_REV_DEACTIVATED TO TRUE.
+      SET THROTTLE_CMD TO 0.
+    }
+  } ELSE {
+    SET THROTTLE_CMD TO 0.
+  }
 
   LOCAL brake_max_ias              IS AC_PARAM("rollout_brake_max_ias",          ROLLOUT_BRAKE_MAX_IAS,          0.001).
   // rollout_brake_delay_s: per-aircraft override for the brake enable delay.

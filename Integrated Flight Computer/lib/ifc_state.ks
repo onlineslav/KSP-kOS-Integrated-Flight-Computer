@@ -163,6 +163,14 @@ GLOBAL FLIGHT_PLAN       IS LIST(). // ordered LIST of leg LEXICONs
 GLOBAL FLIGHT_PLAN_INDEX IS 0.      // index of currently executing leg
 
 // ----------------------------
+// FMS plan editor state  (pre-arm only)
+// ----------------------------
+GLOBAL DRAFT_PLAN        IS LIST(). // leg list being built in pre-arm
+GLOBAL FMS_LEG_CURSOR    IS 0.      // selected leg index in list view
+GLOBAL FMS_EDIT_FIELD    IS 0.      // selected field index when editing a leg
+GLOBAL FMS_EDITING_LEG   IS FALSE.  // TRUE = per-leg edit overlay is open
+
+// ----------------------------
 // Manual override (CWS)
 // ----------------------------
 GLOBAL IFC_MANUAL_MODE IS FALSE. // TRUE = autopilot suspended, pilot has control
@@ -192,7 +200,8 @@ GLOBAL ROLLOUT_YAW_CMD_PREV IS 0. // previous-cycle rudder command for slew limi
 GLOBAL ROLLOUT_PITCH_CMD_PREV IS 0. // previous-cycle pitch command for slew limiting
 GLOBAL ROLLOUT_PITCH_REF_DEG IS 0. // touchdown-captured pitch attitude reference (deg)
 GLOBAL ROLLOUT_PITCH_TGT_DEG IS 0. // time-evolving pitch target for rollout nose lowering (deg)
-GLOBAL ROLLOUT_STEER_HDG IS 0. // computed wheelsteering target (logged for telemetry)
+GLOBAL ROLLOUT_STEER_HDG IS 0.         // computed wheelsteering target (logged for telemetry)
+GLOBAL ROLLOUT_REV_DEACTIVATED IS FALSE. // TRUE once reversers have been cut during rollout
 
 // ----------------------------
 // Init / reset
@@ -270,7 +279,8 @@ FUNCTION IFC_INIT_STATE {
   SET ROLLOUT_PITCH_CMD_PREV TO 0.
   SET ROLLOUT_PITCH_REF_DEG TO GET_PITCH().
   SET ROLLOUT_PITCH_TGT_DEG TO GET_PITCH().
-  SET ROLLOUT_STEER_HDG   TO GET_COMPASS_HDG().
+  SET ROLLOUT_STEER_HDG       TO GET_COMPASS_HDG().
+  SET ROLLOUT_REV_DEACTIVATED TO FALSE.
 
   SET TELEM_AA_HDG_CMD   TO 0.
   SET TELEM_AA_FPA_CMD   TO 0.
@@ -306,6 +316,11 @@ FUNCTION IFC_INIT_STATE {
   SET FLIGHT_PLAN       TO LIST().
   SET FLIGHT_PLAN_INDEX TO 0.
   SET IFC_MANUAL_MODE   TO FALSE.
+
+  SET DRAFT_PLAN      TO LIST().
+  SET FMS_LEG_CURSOR  TO 0.
+  SET FMS_EDIT_FIELD  TO 0.
+  SET FMS_EDITING_LEG TO FALSE.
 
   SET CRUISE_WAYPOINTS  TO LIST().
   SET CRUISE_WP_INDEX   TO 0.

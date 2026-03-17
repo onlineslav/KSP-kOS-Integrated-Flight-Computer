@@ -17,14 +17,14 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
   RETURN LEXICON(
 
     // ── Identity ──────────────────────────────────────────
-    "name",         "My Aircraft",     // shown in telemetry
+    "name",         "CF1-E Kerbmaster",     // shown in telemetry
 
     // ── Approach speeds (m/s IAS) ─────────────────────────
     // Vapp: target speed from FAF to flare.
     // Vref: threshold crossing speed (used for display/logging).
     // Reduce Vapp toward Vref during the flare by cutting throttle.
-    "v_app",        75.0,
-    "v_ref",        65.0,
+    "v_app",        80.0,
+    "v_ref",        77.0,
     // Optional approach-speed schedule shaping (set to -1 to use globals):
     // Intercept target is derived as:
     //   Vint = Vapp + clamp((Vapp - Vref) * gain, min_add, max_add)
@@ -38,10 +38,10 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // ── Action groups ─────────────────────────────────────
     // Set to the action group NUMBER (1-10) that controls each
     // system, or 0 to disable.
-    "ag_flaps_step_up",   0,  // FAR flap detent step-up action group
-    "ag_flaps_step_down", 0,  // FAR flap detent step-down action group
-    "ag_spoilers",       0,   // deploy spoilers/airbrakes on touchdown
-    "ag_thrust_rev",     0,   // reverse thrust on touchdown
+    "ag_flaps_step_up",   9,  // FAR flap detent step-up action group
+    "ag_flaps_step_down", 10,  // FAR flap detent step-down action group
+    "ag_spoilers",       7,   // deploy spoilers/airbrakes on touchdown
+    "ag_thrust_rev",     8,   // reverse thrust on touchdown
     "ag_drogue",         0,   // deploy drogue chute on touchdown (0 = not equipped)
 
     // ── Flap detent schedule ───────────────────────────────
@@ -50,7 +50,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "flaps_initial_detent", 0, // estimated detent when IFC starts
     "flaps_detent_up",      0, // fully retracted
     "flaps_detent_climb",   1, // climb / maneuver detent
-    "flaps_detent_takeoff", -1, // takeoff flap detent (-1 = use flaps_detent_approach)
+    "flaps_detent_takeoff", 1, // takeoff flap detent (-1 = use flaps_detent_approach)
     "flaps_detent_approach",2, // takeoff/descent detent
     "flaps_detent_landing", 3, // full landing detent
     "flaps_max_detent",     3, // highest valid detent index
@@ -77,7 +77,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // ── Takeoff ───────────────────────────────────────────
     "v_r",                70.0,  // m/s  rotate speed
     "v2",                 80.0,  // m/s  V2 climb speed
-    "takeoff_pitch_tgt",  12.0,  // deg  pitch target at rotation
+    "takeoff_pitch_tgt",  10.0,  // deg  pitch target at rotation
     "takeoff_pitch_slew_dps",     -1, // deg/s rotate-target pitch slew (-1 = global)
     "takeoff_rotate_pitch_kp",    -1, // pitch cmd per deg pitch error while on wheels (-1 = global)
     "takeoff_rotate_pitch_ff",    -1, // baseline back-pressure during rotation (-1 = global)
@@ -124,8 +124,8 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // ── AA Moderators ─────────────────────────────────────
     // Per-aircraft overrides for AtmosphereAutopilot FBW limits.
     // Set to -1 to use the global default from ifc_constants.ks.
-    "aa_max_aoa",      -1,   // deg max AoA  (global: 12)
-    "aa_max_g",        -1,   // G   max G    (global: 3.5)
+    "aa_max_aoa",      15,   // deg max AoA  (global: 12)
+    "aa_max_g",        5,   // G   max G    (global: 3.5)
     "aa_max_sideslip", -1,   // deg max sideslip (global: 5)
     "aa_max_side_g",   -1,   // G   max lateral G (global: 1.5)
     "aa_max_bank",     -1,   // deg max bank (global: 35; -1 = use default)

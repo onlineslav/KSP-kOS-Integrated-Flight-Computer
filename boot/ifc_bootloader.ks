@@ -14,6 +14,30 @@ PRINT "IFC boot on core: " + CORE:PART.
 SAS OFF.
 RCS OFF.
 
+FUNCTION _SET_STARTUP_CAMERA {
+  IF NOT ADDONS:HASSUFFIX("CAMERA") {
+    RETURN.
+  }
+
+  LOCAL cam IS ADDONS:CAMERA.
+  IF cam:HASSUFFIX("FLIGHTCAMERA") {
+    SET cam TO cam:FLIGHTCAMERA.
+  }
+
+  IF cam:HASSUFFIX("MODE") {
+    SET cam:MODE TO "LOCKED".
+  }
+
+  // Rear chase angle. If your craft faces the wrong way, change to 0.
+  IF cam:HASSUFFIX("HEADING") {
+    SET cam:HEADING TO 180.
+  } ELSE IF cam:HASSUFFIX("HDG") {
+    SET cam:HDG TO 180.
+  }
+}
+
+_SET_STARTUP_CAMERA().
+
 // Keep local volume (1:) in sync with archive (0:) to avoid stale boot scripts.
 LOCAL sync_local_scripts IS TRUE.
 

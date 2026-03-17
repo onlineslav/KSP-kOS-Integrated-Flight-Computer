@@ -2,7 +2,12 @@
 
 // ============================================================
 // ifc_fms.ks  -  Integrated Flight Computer
-// Save/load menu presets by slot.
+// Save/load DRAFT_PLAN by slot.
+//
+// File format v2: {"version":2, "slot":N, "legs":[...]}
+// Each leg: {"type":"TAKEOFF"|"CRUISE"|"APPROACH", "params":{...}}
+// Backward compat: v1 files (menu options) are silently ignored
+// with a warning — they cannot be converted without user input.
 // ============================================================
 
 GLOBAL FMS_SLOT_MIN IS 1.
@@ -21,24 +26,80 @@ FUNCTION _FMS_PATH {
   RETURN FMS_SLOT_PREFIX + s + FMS_SLOT_SUFFIX.
 }
 
+// Serialise one DRAFT_PLAN leg to a plain LEXICON safe for WRITEJSON.
+FUNCTION _FMS_SERIALISE_LEG {
+  PARAMETER leg.
+  LOCAL t IS leg["type"].
+  LOCAL p IS leg["params"].
+
+  // Deep-copy params into a fresh LEXICON (kOS WRITEJSON handles LEXICON/scalar).
+  LOCAL sp IS LEXICON().
+  FOR k IN p:KEYS { sp:ADD(k, p[k]). }
+
+  RETURN LEXICON("type", t, "params", sp).
+}
+
+// Reconstruct one DRAFT_PLAN leg from a deserialised LEXICON.
+// Returns 0 if the entry is invalid.
+FUNCTION _FMS_DESERIALISE_LEG {
+  PARAMETER entry.
+  IF NOT entry:HASKEY("type")   { RETURN 0. }
+  IF NOT entry:HASKEY("params") { RETURN 0. }
+  LOCAL t IS entry["type"].
+  LOCAL p IS entry["params"].
+
+  // Validate type and rebuild params with correct types/defaults.
+  IF t = LEG_TAKEOFF {
+    LOCAL rwy_idx IS 0.
+    IF p:HASKEY("rwy_idx") { SET rwy_idx TO ROUND(p["rwy_idx"], 0). }
+    RETURN LEXICON("type", LEG_TAKEOFF,
+      "params", LEXICON("rwy_idx", CLAMP(rwy_idx, 0, 1))).
+
+  } ELSE IF t = LEG_CRUISE {
+    LOCAL alt_m IS CRUISE_DEFAULT_ALT_M.
+    LOCAL spd   IS CRUISE_DEFAULT_SPD.
+    IF p:HASKEY("alt_m") { SET alt_m TO p["alt_m"]. }
+    IF p:HASKEY("spd")   { SET spd   TO p["spd"]. }
+    LOCAL cp IS LEXICON("alt_m", alt_m, "spd", spd).
+    LOCAL wi IS 0.
+    UNTIL wi >= FMS_WPT_SLOTS {
+      LOCAL wkey IS "wpt" + wi.
+      LOCAL widx IS -1.
+      IF p:HASKEY(wkey) { SET widx TO ROUND(p[wkey], 0). }
+      cp:ADD(wkey, widx).
+      SET wi TO wi + 1.
+    }
+    RETURN LEXICON("type", LEG_CRUISE, "params", cp).
+
+  } ELSE IF t = LEG_APPROACH {
+    LOCAL pidx IS 0.
+    IF p:HASKEY("plate_idx") { SET pidx TO ROUND(p["plate_idx"], 0). }
+    RETURN LEXICON("type", LEG_APPROACH,
+      "params", LEXICON("plate_idx", CLAMP(pidx, 0, PLATE_IDS:LENGTH - 1))).
+  }
+
+  RETURN 0.  // Unknown leg type.
+}
+
 FUNCTION FMS_SAVE_PLAN {
   PARAMETER slot IS 1.
   LOCAL s IS _FMS_CLAMP_SLOT(slot).
   LOCAL slot_path IS _FMS_PATH(s).
 
+  LOCAL legs IS LIST().
+  LOCAL i IS 0.
+  UNTIL i >= DRAFT_PLAN:LENGTH {
+    legs:ADD(_FMS_SERIALISE_LEG(DRAFT_PLAN[i])).
+    SET i TO i + 1.
+  }
+
   LOCAL snapshot IS LEXICON(
-    "name",  "IFC Plan Slot " + s,
-    "slot",  s,
-    "proc",  IFC_MENU_OPT_PROC,
-    "rwy",   IFC_MENU_OPT_RWY,
-    "dist",  IFC_MENU_OPT_DIST,
-    "dest",  IFC_MENU_OPT_DEST,
-    "v_r",   IFC_MENU_OPT_VR,
-    "v2",    IFC_MENU_OPT_V2,
-    "vapp",  IFC_MENU_OPT_VAPP
+    "version", 2,
+    "slot",    s,
+    "legs",    legs
   ).
   WRITEJSON(snapshot, slot_path).
-  IFC_SET_ALERT("Plan saved: slot " + s + " -> " + slot_path).
+  IFC_SET_ALERT("Plan saved: slot " + s).
   RETURN TRUE.
 }
 
@@ -53,18 +114,44 @@ FUNCTION FMS_LOAD_PLAN {
   }
 
   LOCAL p IS READJSON(slot_path).
-  IF p:HASKEY("proc")  { SET IFC_MENU_OPT_PROC TO p["proc"]. }
-  IF p:HASKEY("rwy")   { SET IFC_MENU_OPT_RWY  TO p["rwy"]. }
-  IF p:HASKEY("dist")  { SET IFC_MENU_OPT_DIST TO p["dist"]. }
-  IF p:HASKEY("dest")  { SET IFC_MENU_OPT_DEST TO p["dest"]. }
-  IF p:HASKEY("v_r")   { SET IFC_MENU_OPT_VR   TO MAX(0, ROUND(p["v_r"], 0)). }
-  IF p:HASKEY("v2")    { SET IFC_MENU_OPT_V2   TO MAX(0, ROUND(p["v2"], 0)). }
-  IF p:HASKEY("vapp")  { SET IFC_MENU_OPT_VAPP TO MAX(0, ROUND(p["vapp"], 0)). }
 
-  SET IFC_MENU_OPT_PROC TO MOD(MAX(ROUND(IFC_MENU_OPT_PROC, 0), 0), 2).
-  SET IFC_MENU_OPT_RWY  TO MOD(MAX(ROUND(IFC_MENU_OPT_RWY, 0), 0), 2).
-  SET IFC_MENU_OPT_DIST TO MOD(MAX(ROUND(IFC_MENU_OPT_DIST, 0), 0), 2).
-  SET IFC_MENU_OPT_DEST TO MOD(MAX(ROUND(IFC_MENU_OPT_DEST, 0), 0), 2).
+  // v1 files lack "version" or have version < 2 — cannot restore.
+  IF NOT p:HASKEY("version") OR p["version"] < 2 {
+    IFC_SET_ALERT("Slot " + s + ": old format, re-save needed", "WARN").
+    RETURN FALSE.
+  }
+
+  IF NOT p:HASKEY("legs") {
+    IFC_SET_ALERT("Slot " + s + ": corrupt file", "WARN").
+    RETURN FALSE.
+  }
+
+  LOCAL raw_legs IS p["legs"].
+  LOCAL new_plan IS LIST().
+  LOCAL i IS 0.
+  UNTIL i >= raw_legs:LENGTH {
+    LOCAL leg IS _FMS_DESERIALISE_LEG(raw_legs[i]).
+    IF leg <> 0 { new_plan:ADD(leg). }
+    SET i TO i + 1.
+  }
+
+  IF new_plan:LENGTH = 0 {
+    IFC_SET_ALERT("Slot " + s + ": no valid legs", "WARN").
+    RETURN FALSE.
+  }
+
+  // Replace DRAFT_PLAN contents.
+  DRAFT_PLAN:CLEAR().
+  SET i TO 0.
+  UNTIL i >= new_plan:LENGTH {
+    DRAFT_PLAN:ADD(new_plan[i]).
+    SET i TO i + 1.
+  }
+
+  SET FMS_LEG_CURSOR TO 0.
+  SET FMS_EDIT_FIELD  TO 0.
+  SET FMS_EDITING_LEG TO FALSE.
+  SET LAST_DISPLAY_UT TO 0.
 
   IFC_SET_ALERT("Plan loaded: slot " + s).
   RETURN TRUE.

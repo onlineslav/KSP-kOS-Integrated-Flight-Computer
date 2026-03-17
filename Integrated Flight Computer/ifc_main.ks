@@ -45,6 +45,7 @@ RUNPATH(ifc_root + "lib/ifc_logger.ks").
 RUNPATH(ifc_root + "lib/ifc_fms.ks").
 RUNPATH(ifc_root + "nav/nav_math.ks").
 RUNPATH(ifc_root + "nav/nav_beacons.ks").
+RUNPATH(ifc_root + "nav/nav_custom_wpts.ks").
 RUNPATH(ifc_root + "phases/phase_approach.ks").
 RUNPATH(ifc_root + "phases/phase_autoland.ks").
 RUNPATH(ifc_root + "phases/phase_takeoff.ks").
@@ -215,13 +216,61 @@ FUNCTION _BUILD_PLAN_FROM_MENU {
       LOCAL route IS ROUTE_KSC_TO_ISL.
       plan:ADD(LEXICON(
         "type",   LEG_CRUISE,
-        "params", LEXICON("route", route)
+        "params", LEXICON(
+          "waypoints", route["waypoints"],
+          "alt_m",     route["cruise_alt_m"],
+          "spd",       route["cruise_spd"]
+        )
       )).
       plan:ADD(LEXICON(
         "type",   LEG_APPROACH,
         "params", LEXICON("plate", route["dest_plate"])
       )).
     }
+  }
+  RETURN plan.
+}
+
+// ── Build flight plan from DRAFT_PLAN (plan editor state) ─
+// Converts the editor representation (index-based) into the
+// execution representation (string IDs) consumed by _INIT_LEG.
+FUNCTION _BUILD_PLAN_FROM_DRAFT {
+  LOCAL plan IS LIST().
+  LOCAL i IS 0.
+  UNTIL i >= DRAFT_PLAN:LENGTH {
+    LOCAL dl IS DRAFT_PLAN[i].
+    LOCAL t  IS dl["type"].
+    LOCAL p  IS dl["params"].
+
+    IF t = LEG_TAKEOFF {
+      LOCAL rwy IS "09".
+      IF ROUND(p["rwy_idx"], 0) = 1 { SET rwy TO "27". }
+      plan:ADD(LEXICON("type", LEG_TAKEOFF,
+        "params", LEXICON("rwy_id", rwy))).
+
+    } ELSE IF t = LEG_CRUISE {
+      LOCAL wpts IS LIST().
+      LOCAL wi IS 0.
+      UNTIL wi >= FMS_WPT_SLOTS {
+        LOCAL wkey IS "wpt" + wi.
+        LOCAL widx IS ROUND(p[wkey], 0).
+        IF widx >= 0 AND widx < CUSTOM_WPT_IDS:LENGTH {
+          wpts:ADD(CUSTOM_WPT_IDS[widx]).
+        }
+        SET wi TO wi + 1.
+      }
+      plan:ADD(LEXICON("type", LEG_CRUISE,
+        "params", LEXICON("waypoints", wpts, "alt_m", p["alt_m"], "spd", p["spd"]))).
+
+    } ELSE IF t = LEG_APPROACH {
+      LOCAL pidx IS ROUND(p["plate_idx"], 0).
+      LOCAL pid  IS "PLATE_KSC_ILS09".
+      IF pidx >= 0 AND pidx < PLATE_IDS:LENGTH { SET pid TO PLATE_IDS[pidx]. }
+      plan:ADD(LEXICON("type", LEG_APPROACH,
+        "params", LEXICON("plate_id", pid))).
+    }
+
+    SET i TO i + 1.
   }
   RETURN plan.
 }
@@ -252,11 +301,24 @@ FUNCTION _INIT_LEG {
     SET IFC_SUBPHASE TO SUBPHASE_TO_PREFLIGHT.
 
   } ELSE IF leg_type = LEG_CRUISE {
-    LOCAL route IS params["route"].
-    SET CRUISE_WAYPOINTS  TO route["waypoints"].
-    SET CRUISE_ALT_M      TO route["cruise_alt_m"].
-    SET CRUISE_SPD_MPS    TO route["cruise_spd"].
-    SET CRUISE_DEST_PLATE TO route["dest_plate"].
+    // Accept flat params (waypoints/alt_m/spd) or legacy route wrapper.
+    LOCAL wpts  IS LIST().
+    LOCAL alt_m IS CRUISE_DEFAULT_ALT_M.
+    LOCAL spd   IS CRUISE_DEFAULT_SPD.
+    IF params:HASKEY("route") {
+      LOCAL route IS params["route"].
+      SET wpts  TO route["waypoints"].
+      SET alt_m TO route["cruise_alt_m"].
+      SET spd   TO route["cruise_spd"].
+    } ELSE {
+      IF params:HASKEY("waypoints") { SET wpts  TO params["waypoints"]. }
+      IF params:HASKEY("alt_m")     { SET alt_m TO params["alt_m"]. }
+      IF params:HASKEY("spd")       { SET spd   TO params["spd"]. }
+    }
+    SET CRUISE_WAYPOINTS  TO wpts.
+    SET CRUISE_ALT_M      TO alt_m.
+    SET CRUISE_SPD_MPS    TO spd.
+    SET CRUISE_DEST_PLATE TO 0.
     SET CRUISE_WP_INDEX   TO 0.
     SET THR_INTEGRAL      TO 0.
     SET A_ACTUAL_FILT     TO 0.
@@ -264,7 +326,9 @@ FUNCTION _INIT_LEG {
 
   } ELSE IF leg_type = LEG_APPROACH {
     LOCAL plate IS 0.
-    IF params:HASKEY("plate") {
+    IF params:HASKEY("plate_id") {
+      SET plate TO GET_PLATE(params["plate_id"]).
+    } ELSE IF params:HASKEY("plate") {
       SET plate TO params["plate"].
     } ELSE {
       LOCAL rwy_id    IS params["rwy_id"].
@@ -381,7 +445,7 @@ FUNCTION _RUN_FLIGHT_PLAN {
   UNLOCK THROTTLE.
   UNLOCK STEERING.
   UNLOCK WHEELSTEERING.
-  AA_DISABLE_ALL().
+  AA_RESTORE_FBW().
   BRAKES ON.
   LOGGER_CLOSE().
   IF DEFINED VR_PROBE_HOOKS_READY AND VR_PROBE_HOOKS_READY {
@@ -397,8 +461,8 @@ FUNCTION _RUN_FLIGHT_PLAN {
 }
 
 // ── Interactive startup (FMS pre-arm screen) ──────────────
-// Shows the pre-arm page, opens the FMS menu, and waits for
-// the user to ARM or QUIT.  On ARM, calls _RUN_FLIGHT_PLAN.
+// Shows the plan editor, waits for the user to ARM or QUIT.
+// On ARM, converts DRAFT_PLAN to an execution plan and runs it.
 FUNCTION _IFC_INTERACTIVE_START {
   IFC_INIT_STATE().
   SET IFC_MISSION_START_UT TO TIME:SECONDS.
@@ -412,30 +476,21 @@ FUNCTION _IFC_INTERACTIVE_START {
     IF ACTIVE_AIRCRAFT = 0 { SET ACTIVE_AIRCRAFT TO _DEFAULT_AIRCRAFT. }
   }
 
-  // Draw initial static content before entering the loop.
-  DISPLAY_HEADER().
-  DISPLAY_BREADCRUMB().
-  DISPLAY_KEY_HINTS().
-  DISPLAY_PREARM(IFC_MENU_OPT_PROC, IFC_MENU_OPT_RWY, IFC_MENU_OPT_DIST, IFC_MENU_OPT_DEST).
-  DISPLAY_ALERT_BAR().
-
-  // Open FMS menu immediately so the user can navigate.
-  MENU_OPEN().
+  // Seed DRAFT_PLAN with a default takeoff leg if it's empty.
+  IF DRAFT_PLAN:LENGTH = 0 {
+    DRAFT_PLAN:ADD(_FMS_DEFAULT_LEG(LEG_TAKEOFF)).
+  }
 
   LOCAL result IS "".
   UNTIL result = "ARM" OR result = "QUIT" {
     SET result TO MENU_TICK().
-    // Refresh pre-arm page whenever the menu is closed.
-    IF IFC_UI_MODE <> UI_MODE_MENU_OVERLAY {
-      DISPLAY_PREARM(IFC_MENU_OPT_PROC, IFC_MENU_OPT_RWY, IFC_MENU_OPT_DIST, IFC_MENU_OPT_DEST).
-    }
     DISPLAY_TICK().
     WAIT IFC_LOOP_DT.
   }
 
   IF result = "QUIT" { RETURN. }
 
-  _RUN_FLIGHT_PLAN(_BUILD_PLAN_FROM_MENU()).
+  _RUN_FLIGHT_PLAN(_BUILD_PLAN_FROM_DRAFT()).
 }
 
 // Boot scripts can set GLOBAL IFC_SKIP_INTERACTIVE IS TRUE. before loading
@@ -478,7 +533,11 @@ FUNCTION RUN_TAKEOFF_IFC {
   IF route <> 0 {
     plan:ADD(LEXICON(
       "type",   LEG_CRUISE,
-      "params", LEXICON("route", route)
+      "params", LEXICON(
+        "waypoints", route["waypoints"],
+        "alt_m",     route["cruise_alt_m"],
+        "spd",       route["cruise_spd"]
+      )
     )).
     plan:ADD(LEXICON(
       "type",   LEG_APPROACH,

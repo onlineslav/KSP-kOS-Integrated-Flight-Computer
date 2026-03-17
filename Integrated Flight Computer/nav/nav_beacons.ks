@@ -325,6 +325,16 @@ FUNCTION GET_PLATE {
 // ----------------------------
 // Approach plate lookup
 // ----------------------------
+// Ordered list of plate IDs for FMS plate picker (A/D to cycle).
+GLOBAL PLATE_IDS IS LIST(
+  "PLATE_KSC_ILS09",
+  "PLATE_KSC_ILS09_SHORT",
+  "PLATE_KSC_ILS27",
+  "PLATE_KSC_ILS27_SHORT",
+  "PLATE_ISL_ILS09",
+  "PLATE_ISL_ILS27"
+).
+
 FUNCTION GET_PLATE_FOR_RUNWAY {
   PARAMETER rwy_id, short_approach.
   IF rwy_id = "09" {

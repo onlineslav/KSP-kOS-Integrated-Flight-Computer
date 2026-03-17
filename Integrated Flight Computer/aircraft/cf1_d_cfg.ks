@@ -17,7 +17,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
   RETURN LEXICON(
 
     // ── Identity ──────────────────────────────────────────
-    "name",         "My Aircraft",     // shown in telemetry
+    "name",         "CF1-D ",     // shown in telemetry
 
     // ── Approach speeds (m/s IAS) ─────────────────────────
     // Vapp: target speed from FAF to flare.
@@ -50,7 +50,6 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "flaps_initial_detent", 0, // estimated detent when IFC starts
     "flaps_detent_up",      0, // fully retracted
     "flaps_detent_climb",   1, // climb / maneuver detent
-    "flaps_detent_takeoff", -1, // takeoff flap detent (-1 = use flaps_detent_approach)
     "flaps_detent_approach",2, // takeoff/descent detent
     "flaps_detent_landing", 3, // full landing detent
     "flaps_max_detent",     3, // highest valid detent index
@@ -65,70 +64,6 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // AGL (m) at which to extend landing gear on approach.
     // Set to 0 to manage gear manually.
     "gear_down_agl", 300,
-
-    // ── Stall / AoA limits ────────────────────────────────
-    "vs0",      55.0,   // m/s  stall speed in landing configuration
-    "a_crit",    0.0,   // deg  critical AoA from FAR data (0 = protection disabled)
-
-    // ── Spoiler arming (approach) ─────────────────────────
-    "ag_spoilers_arm",    0,  // AG to arm spoilers in-flight (0 = not used)
-    "app_spoiler_arm_km", 0,  // km from threshold to arm (0 = disabled)
-
-    // ── Takeoff ───────────────────────────────────────────
-    "v_r",                70.0,  // m/s  rotate speed
-    "v2",                 80.0,  // m/s  V2 climb speed
-    "takeoff_pitch_tgt",  12.0,  // deg  pitch target at rotation
-    "takeoff_pitch_slew_dps",     -1, // deg/s rotate-target pitch slew (-1 = global)
-    "takeoff_rotate_pitch_kp",    -1, // pitch cmd per deg pitch error while on wheels (-1 = global)
-    "takeoff_rotate_pitch_ff",    -1, // baseline back-pressure during rotation (-1 = global)
-    "takeoff_rotate_pitch_min_cmd",-1, // minimum nose-up pitch cmd while rotating (-1 = global)
-    "takeoff_rotate_pitch_max_cmd",-1, // max pitch cmd while on wheels (-1 = global)
-    "takeoff_rotate_pitch_slew_per_s",-1, // pitch cmd slew while on wheels (-1 = global)
-    "takeoff_climb_fpa",   8.0,  // deg  climb FPA for climb-out
-    "takeoff_throttle",    1.0,  // 0..1 takeoff throttle setting
-    "takeoff_done_agl",  300.0,  // m AGL to end takeoff phase
-    "takeoff_airborne_agl",   -1, // m AGL threshold for airborne detect (-1 = global)
-    "takeoff_airborne_min_vs",-1, // m/s min VS for airborne detect (-1 = global)
-    "takeoff_autostage",      -1, // 1=auto STAGE attempts if no thrust (-1 = global)
-    "takeoff_stage_max_attempts",-1, // max autostage attempts (-1 = global)
-    "takeoff_stage_retry_s",  -1, // s between autostage attempts (-1 = global)
-    "takeoff_engine_spool_timeout_s",-1, // s wait in preflight for thrust (-1 = global)
-    "takeoff_spool_thrust_frac",  -1, // 0..1 fraction of max thrust required before brake release (-1 = global)
-    "takeoff_spool_steady_dknps", -1, // kN/s |d(thrust)/dt| threshold for steady-state gate (-1 = global)
-    "takeoff_spool_steady_hold_s",-1, // s thrust must remain steady before brake release (-1 = global)
-    "takeoff_flap_settle_s",      -1, // s hold after final takeoff-flap step before brake release (-1 = global)
-    "takeoff_min_avail_thrust",   -1, // kN considered "engines lit" (-1 = global)
-    "takeoff_loc_kp",             -1, // deg/m centerline correction gain (-1 = global)
-    "takeoff_loc_guard_m",        -1, // m loc error clamp for steering (-1 = global)
-    "takeoff_steer_max_corr",     -1, // deg max wheelsteering heading correction (-1 = global)
-    "takeoff_steer_hdg_rate_kd",  -1, // steering heading-rate damping (-1 = global)
-    "takeoff_dir_max_corr",       -1, // deg max director heading correction (-1 = global)
-    "takeoff_yaw_start_ias",      -1, // m/s IAS where yaw assist starts (-1 = global)
-    "takeoff_yaw_full_ias",       -1, // m/s IAS where yaw assist reaches full gain (-1 = global)
-    "takeoff_yaw_min_scale",      -1, // 0..1 rudder authority floor from rollout start (-1 = global)
-    "takeoff_yaw_kp",             -1, // rudder cmd per deg heading error (-1 = global)
-    "takeoff_yaw_kd",             -1, // rudder cmd per deg/s heading-rate error (-1 = global)
-    "takeoff_yaw_boost_err_deg",  -1, // heading error where yaw boost reaches +1x (-1 = global)
-    "takeoff_yaw_boost_max",      -1, // cap extra yaw gain from heading-error boost (-1 = global)
-    "takeoff_yaw_max_cmd",        -1, // max rudder cmd magnitude (-1 = global)
-    "takeoff_yaw_slew_per_s",     -1, // rudder cmd slew rate (-1 = global)
-    "takeoff_yaw_sign",           -1, // command sign for your control layout (+1 or -1)
-    "takeoff_climb_min_throttle", -1, // throttle floor during climb (-1 = global)
-    "takeoff_climb_spd_thr_gain", -1, // throttle trim gain vs (V2-IAS) (-1 = global)
-    "takeoff_climb_fpa_spd_gain", -1, // deg FPA reduction per m/s below V2 (-1 = global)
-    "takeoff_climb_fpa_min",      -1, // deg minimum climb FPA under speed protection (-1 = global)
-    "takeoff_climb_fpa_slew_dps", -1, // deg/s FPA slew for rotate->climb handoff (-1 = global)
-    "takeoff_aoa_protect_frac",   -1, // AoA protection threshold as fraction of a_crit (-1 = global)
-    "takeoff_aoa_fpa_gain",       -1, // deg FPA pull-down per deg AoA above threshold (-1 = global)
-
-    // ── AA Moderators ─────────────────────────────────────
-    // Per-aircraft overrides for AtmosphereAutopilot FBW limits.
-    // Set to -1 to use the global default from ifc_constants.ks.
-    "aa_max_aoa",      -1,   // deg max AoA  (global: 12)
-    "aa_max_g",        -1,   // G   max G    (global: 3.5)
-    "aa_max_sideslip", -1,   // deg max sideslip (global: 5)
-    "aa_max_side_g",   -1,   // G   max lateral G (global: 1.5)
-    "aa_max_bank",     -1,   // deg max bank (global: 35; -1 = use default)
 
     // ── Rollout ────────────────────────────────────────────
     // Max IAS to allow wheel brakes during rollout.
