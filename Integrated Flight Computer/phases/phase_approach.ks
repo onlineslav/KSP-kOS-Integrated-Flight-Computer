@@ -151,6 +151,13 @@ FUNCTION _UPDATE_APPROACH_SPEED_TARGET {
     SET APP_SPD_MODE TO "INTERCEPT".
   }
 
+  // As soon as localizer is captured in ILS_TRACK, drive speed to Vapp.
+  // This avoids carrying intercept-speed additives down final.
+  IF IFC_SUBPHASE = SUBPHASE_ILS_TRACK AND ABS(ILS_LOC_DEV) <= LOC_CAPTURE_M {
+    SET base_tgt TO MIN(base_tgt, vapp).
+    IF APP_SPD_MODE = "INTERCEPT" { SET APP_SPD_MODE TO "LOC_CAPTURE". }
+  }
+
   SET ACTIVE_V_TGT TO MOVE_TOWARD(
     ACTIVE_V_TGT,
     base_tgt,
@@ -186,6 +193,19 @@ FUNCTION _RUN_APPROACH_THROTTLE {
 // Descend to the target altitude associated with each fix.
 // ─────────────────────────────────────────────────────────
 FUNCTION _RUN_FLY_TO_FIX {
+  // If we're already on the localizer inbound, hand off directly to ILS track
+  // without waiting for the remaining fix sequence.
+  IF ACTIVE_ILS_ID <> "" {
+    LOCAL ils_dev IS _COMPUTE_ILS_DEVIATIONS().
+    IF ils_dev:HASKEY("loc") AND ils_dev:HASKEY("dist")
+        AND ils_dev["dist"] > 0
+        AND ABS(ils_dev["loc"]) <= LOC_CAPTURE_M {
+      SET_SUBPHASE(SUBPHASE_ILS_TRACK).
+      SET PREV_LOC_DEV TO 0.
+      SET PREV_GS_DEV  TO 0.
+      RETURN.
+    }
+  }
 
   // If all fixes have been passed, begin ILS tracking.
   IF FIX_INDEX >= ACTIVE_FIXES:LENGTH {
@@ -247,10 +267,6 @@ FUNCTION _RUN_FLY_TO_FIX {
 // Transitions to PHASE_FLARE when runway-relative height drops below FLARE_AGL_M.
 // ─────────────────────────────────────────────────────────
 FUNCTION _RUN_ILS_TRACK {
-
-  // Gear must be down before final approach.
-  GEAR ON.
-
   // Compute ILS deviations.
   LOCAL dev IS _COMPUTE_ILS_DEVIATIONS().
   LOCAL loc_m IS dev["loc"].
@@ -258,6 +274,14 @@ FUNCTION _RUN_ILS_TRACK {
   SET ILS_LOC_DEV TO loc_m.
   SET ILS_GS_DEV  TO gs_m.
   SET ILS_DIST_M  TO dev["dist"].
+  LOCAL gs_captured IS ABS(gs_m) <= GS_CAPTURE_M.
+
+  // Enter full approach configuration on GS capture.
+  // Before GS capture, keep gear-up unless explicit AGL rule asks for gear.
+  LOCAL gear_agl IS AC_PARAM("gear_down_agl", 0, 0.001).
+  IF gs_captured OR (gear_agl > 0 AND GET_RUNWAY_REL_HEIGHT() < gear_agl) {
+    GEAR ON.
+  }
 
   // Derivative (rate of change over one loop cycle).
   LOCAL d_loc IS (loc_m - PREV_LOC_DEV) / IFC_ACTUAL_DT.
@@ -378,6 +402,11 @@ FUNCTION _CHECK_FLAP_DEPLOYMENT {
   IF dist_km < climb_km { SET desired_det TO det_clmb. }
   IF dist_km < app_km   { SET desired_det TO det_app. }
   IF dist_km < land_km  { SET desired_det TO det_land. }
+
+  // On ILS glideslope capture, force at least approach detent immediately.
+  IF IFC_SUBPHASE = SUBPHASE_ILS_TRACK AND ABS(ILS_GS_DEV) <= GS_CAPTURE_M {
+    SET desired_det TO MAX(desired_det, det_app).
+  }
 
   // Max detent allowed for extension at current IAS.
   LOCAL speed_extend_det IS det_up.

@@ -29,6 +29,7 @@
 //
 // AUTOTHROTTLE
 //   thr_cmd        throttle command (0-1)
+//   thr_cur        current vessel throttle (0-1)
 //   thr_intg       speed integral accumulator (m/s·s)
 //
 // AA DIRECTOR COMMANDS
@@ -94,7 +95,7 @@ FUNCTION LOGGER_INIT {
   }
   SET LOG_FILE TO candidate.
 
-  LOG "t_s,phase,subphase,ias_ms,vapp_ms,spd_err_ms,agl_m,vs_ms,pitch_deg,aoa_deg,hdg_deg,bank_deg,thr_cmd,thr_intg,aa_hdg_cmd_deg,aa_fpa_cmd_deg,ils_loc_m,ils_gs_m,ils_dist_km,loc_corr_deg,gs_corr_deg,flare_fpa_cmd,flare_tgt_vs,flare_frac,steer_hdg_deg,steer_blend,ro_loc_corr_deg,ro_hdg_err_deg,ro_yaw_tgt,ro_yaw_scale,ro_yaw_gate,yaw_cmd,roll_cmd,pitch_cmd,ro_pitch_tgt_deg,ro_pitch_err_deg,ro_pitch_ff,ro_roll_assist,flaps_cur,flaps_tgt,phase_el_s,status" TO LOG_FILE.
+  LOG "t_s,phase,subphase,ias_ms,vapp_ms,spd_err_ms,agl_m,vs_ms,pitch_deg,aoa_deg,hdg_deg,bank_deg,thr_cmd,thr_cur,thr_intg,aa_hdg_cmd_deg,aa_fpa_cmd_deg,ils_loc_m,ils_gs_m,ils_dist_km,loc_corr_deg,gs_corr_deg,flare_fpa_cmd,flare_tgt_vs,flare_frac,steer_hdg_deg,steer_blend,ro_loc_corr_deg,ro_hdg_err_deg,ro_yaw_tgt,ro_yaw_scale,ro_yaw_gate,yaw_cmd,roll_cmd,pitch_cmd,ro_pitch_tgt_deg,ro_pitch_err_deg,ro_pitch_ff,ro_roll_assist,flaps_cur,flaps_tgt,phase_el_s,status" TO LOG_FILE.
 
   SET LOG_ACTIVE TO TRUE.
   SET IFC_ALERT_TEXT TO "Logging -> " + LOG_FILE.
@@ -123,6 +124,7 @@ FUNCTION LOGGER_WRITE {
     ROUND(GET_COMPASS_HDG(),          2)   + "," +
     bank                                   + "," +
     ROUND(THROTTLE_CMD,               4)   + "," +
+    ROUND(SHIP:CONTROL:MAINTHROTTLE,  4)   + "," +
     ROUND(THR_INTEGRAL,               3)   + "," +
     ROUND(TELEM_AA_HDG_CMD,           2)   + "," +
     ROUND(TELEM_AA_FPA_CMD,           3)   + "," +

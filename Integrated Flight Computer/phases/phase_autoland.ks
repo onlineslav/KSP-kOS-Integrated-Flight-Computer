@@ -185,9 +185,21 @@ FUNCTION _RUN_FLARE {
   LOCAL raw_thr_f IS CLAMP(KP_ACL_THR * a_err_f + KI_SPD * THR_INTEGRAL, 0, 1).
   SET THROTTLE_CMD TO MOVE_TOWARD(THROTTLE_CMD, raw_thr_f, THR_SLEW_PER_S * IFC_ACTUAL_DT).
 
-  // Transition: confirmed touchdown (debounced).
+  // Transition: touchdown.
+  // If KSP reports LANDED, commit immediately (no debounce) so flare ends
+  // the moment the wheels touch.  Keep the fallback path debounced.
+  IF SHIP:STATUS = "LANDED" {
+    SET TOUCHDOWN_CAPTURE_PITCH_DEG TO GET_PITCH().
+    SET TOUCHDOWN_INIT_DONE         TO FALSE.
+    SET TOUCHDOWN_CANDIDATE_UT      TO -1.
+    SET BOUNCE_RECOVERY_START_UT    TO -1.
+    SET_PHASE(PHASE_TOUCHDOWN).
+    RETURN.
+  }
+
+  // Fallback touchdown path: debounced for low-altitude near-ground cases.
   LOCAL td_fallback IS agl < TOUCHDOWN_FALLBACK_AGL_M AND vs_now <= TOUCHDOWN_FALLBACK_MAX_VS.
-  IF SHIP:STATUS = "LANDED" OR td_fallback {
+  IF td_fallback {
     IF TOUCHDOWN_CANDIDATE_UT < 0 { SET TOUCHDOWN_CANDIDATE_UT TO TIME:SECONDS. }
     IF TIME:SECONDS - TOUCHDOWN_CANDIDATE_UT >= touchdown_confirm_s {
       IF ABS(vs_now) > touchdown_confirm_max_abs_vs {
@@ -220,11 +232,12 @@ FUNCTION _RUN_TOUCHDOWN {
   SET THROTTLE_CMD TO 0.
 
   LOCAL nose_hold_cmd              IS AC_PARAM("rollout_nose_hold_cmd",          ROLLOUT_NOSE_HOLD_CMD,          -0.5).
-  LOCAL nose_min_ref_deg           IS AC_PARAM("rollout_nose_min_ref_deg",       ROLLOUT_NOSE_MIN_REF_DEG,       0).
   LOCAL rollout_pitch_hold_kp      IS AC_PARAM("rollout_pitch_hold_kp",          ROLLOUT_PITCH_HOLD_KP,          0).
   LOCAL rollout_pitch_max_cmd      IS MIN(AC_PARAM("rollout_pitch_max_cmd",      ROLLOUT_PITCH_MAX_CMD,          0.001), 1).
   LOCAL rollout_pitch_max_down_cmd IS MIN(AC_PARAM("rollout_pitch_max_down_cmd", ROLLOUT_PITCH_MAX_DOWN_CMD,     0), rollout_pitch_max_cmd).
   LOCAL rollout_pitch_slew_per_s   IS AC_PARAM("rollout_pitch_slew_per_s",       ROLLOUT_PITCH_SLEW_PER_S,       0.001).
+  // Use rollout nose target immediately during TOUCHDOWN to put the nose gear down.
+  LOCAL touchdown_nose_target_pitch IS AC_PARAM("rollout_nose_target_pitch_deg", ROLLOUT_NOSE_TARGET_PITCH_DEG, -0.5).
   LOCAL touchdown_settle_s         IS AC_PARAM("rollout_touchdown_settle_s",     TOUCHDOWN_SETTLE_S,             0.001).
   LOCAL br_agl_m                   IS AC_PARAM("bounce_recovery_agl_m",         BOUNCE_RECOVERY_AGL_M,          0.001).
   LOCAL br_min_vs                  IS AC_PARAM("bounce_recovery_min_vs",        BOUNCE_RECOVERY_MIN_VS,         0.001).
@@ -260,9 +273,7 @@ FUNCTION _RUN_TOUCHDOWN {
     SET SHIP:CONTROL:PITCH TO 0.
     SET ROLLOUT_YAW_CMD_PREV   TO 0.
     SET ROLLOUT_PITCH_CMD_PREV TO 0.
-    LOCAL captured_pitch IS TOUCHDOWN_CAPTURE_PITCH_DEG.
-    IF captured_pitch = 0 { SET captured_pitch TO GET_PITCH(). }
-    SET ROLLOUT_PITCH_REF_DEG TO MAX(captured_pitch, nose_min_ref_deg).
+    SET ROLLOUT_PITCH_REF_DEG TO touchdown_nose_target_pitch.
     SET ROLLOUT_PITCH_TGT_DEG TO ROLLOUT_PITCH_REF_DEG.
 
     // Capture touchdown heading and start wheelsteering from that heading.
@@ -276,11 +287,11 @@ FUNCTION _RUN_TOUCHDOWN {
     SET TOUCHDOWN_INIT_DONE TO TRUE.
   }
 
-  // Closed-loop touchdown pitch hold:
-  // hold sampled pitch attitude with a small feedforward up-command.
+  // Closed-loop touchdown pitch command:
+  // drive directly toward rollout nose target; suppress positive nose-up feedforward.
   LOCAL pitch_now IS GET_PITCH().
   LOCAL pitch_err IS ROLLOUT_PITCH_REF_DEG - pitch_now.
-  LOCAL td_pitch_ff IS nose_hold_cmd.
+  LOCAL td_pitch_ff IS MIN(nose_hold_cmd, 0).
   LOCAL td_pitch_target IS td_pitch_ff + pitch_err * rollout_pitch_hold_kp.
   SET td_pitch_target TO CLAMP(td_pitch_target, -rollout_pitch_max_down_cmd, rollout_pitch_max_cmd).
   LOCAL td_pitch_cmd IS MOVE_TOWARD(
