@@ -37,6 +37,7 @@ FUNCTION RUN_AUTOLAND {
 FUNCTION _CHECK_BOUNCE_RECOVERY {
   PARAMETER br_agl_m, br_min_vs, br_confirm_s, br_max_s, reset_init.
   LOCAL agl IS GET_AGL().
+  LOCAL flare_h IS GET_RUNWAY_REL_HEIGHT().
   LOCAL airborne IS PHASE_ELAPSED() < br_max_s AND
                    SHIP:STATUS <> "LANDED" AND
                    agl > br_agl_m AND
@@ -60,8 +61,8 @@ FUNCTION _CHECK_BOUNCE_RECOVERY {
       LOCAL entry_ias IS MAX(GET_IAS(), 10).
       SET FLARE_PITCH_CMD TO ARCTAN(SHIP:VERTICALSPEED / entry_ias).
       SET FLARE_ENTRY_VS  TO CLAMP(SHIP:VERTICALSPEED, FLARE_MIN_ENTRY_SINK_VS, -0.05).
-      SET FLARE_ENTRY_AGL TO MAX(agl, 1).
-      SET IFC_ALERT_TEXT TO "BOUNCE recovery: returning to FLARE (" + ROUND(agl, 1) + " m)".
+      SET FLARE_ENTRY_AGL TO MAX(flare_h, 1).
+      SET IFC_ALERT_TEXT TO "BOUNCE recovery: returning to FLARE (" + ROUND(flare_h, 1) + " m rw)".
       SET IFC_ALERT_UT   TO TIME:SECONDS.
       SET_PHASE(PHASE_FLARE).
       RETURN TRUE.
@@ -76,7 +77,7 @@ FUNCTION _CHECK_BOUNCE_RECOVERY {
 // FLARE
 // Sink-rate targeting with AoA ceiling.
 //
-// As AGL decreases from FLARE_ENTRY_AGL toward 0, the target
+// As runway-relative height decreases from FLARE_ENTRY_AGL toward 0, the target
 // vertical speed is linearly interpolated from the entry sink
 // rate to TOUCHDOWN_VS (-0.3 m/s).  That target VS is
 // converted to a flight path angle and fed to AA Director.
@@ -89,7 +90,7 @@ FUNCTION _RUN_FLARE {
   SET TELEM_RO_PITCH_TGT   TO 0.
   SET TELEM_RO_PITCH_ERR   TO 0.
   SET TELEM_RO_PITCH_FF    TO 0.
-  LOCAL agl    IS GET_AGL().
+  LOCAL agl    IS GET_RUNWAY_REL_HEIGHT().
   LOCAL ias    IS MAX(GET_IAS(), 10).  // floor prevents divide-by-zero at very low speed
   LOCAL vs_now IS SHIP:VERTICALSPEED.
 

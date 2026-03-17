@@ -168,6 +168,18 @@ FUNCTION GET_AGL {
   RETURN ALT:RADAR.
 }
 
+// Height above active runway reference altitude (ASL).
+// Falls back to radar AGL if no active ILS runway reference is available.
+FUNCTION GET_RUNWAY_REL_HEIGHT {
+  IF ACTIVE_ILS_ID <> "" {
+    LOCAL ils IS GET_BEACON(ACTIVE_ILS_ID).
+    IF ils:HASKEY("alt_asl") {
+      RETURN SHIP:ALTITUDE - ils["alt_asl"].
+    }
+  }
+  RETURN GET_AGL().
+}
+
 FUNCTION GET_AOA {
   IF FAR_AVAILABLE { RETURN ADDONS:FAR:AOA. }
   RETURN 0.

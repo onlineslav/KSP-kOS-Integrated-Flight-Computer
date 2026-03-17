@@ -654,6 +654,9 @@ FUNCTION _FMS_LEG_LINE_TEXT {
 FUNCTION _FMS_EDITOR_KEY {
   PARAMETER ch.
 
+  // GUI is active — suppress keyboard editor to avoid double-processing.
+  IF GUI_WIN <> 0 { RETURN "". }
+
   IF ch = "q" OR ch = "Q" { RETURN "QUIT". }
   IF ch = "m" OR ch = "M" { MENU_OPEN(). RETURN "". }
 

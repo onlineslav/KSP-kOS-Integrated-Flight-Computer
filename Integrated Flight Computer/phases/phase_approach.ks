@@ -244,7 +244,7 @@ FUNCTION _RUN_FLY_TO_FIX {
 // ─────────────────────────────────────────────────────────
 // SUB-PHASE: ILS_TRACK
 // Coupled localizer and glideslope tracking via AA Director.
-// Transitions to PHASE_FLARE when AGL drops below FLARE_AGL_M.
+// Transitions to PHASE_FLARE when runway-relative height drops below FLARE_AGL_M.
 // ─────────────────────────────────────────────────────────
 FUNCTION _RUN_ILS_TRACK {
 
@@ -298,23 +298,33 @@ FUNCTION _RUN_ILS_TRACK {
 
   _RUN_APPROACH_THROTTLE().
 
-  // ── Check for flare trigger (with hysteresis + debounce) ──
+  // ── Check for flare trigger (with hysteresis + descent gate + debounce) ──
   LOCAL flare_agl IS AC_PARAM("flare_agl", FLARE_AGL_M, 0).
   LOCAL flare_arm_agl IS MAX(flare_agl - FLARE_TRIGGER_HYST_M, 0.5).
-  LOCAL agl_now IS GET_AGL().
+  // Require descent (or near-level, if tuned) before arming flare.
+  // Default 0 => flare only while VS is not climbing.
+  LOCAL flare_trigger_max_vs IS AC_PARAM("flare_trigger_max_vs", 0, 0).
+  LOCAL flare_h_now IS GET_RUNWAY_REL_HEIGHT().
+  LOCAL vs_now IS SHIP:VERTICALSPEED.
 
-  IF agl_now < flare_arm_agl {
-    IF FLARE_TRIGGER_START_UT < 0 { SET FLARE_TRIGGER_START_UT TO TIME:SECONDS. }
-    IF TIME:SECONDS - FLARE_TRIGGER_START_UT >= FLARE_TRIGGER_CONFIRM_S {
-      LOCAL entry_ias IS MAX(GET_IAS(), 10).
-      SET FLARE_PITCH_CMD TO ARCTAN(SHIP:VERTICALSPEED / entry_ias). // seed from current flight path angle
-      SET FLARE_ENTRY_VS  TO CLAMP(SHIP:VERTICALSPEED, FLARE_MIN_ENTRY_SINK_VS, -0.05). // seed to a shallow descending band
-      SET FLARE_ENTRY_AGL TO MAX(agl_now, 1).    // capture AGL (floor 1 to avoid /0)
+  IF flare_h_now < flare_arm_agl {
+    IF vs_now <= flare_trigger_max_vs {
+      IF FLARE_TRIGGER_START_UT < 0 { SET FLARE_TRIGGER_START_UT TO TIME:SECONDS. }
+      IF TIME:SECONDS - FLARE_TRIGGER_START_UT >= FLARE_TRIGGER_CONFIRM_S {
+        LOCAL entry_ias IS MAX(GET_IAS(), 10).
+        SET FLARE_PITCH_CMD TO ARCTAN(vs_now / entry_ias). // seed from current flight path angle
+        SET FLARE_ENTRY_VS  TO CLAMP(vs_now, FLARE_MIN_ENTRY_SINK_VS, -0.05). // seed to a shallow descending band
+        // Capture runway-relative flare-entry height (floor 1 to avoid /0).
+        SET FLARE_ENTRY_AGL TO MAX(flare_h_now, 1).
+        SET FLARE_TRIGGER_START_UT TO -1.
+        SET TOUCHDOWN_CANDIDATE_UT TO -1.
+        SET_PHASE(PHASE_FLARE).
+      }
+    } ELSE {
+      // Below flare AGL but still climbing: do not allow flare trigger timer to accumulate.
       SET FLARE_TRIGGER_START_UT TO -1.
-      SET TOUCHDOWN_CANDIDATE_UT TO -1.
-      SET_PHASE(PHASE_FLARE).
     }
-  } ELSE IF agl_now > flare_agl {
+  } ELSE IF flare_h_now > flare_agl {
     // Fully reset trigger when we climb back above the flare threshold.
     SET FLARE_TRIGGER_START_UT TO -1.
   }

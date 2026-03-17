@@ -204,6 +204,24 @@ GLOBAL ROLLOUT_STEER_HDG IS 0.         // computed wheelsteering target (logged 
 GLOBAL ROLLOUT_REV_DEACTIVATED IS FALSE. // TRUE once reversers have been cut during rollout
 
 // ----------------------------
+// GUI editor state
+// ----------------------------
+GLOBAL GUI_WIN IS 0.                   // kOS GUI window handle; 0 = not open
+GLOBAL GUI_ADD_BTN IS 0.              // [+ ADD LEG] button
+GLOBAL GUI_ARM_BTN IS 0.              // [ARM] button
+GLOBAL GUI_QUIT_BTN IS 0.             // [QUIT] button
+GLOBAL GUI_LEG_SEL_BTNS IS LIST().    // numbered select buttons, one per leg row
+GLOBAL GUI_LEG_UP_BTNS IS LIST().     // [^] move-up buttons
+GLOBAL GUI_LEG_DN_BTNS IS LIST().     // [v] move-down buttons
+GLOBAL GUI_LEG_DEL_BTNS IS LIST().    // [X] delete buttons
+GLOBAL GUI_LEG_SUM_LBLS IS LIST().    // leg summary labels
+GLOBAL GUI_FIELD_LBLS IS LIST().      // value labels in the edit panel
+GLOBAL GUI_FIELD_DEC_BTNS IS LIST().  // [<] buttons in the edit panel
+GLOBAL GUI_FIELD_INC_BTNS IS LIST().  // [>] buttons in the edit panel
+GLOBAL GUI_SLOT_SAVE_BTNS IS LIST().  // [SAVE n] buttons for slots 1-5
+GLOBAL GUI_SLOT_LOAD_BTNS IS LIST().  // [LOAD n] buttons for slots 1-5
+
+// ----------------------------
 // Init / reset
 // ----------------------------
 FUNCTION IFC_INIT_STATE {
@@ -321,6 +339,23 @@ FUNCTION IFC_INIT_STATE {
   SET FMS_LEG_CURSOR  TO 0.
   SET FMS_EDIT_FIELD  TO 0.
   SET FMS_EDITING_LEG TO FALSE.
+
+  // GUI editor handles — cleared here; window disposal is handled by
+  // _GUI_CLOSE() in ifc_gui.ks before _IFC_INTERACTIVE_START calls INIT_STATE.
+  SET GUI_WIN      TO 0.
+  SET GUI_ADD_BTN  TO 0.
+  SET GUI_ARM_BTN  TO 0.
+  SET GUI_QUIT_BTN TO 0.
+  GUI_LEG_SEL_BTNS:CLEAR().
+  GUI_LEG_UP_BTNS:CLEAR().
+  GUI_LEG_DN_BTNS:CLEAR().
+  GUI_LEG_DEL_BTNS:CLEAR().
+  GUI_LEG_SUM_LBLS:CLEAR().
+  GUI_FIELD_LBLS:CLEAR().
+  GUI_FIELD_DEC_BTNS:CLEAR().
+  GUI_FIELD_INC_BTNS:CLEAR().
+  GUI_SLOT_SAVE_BTNS:CLEAR().
+  GUI_SLOT_LOAD_BTNS:CLEAR().
 
   SET CRUISE_WAYPOINTS  TO LIST().
   SET CRUISE_WP_INDEX   TO 0.

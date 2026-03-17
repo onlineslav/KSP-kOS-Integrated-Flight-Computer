@@ -43,6 +43,7 @@ RUNPATH(ifc_root + "lib/ifc_display.ks").
 RUNPATH(ifc_root + "lib/ifc_aa.ks").
 RUNPATH(ifc_root + "lib/ifc_logger.ks").
 RUNPATH(ifc_root + "lib/ifc_fms.ks").
+RUNPATH(ifc_root + "lib/ifc_gui.ks").
 RUNPATH(ifc_root + "nav/nav_math.ks").
 RUNPATH(ifc_root + "nav/nav_beacons.ks").
 RUNPATH(ifc_root + "nav/nav_custom_wpts.ks").
@@ -481,12 +482,18 @@ FUNCTION _IFC_INTERACTIVE_START {
     DRAFT_PLAN:ADD(_FMS_DEFAULT_LEG(LEG_TAKEOFF)).
   }
 
+  _GUI_BUILD().
+
   LOCAL result IS "".
   UNTIL result = "ARM" OR result = "QUIT" {
-    SET result TO MENU_TICK().
+    LOCAL gui_result IS _GUI_TICK().
+    IF gui_result <> "" { SET result TO gui_result. }
+    ELSE { SET result TO MENU_TICK(). }
     DISPLAY_TICK().
     WAIT IFC_LOOP_DT.
   }
+
+  _GUI_CLOSE().
 
   IF result = "QUIT" { RETURN. }
 

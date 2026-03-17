@@ -92,7 +92,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "takeoff_autostage",      -1, // 1=auto STAGE attempts if no thrust (-1 = global)
     "takeoff_stage_max_attempts",-1, // max autostage attempts (-1 = global)
     "takeoff_stage_retry_s",  -1, // s between autostage attempts (-1 = global)
-    "takeoff_engine_spool_timeout_s",-1, // s wait in preflight for thrust (-1 = global)
+    "takeoff_engine_spool_timeout_s",8, // s wait in preflight for thrust (-1 = global)
     "takeoff_spool_thrust_frac",  -1, // 0..1 fraction of max thrust required before brake release (-1 = global)
     "takeoff_spool_steady_dknps", -1, // kN/s |d(thrust)/dt| threshold for steady-state gate (-1 = global)
     "takeoff_spool_steady_hold_s",-1, // s thrust must remain steady before brake release (-1 = global)
