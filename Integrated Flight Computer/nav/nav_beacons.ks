@@ -140,10 +140,10 @@ REGISTER_BEACON(MAKE_BEACON(
 // Elevation 134 m MSL.
 // ----------------------------
 LOCAL isl09_iaf30_ll IS GEO_DESTINATION(isl_rwy09_thr, 270, 30000).
-LOCAL isl09_faf_ll   IS GEO_DESTINATION(isl_rwy09_thr, 270,  8000).
+LOCAL isl09_faf_ll   IS GEO_DESTINATION(isl_rwy09_thr, 270, 15000).
 LOCAL isl27_iaf30_ll IS GEO_DESTINATION(isl_rwy27_thr,  90, 30000).
-LOCAL isl27_faf_ll   IS GEO_DESTINATION(isl_rwy27_thr,  90,  8000).
-LOCAL isl_faf_alt IS isl_elev + ROUND(8000 * TAN(3.0), 0).
+LOCAL isl27_faf_ll   IS GEO_DESTINATION(isl_rwy27_thr,  90, 15000).
+LOCAL isl_faf_alt IS isl_elev + ROUND(15000 * TAN(3.0), 0).
 
 REGISTER_BEACON(MAKE_BEACON(
   "ISL_IAF_09_30", BTYPE_IAF,
@@ -153,7 +153,7 @@ REGISTER_BEACON(MAKE_BEACON(
 REGISTER_BEACON(MAKE_BEACON(
   "ISL_FAF_09", BTYPE_FAF,
   isl09_faf_ll, isl_faf_alt,
-  LEXICON("name", "ISL RWY09 FAF 8km", "runway", "IS09")
+  LEXICON("name", "ISL RWY09 FAF 15km", "runway", "IS09")
 )).
 REGISTER_BEACON(MAKE_BEACON(
   "ISL_IAF_27_30", BTYPE_IAF,
@@ -163,7 +163,7 @@ REGISTER_BEACON(MAKE_BEACON(
 REGISTER_BEACON(MAKE_BEACON(
   "ISL_FAF_27", BTYPE_FAF,
   isl27_faf_ll, isl_faf_alt,
-  LEXICON("name", "ISL RWY27 FAF 8km", "runway", "IS27")
+  LEXICON("name", "ISL RWY27 FAF 15km", "runway", "IS27")
 )).
 
 // ----------------------------
@@ -199,10 +199,10 @@ GLOBAL PLATE_ISL_ILS27 IS MAKE_PLATE(
 
 LOCAL ksc09_iaf60_ll IS GEO_DESTINATION(ksc_rwy09_thr, 270, 60000).
 LOCAL ksc09_iaf30_ll IS GEO_DESTINATION(ksc_rwy09_thr, 270, 30000).
-LOCAL ksc09_faf_ll   IS GEO_DESTINATION(ksc_rwy09_thr, 270,  8000).
+LOCAL ksc09_faf_ll   IS GEO_DESTINATION(ksc_rwy09_thr, 270, 15000).
 
-// FAF crossing altitude: on the 3° glideslope at 8 km = 69 + 8000*TAN(3°) ≈ 488 m
-LOCAL ksc09_faf_alt IS ksc_elev + ROUND(8000 * TAN(3.0), 0).
+// FAF crossing altitude: on the 3° glideslope at 15 km = 70 + 15000*TAN(3°) ≈ 857 m
+LOCAL ksc09_faf_alt IS ksc_elev + ROUND(15000 * TAN(3.0), 0).
 
 REGISTER_BEACON(MAKE_BEACON(
   "KSC_IAF_09_60", BTYPE_IAF,
@@ -219,7 +219,7 @@ REGISTER_BEACON(MAKE_BEACON(
 REGISTER_BEACON(MAKE_BEACON(
   "KSC_FAF_09", BTYPE_FAF,
   ksc09_faf_ll, ksc09_faf_alt,
-  LEXICON("name", "KSC RWY09 FAF 8km", "runway", "09")
+  LEXICON("name", "KSC RWY09 FAF 15km", "runway", "09")
 )).
 
 // ----------------------------
@@ -227,9 +227,9 @@ REGISTER_BEACON(MAKE_BEACON(
 // ----------------------------
 LOCAL ksc27_iaf60_ll IS GEO_DESTINATION(ksc_rwy27_thr, 90, 60000).
 LOCAL ksc27_iaf30_ll IS GEO_DESTINATION(ksc_rwy27_thr, 90, 30000).
-LOCAL ksc27_faf_ll   IS GEO_DESTINATION(ksc_rwy27_thr, 90,  8000).
+LOCAL ksc27_faf_ll   IS GEO_DESTINATION(ksc_rwy27_thr, 90, 15000).
 
-LOCAL ksc27_faf_alt IS ksc_elev + ROUND(8000 * TAN(3.0), 0).
+LOCAL ksc27_faf_alt IS ksc_elev + ROUND(15000 * TAN(3.0), 0).
 
 REGISTER_BEACON(MAKE_BEACON(
   "KSC_IAF_27_60", BTYPE_IAF,
@@ -246,7 +246,7 @@ REGISTER_BEACON(MAKE_BEACON(
 REGISTER_BEACON(MAKE_BEACON(
   "KSC_FAF_27", BTYPE_FAF,
   ksc27_faf_ll, ksc27_faf_alt,
-  LEXICON("name", "KSC RWY27 FAF 8km", "runway", "27")
+  LEXICON("name", "KSC RWY27 FAF 15km", "runway", "27")
 )).
 
 // ----------------------------

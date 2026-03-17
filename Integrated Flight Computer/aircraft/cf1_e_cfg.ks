@@ -158,11 +158,11 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "rollout_nose_hold_min_s", -1,  // -1 = use global
     "rollout_nose_min_ref_deg", -1, // -1 = use global
     "rollout_nose_target_pitch_deg", -1, // -1 = use global
-    "rollout_nose_target_slew_dps", -1,  // -1 = use global
+    "rollout_nose_target_slew_dps", 3.0,  // deg/s (global 1.2 — faster nose-down)
     "rollout_pitch_hold_kp", -1,    // -1 = use global
     "rollout_pitch_max_cmd", -1,    // -1 = use global
-    "rollout_pitch_max_down_cmd", -1, // -1 = use global
-    "rollout_pitch_slew_per_s", -1, // -1 = use global
+    "rollout_pitch_max_down_cmd", 0.25, // (global 0.18 — more nose-down authority)
+    "rollout_pitch_slew_per_s", 3.0, // cu/s (global 1.2 — keep up with faster target slew)
     "rollout_touchdown_settle_s", -1, // -1 = use global
     "bounce_recovery_agl_m", -1,    // -1 = use global
     "bounce_recovery_min_vs", -1,   // -1 = use global
