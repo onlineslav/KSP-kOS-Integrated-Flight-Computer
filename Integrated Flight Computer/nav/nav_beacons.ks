@@ -82,6 +82,19 @@ FUNCTION GET_BEACON {
 }
 
 // ----------------------------
+// Shared glideslope geometry
+// ----------------------------
+// All IAF fix altitudes are set BELOW_GS_M below the 3° glideslope at their
+// fix distance.  This guarantees the aircraft always intercepts the GS from
+// below, which is required for the pre-capture altitude-hold logic in
+// phase_approach.ks (_RUN_ILS_TRACK).  FAF is placed exactly on the GS.
+LOCAL GS_ANG   IS 3.0.                              // deg, shared by all approaches
+LOCAL BELOW_GS_M IS 300.                            // m below GS at each IAF
+LOCAL GS_HGT_15KM IS ROUND(15000 * TAN(GS_ANG), 0). // 787 m above field at FAF
+LOCAL GS_HGT_30KM IS ROUND(30000 * TAN(GS_ANG), 0). // 1571 m above field at IAF-30
+LOCAL GS_HGT_60KM IS ROUND(60000 * TAN(GS_ANG), 0). // 3144 m above field at IAF-60
+
+// ----------------------------
 // KSC ILS beacons
 // Coordinates from NavInstruments defaultRunways.cfg (gsLatitude/gsLongitude
 // is the threshold/glideslope antenna position for each runway).
@@ -135,6 +148,29 @@ REGISTER_BEACON(MAKE_BEACON(
 )).
 
 // ----------------------------
+// Desert Airfield ILS beacons (Making History)
+// NavInstruments makingHistoryRunways.cfg:
+//   DAF 36 gs: lat -6.5825    lon 215.9594444 (-> -144.0405556)
+//   DA18 18 gs: lat -6.4666667 lon 215.9611111 (-> -144.0388889)
+// Elevation 822 m MSL.
+// ----------------------------
+LOCAL daf_rwy36_thr IS LATLNG(-6.5825,    -144.0405556).
+LOCAL daf_rwy18_thr IS LATLNG(-6.4666667, -144.0388889).
+LOCAL daf_elev IS 822.
+
+REGISTER_BEACON(MAKE_BEACON(
+  "DAF_ILS_36", BTYPE_ILS,
+  daf_rwy36_thr, daf_elev,
+  LEXICON("hdg", 0.4, "gs_angle", 3.0, "rwy", "DA36")
+)).
+
+REGISTER_BEACON(MAKE_BEACON(
+  "DAF_ILS_18", BTYPE_ILS,
+  daf_rwy18_thr, daf_elev,
+  LEXICON("hdg", 180.4, "gs_angle", 3.0, "rwy", "DA18")
+)).
+
+// ----------------------------
 // KSC Island Airstrip approach fixes
 // Same geometry as KSC: IAF30 at 30 km, FAF at 8 km on extended centreline.
 // Elevation 134 m MSL.
@@ -143,11 +179,12 @@ LOCAL isl09_iaf30_ll IS GEO_DESTINATION(isl_rwy09_thr, 270, 30000).
 LOCAL isl09_faf_ll   IS GEO_DESTINATION(isl_rwy09_thr, 270, 15000).
 LOCAL isl27_iaf30_ll IS GEO_DESTINATION(isl_rwy27_thr,  90, 30000).
 LOCAL isl27_faf_ll   IS GEO_DESTINATION(isl_rwy27_thr,  90, 15000).
-LOCAL isl_faf_alt IS isl_elev + ROUND(15000 * TAN(3.0), 0).
+LOCAL isl_faf_alt   IS isl_elev + GS_HGT_15KM.              // on GS
+LOCAL isl_iaf30_alt IS isl_elev + GS_HGT_30KM - BELOW_GS_M. // 300 m below GS
 
 REGISTER_BEACON(MAKE_BEACON(
   "ISL_IAF_09_30", BTYPE_IAF,
-  isl09_iaf30_ll, 1500,
+  isl09_iaf30_ll, isl_iaf30_alt,
   LEXICON("name", "ISL RWY09 IAF 30km", "runway", "IS09")
 )).
 REGISTER_BEACON(MAKE_BEACON(
@@ -157,7 +194,7 @@ REGISTER_BEACON(MAKE_BEACON(
 )).
 REGISTER_BEACON(MAKE_BEACON(
   "ISL_IAF_27_30", BTYPE_IAF,
-  isl27_iaf30_ll, 1500,
+  isl27_iaf30_ll, isl_iaf30_alt,
   LEXICON("name", "ISL RWY27 IAF 30km", "runway", "IS27")
 )).
 REGISTER_BEACON(MAKE_BEACON(
@@ -175,7 +212,7 @@ GLOBAL PLATE_ISL_ILS09 IS MAKE_PLATE(
   LIST("ISL_IAF_09_30", "ISL_FAF_09"),
   70,
   LEXICON(
-    "ISL_IAF_09_30", 1500,
+    "ISL_IAF_09_30", isl_iaf30_alt,
     "ISL_FAF_09",    isl_faf_alt
   )
 ).
@@ -185,10 +222,56 @@ GLOBAL PLATE_ISL_ILS27 IS MAKE_PLATE(
   LIST("ISL_IAF_27_30", "ISL_FAF_27"),
   70,
   LEXICON(
-    "ISL_IAF_27_30", 1500,
+    "ISL_IAF_27_30", isl_iaf30_alt,
     "ISL_FAF_27",    isl_faf_alt
   )
 ).
+
+// ----------------------------
+// Desert Airfield approach fixes
+// Geometry mirrors KSC setup: IAF-60, IAF-30, FAF-15.
+// ----------------------------
+LOCAL daf36_iaf60_ll IS GEO_DESTINATION(daf_rwy36_thr, 180, 60000).
+LOCAL daf36_iaf30_ll IS GEO_DESTINATION(daf_rwy36_thr, 180, 30000).
+LOCAL daf36_faf_ll   IS GEO_DESTINATION(daf_rwy36_thr, 180, 15000).
+LOCAL daf18_iaf60_ll IS GEO_DESTINATION(daf_rwy18_thr,   0, 60000).
+LOCAL daf18_iaf30_ll IS GEO_DESTINATION(daf_rwy18_thr,   0, 30000).
+LOCAL daf18_faf_ll   IS GEO_DESTINATION(daf_rwy18_thr,   0, 15000).
+LOCAL daf_faf_alt   IS daf_elev + GS_HGT_15KM.              // on GS:    1609 m MSL
+LOCAL daf_iaf30_alt IS daf_elev + GS_HGT_30KM - BELOW_GS_M. // 300 m below GS: 2093 m MSL
+LOCAL daf_iaf60_alt IS daf_elev + GS_HGT_60KM - BELOW_GS_M. // 300 m below GS: 3666 m MSL
+
+REGISTER_BEACON(MAKE_BEACON(
+  "DAF_IAF_36_60", BTYPE_IAF,
+  daf36_iaf60_ll, daf_iaf60_alt,
+  LEXICON("name", "DAF RWY36 IAF 60km", "runway", "DA36")
+)).
+REGISTER_BEACON(MAKE_BEACON(
+  "DAF_IAF_36_30", BTYPE_IAF,
+  daf36_iaf30_ll, daf_iaf30_alt,
+  LEXICON("name", "DAF RWY36 IAF 30km", "runway", "DA36")
+)).
+REGISTER_BEACON(MAKE_BEACON(
+  "DAF_FAF_36", BTYPE_FAF,
+  daf36_faf_ll, daf_faf_alt,
+  LEXICON("name", "DAF RWY36 FAF 15km", "runway", "DA36")
+)).
+
+REGISTER_BEACON(MAKE_BEACON(
+  "DAF_IAF_18_60", BTYPE_IAF,
+  daf18_iaf60_ll, daf_iaf60_alt,
+  LEXICON("name", "DAF RWY18 IAF 60km", "runway", "DA18")
+)).
+REGISTER_BEACON(MAKE_BEACON(
+  "DAF_IAF_18_30", BTYPE_IAF,
+  daf18_iaf30_ll, daf_iaf30_alt,
+  LEXICON("name", "DAF RWY18 IAF 30km", "runway", "DA18")
+)).
+REGISTER_BEACON(MAKE_BEACON(
+  "DAF_FAF_18", BTYPE_FAF,
+  daf18_faf_ll, daf_faf_alt,
+  LEXICON("name", "DAF RWY18 FAF 15km", "runway", "DA18")
+)).
 
 // ----------------------------
 // KSC RWY 09 approach fixes
@@ -201,24 +284,25 @@ LOCAL ksc09_iaf60_ll IS GEO_DESTINATION(ksc_rwy09_thr, 270, 60000).
 LOCAL ksc09_iaf30_ll IS GEO_DESTINATION(ksc_rwy09_thr, 270, 30000).
 LOCAL ksc09_faf_ll   IS GEO_DESTINATION(ksc_rwy09_thr, 270, 15000).
 
-// FAF crossing altitude: on the 3° glideslope at 15 km = 70 + 15000*TAN(3°) ≈ 857 m
-LOCAL ksc09_faf_alt IS ksc_elev + ROUND(15000 * TAN(3.0), 0).
+LOCAL ksc_faf_alt   IS ksc_elev + GS_HGT_15KM.              // on GS:    857 m MSL
+LOCAL ksc_iaf30_alt IS ksc_elev + GS_HGT_30KM - BELOW_GS_M. // 300 m below GS: 1341 m MSL
+LOCAL ksc_iaf60_alt IS ksc_elev + GS_HGT_60KM - BELOW_GS_M. // 300 m below GS: 2914 m MSL
 
 REGISTER_BEACON(MAKE_BEACON(
   "KSC_IAF_09_60", BTYPE_IAF,
-  ksc09_iaf60_ll, 3000,
+  ksc09_iaf60_ll, ksc_iaf60_alt,
   LEXICON("name", "KSC RWY09 IAF 60km", "runway", "09")
 )).
 
 REGISTER_BEACON(MAKE_BEACON(
   "KSC_IAF_09_30", BTYPE_IAF,
-  ksc09_iaf30_ll, 1500,
+  ksc09_iaf30_ll, ksc_iaf30_alt,
   LEXICON("name", "KSC RWY09 IAF 30km", "runway", "09")
 )).
 
 REGISTER_BEACON(MAKE_BEACON(
   "KSC_FAF_09", BTYPE_FAF,
-  ksc09_faf_ll, ksc09_faf_alt,
+  ksc09_faf_ll, ksc_faf_alt,
   LEXICON("name", "KSC RWY09 FAF 15km", "runway", "09")
 )).
 
@@ -229,23 +313,21 @@ LOCAL ksc27_iaf60_ll IS GEO_DESTINATION(ksc_rwy27_thr, 90, 60000).
 LOCAL ksc27_iaf30_ll IS GEO_DESTINATION(ksc_rwy27_thr, 90, 30000).
 LOCAL ksc27_faf_ll   IS GEO_DESTINATION(ksc_rwy27_thr, 90, 15000).
 
-LOCAL ksc27_faf_alt IS ksc_elev + ROUND(15000 * TAN(3.0), 0).
-
 REGISTER_BEACON(MAKE_BEACON(
   "KSC_IAF_27_60", BTYPE_IAF,
-  ksc27_iaf60_ll, 3000,
+  ksc27_iaf60_ll, ksc_iaf60_alt,
   LEXICON("name", "KSC RWY27 IAF 60km", "runway", "27")
 )).
 
 REGISTER_BEACON(MAKE_BEACON(
   "KSC_IAF_27_30", BTYPE_IAF,
-  ksc27_iaf30_ll, 1500,
+  ksc27_iaf30_ll, ksc_iaf30_alt,
   LEXICON("name", "KSC RWY27 IAF 30km", "runway", "27")
 )).
 
 REGISTER_BEACON(MAKE_BEACON(
   "KSC_FAF_27", BTYPE_FAF,
-  ksc27_faf_ll, ksc27_faf_alt,
+  ksc27_faf_ll, ksc_faf_alt,
   LEXICON("name", "KSC RWY27 FAF 15km", "runway", "27")
 )).
 
@@ -259,9 +341,9 @@ GLOBAL PLATE_KSC_ILS09 IS MAKE_PLATE(
   LIST("KSC_IAF_09_60", "KSC_IAF_09_30", "KSC_FAF_09"),
   75,   // Vapp m/s — override in aircraft config if needed
   LEXICON(
-    "KSC_IAF_09_60", 3000,
-    "KSC_IAF_09_30", 1500,
-    "KSC_FAF_09",    ksc09_faf_alt
+    "KSC_IAF_09_60", ksc_iaf60_alt,
+    "KSC_IAF_09_30", ksc_iaf30_alt,
+    "KSC_FAF_09",    ksc_faf_alt
   )
 ).
 
@@ -271,9 +353,9 @@ GLOBAL PLATE_KSC_ILS27 IS MAKE_PLATE(
   LIST("KSC_IAF_27_60", "KSC_IAF_27_30", "KSC_FAF_27"),
   75,
   LEXICON(
-    "KSC_IAF_27_60", 3000,
-    "KSC_IAF_27_30", 1500,
-    "KSC_FAF_27",    ksc27_faf_alt
+    "KSC_IAF_27_60", ksc_iaf60_alt,
+    "KSC_IAF_27_30", ksc_iaf30_alt,
+    "KSC_FAF_27",    ksc_faf_alt
   )
 ).
 
@@ -284,8 +366,8 @@ GLOBAL PLATE_KSC_ILS09_SHORT IS MAKE_PLATE(
   LIST("KSC_IAF_09_30", "KSC_FAF_09"),
   75,
   LEXICON(
-    "KSC_IAF_09_30", 1500,
-    "KSC_FAF_09",    ksc09_faf_alt
+    "KSC_IAF_09_30", ksc_iaf30_alt,
+    "KSC_FAF_09",    ksc_faf_alt
   )
 ).
 
@@ -295,8 +377,54 @@ GLOBAL PLATE_KSC_ILS27_SHORT IS MAKE_PLATE(
   LIST("KSC_IAF_27_30", "KSC_FAF_27"),
   75,
   LEXICON(
-    "KSC_IAF_27_30", 1500,
-    "KSC_FAF_27",    ksc27_faf_alt
+    "KSC_IAF_27_30", ksc_iaf30_alt,
+    "KSC_FAF_27",    ksc_faf_alt
+  )
+).
+
+GLOBAL PLATE_DAF_ILS36 IS MAKE_PLATE(
+  "DAF ILS RWY 36",
+  "DAF_ILS_36",
+  LIST("DAF_IAF_36_60", "DAF_IAF_36_30", "DAF_FAF_36"),
+  70,
+  LEXICON(
+    "DAF_IAF_36_60", daf_iaf60_alt,
+    "DAF_IAF_36_30", daf_iaf30_alt,
+    "DAF_FAF_36",    daf_faf_alt
+  )
+).
+
+GLOBAL PLATE_DAF_ILS18 IS MAKE_PLATE(
+  "DAF ILS RWY 18",
+  "DAF_ILS_18",
+  LIST("DAF_IAF_18_60", "DAF_IAF_18_30", "DAF_FAF_18"),
+  70,
+  LEXICON(
+    "DAF_IAF_18_60", daf_iaf60_alt,
+    "DAF_IAF_18_30", daf_iaf30_alt,
+    "DAF_FAF_18",    daf_faf_alt
+  )
+).
+
+GLOBAL PLATE_DAF_ILS36_SHORT IS MAKE_PLATE(
+  "DAF ILS RWY 36 (short)",
+  "DAF_ILS_36",
+  LIST("DAF_IAF_36_30", "DAF_FAF_36"),
+  70,
+  LEXICON(
+    "DAF_IAF_36_30", daf_iaf30_alt,
+    "DAF_FAF_36",    daf_faf_alt
+  )
+).
+
+GLOBAL PLATE_DAF_ILS18_SHORT IS MAKE_PLATE(
+  "DAF ILS RWY 18 (short)",
+  "DAF_ILS_18",
+  LIST("DAF_IAF_18_30", "DAF_FAF_18"),
+  70,
+  LEXICON(
+    "DAF_IAF_18_30", daf_iaf30_alt,
+    "DAF_FAF_18",    daf_faf_alt
   )
 ).
 
@@ -311,6 +439,10 @@ PLATE_REGISTRY:ADD("PLATE_KSC_ILS09_SHORT", PLATE_KSC_ILS09_SHORT).
 PLATE_REGISTRY:ADD("PLATE_KSC_ILS27_SHORT", PLATE_KSC_ILS27_SHORT).
 PLATE_REGISTRY:ADD("PLATE_ISL_ILS09",       PLATE_ISL_ILS09).
 PLATE_REGISTRY:ADD("PLATE_ISL_ILS27",       PLATE_ISL_ILS27).
+PLATE_REGISTRY:ADD("PLATE_DAF_ILS36",       PLATE_DAF_ILS36).
+PLATE_REGISTRY:ADD("PLATE_DAF_ILS18",       PLATE_DAF_ILS18).
+PLATE_REGISTRY:ADD("PLATE_DAF_ILS36_SHORT", PLATE_DAF_ILS36_SHORT).
+PLATE_REGISTRY:ADD("PLATE_DAF_ILS18_SHORT", PLATE_DAF_ILS18_SHORT).
 
 FUNCTION GET_PLATE {
   PARAMETER id.
@@ -332,7 +464,11 @@ GLOBAL PLATE_IDS IS LIST(
   "PLATE_KSC_ILS27",
   "PLATE_KSC_ILS27_SHORT",
   "PLATE_ISL_ILS09",
-  "PLATE_ISL_ILS27"
+  "PLATE_ISL_ILS27",
+  "PLATE_DAF_ILS36",
+  "PLATE_DAF_ILS36_SHORT",
+  "PLATE_DAF_ILS18",
+  "PLATE_DAF_ILS18_SHORT"
 ).
 
 FUNCTION GET_PLATE_FOR_RUNWAY {
@@ -343,6 +479,12 @@ FUNCTION GET_PLATE_FOR_RUNWAY {
   } ELSE IF rwy_id = "27" {
     IF short_approach { RETURN PLATE_KSC_ILS27_SHORT. }
     RETURN PLATE_KSC_ILS27.
+  } ELSE IF rwy_id = "36" {
+    IF short_approach { RETURN PLATE_DAF_ILS36_SHORT. }
+    RETURN PLATE_DAF_ILS36.
+  } ELSE IF rwy_id = "18" {
+    IF short_approach { RETURN PLATE_DAF_ILS18_SHORT. }
+    RETURN PLATE_DAF_ILS18.
   }
   SET IFC_ALERT_TEXT TO "NAV: no plate for runway '" + rwy_id + "'".
   SET IFC_ALERT_UT   TO TIME:SECONDS.

@@ -175,16 +175,7 @@ FUNCTION _UPDATE_APPROACH_SPEED_TARGET {
 // ─────────────────────────────────────────────────────────
 FUNCTION _RUN_APPROACH_THROTTLE {
   LOCAL v_tgt IS _UPDATE_APPROACH_SPEED_TARGET().
-  LOCAL ias IS GET_IAS().
-  LOCAL spd_err IS v_tgt - ias.
-  LOCAL a_cmd IS CLAMP(KP_SPD_ACL * spd_err, -ACL_MAX, ACL_MAX).
-  LOCAL a_raw IS CLAMP((ias - PREV_IAS) / IFC_ACTUAL_DT, -10, 10).
-  SET PREV_IAS      TO ias.
-  SET A_ACTUAL_FILT TO A_ACTUAL_FILT * ACL_FILTER_ALPHA + a_raw * (1 - ACL_FILTER_ALPHA).
-  LOCAL a_err IS a_cmd - A_ACTUAL_FILT.
-  SET THR_INTEGRAL TO CLAMP(THR_INTEGRAL + spd_err * IFC_ACTUAL_DT, -THR_INTEGRAL_LIM, THR_INTEGRAL_LIM).
-  LOCAL raw_thr IS CLAMP(KP_ACL_THR * a_err + KI_SPD * THR_INTEGRAL, MIN_APPROACH_THR, 1).
-  SET THROTTLE_CMD TO MOVE_TOWARD(THROTTLE_CMD, raw_thr, THR_SLEW_PER_S * IFC_ACTUAL_DT).
+  AT_RUN_SPEED_HOLD(v_tgt, MIN_APPROACH_THR, 1).
 }
 
 // ─────────────────────────────────────────────────────────
@@ -200,6 +191,7 @@ FUNCTION _RUN_FLY_TO_FIX {
     IF ils_dev:HASKEY("loc") AND ils_dev:HASKEY("dist")
         AND ils_dev["dist"] > 0
         AND ABS(ils_dev["loc"]) <= LOC_CAPTURE_M {
+      SET ILS_INTERCEPT_ALT TO SHIP:ALTITUDE.
       SET_SUBPHASE(SUBPHASE_ILS_TRACK).
       SET PREV_LOC_DEV TO 0.
       SET PREV_GS_DEV  TO 0.
@@ -209,6 +201,7 @@ FUNCTION _RUN_FLY_TO_FIX {
 
   // If all fixes have been passed, begin ILS tracking.
   IF FIX_INDEX >= ACTIVE_FIXES:LENGTH {
+    SET ILS_INTERCEPT_ALT TO SHIP:ALTITUDE.
     SET_SUBPHASE(SUBPHASE_ILS_TRACK).
     SET PREV_LOC_DEV TO 0.
     SET PREV_GS_DEV  TO 0.
@@ -229,9 +222,16 @@ FUNCTION _RUN_FLY_TO_FIX {
   LOCAL brg   IS GEO_BEARING(SHIP:GEOPOSITION, fix_ll).
   LOCAL dist  IS GEO_DISTANCE(SHIP:GEOPOSITION, fix_ll).
 
+  // Heading error to the fix (0-180).
+  LOCAL hdg_err IS WRAP_360(brg - SHIP:HEADING).
+  IF hdg_err > 180 { SET hdg_err TO 360 - hdg_err. }
+
   // Proportional FPA based on altitude error.
+  // Suppress descent during large heading changes to prevent spiral dives.
+  // Climbing is still allowed (fix may be above current altitude).
   LOCAL alt_err IS SHIP:ALTITUDE - tgt_alt.
   LOCAL fpa_cmd IS CLAMP(-alt_err * KP_ALT_FPA, MAX_DESC_FPA, MAX_CLIMB_FPA).
+  IF hdg_err > 45 AND fpa_cmd < 0 { SET fpa_cmd TO 0. }
 
   AA_SET_DIRECTOR(brg, fpa_cmd).
   SET TELEM_AA_HDG_CMD TO brg.
@@ -310,9 +310,23 @@ FUNCTION _RUN_ILS_TRACK {
   LOCAL hdg_cmd  IS WRAP_360(ACTIVE_RWY_HDG + CLAMP(loc_corr, -MAX_LOC_CORR, MAX_LOC_CORR)).
 
   // ── Vertical (glideslope) ──
-  // Positive gs_m = above GS → pitch more negative (increase descent rate).
-  LOCAL gs_corr IS -(KP_GS * gs_m + KD_GS * d_gs).
-  LOCAL fpa_cmd IS -ACTIVE_GS_ANGLE + CLAMP(gs_corr, -MAX_GS_CORR_DN, MAX_GS_CORR_UP).
+  // Before GS capture: hold current altitude and let the glideslope descend
+  // to intercept the aircraft from above (always intercept from below).
+  // This prevents an aggressive pitch-down if the aircraft arrives slightly
+  // above the GS on LOC capture.
+  // After GS capture: track the glideslope with PD feedback.
+  LOCAL fpa_cmd IS 0.
+  LOCAL gs_corr IS 0.
+  IF gs_captured {
+    SET gs_corr TO -(KP_GS * gs_m + KD_GS * d_gs).
+    SET fpa_cmd TO -ACTIVE_GS_ANGLE + CLAMP(gs_corr, -MAX_GS_CORR_DN, MAX_GS_CORR_UP).
+  } ELSE {
+    // Pre-capture: hold the altitude at which LOC was captured.
+    // Let the glideslope descend to the aircraft (always intercept from below).
+    // Prevents aggressive pitch-down if aircraft is slightly above the GS on LOC capture.
+    LOCAL alt_err IS SHIP:ALTITUDE - ILS_INTERCEPT_ALT.
+    SET fpa_cmd TO CLAMP(-alt_err * KP_ALT_FPA, MAX_DESC_FPA, MAX_CLIMB_FPA).
+  }
 
   AA_SET_DIRECTOR(hdg_cmd, fpa_cmd).
   SET TELEM_AA_HDG_CMD TO hdg_cmd.

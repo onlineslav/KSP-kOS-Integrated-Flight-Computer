@@ -77,6 +77,41 @@ GLOBAL THR_INTEGRAL_LIM IS 20.    // m/s*s  anti-windup clamp on integral
 GLOBAL THR_SLEW_PER_S   IS 0.40.  // /s    max throttle change per second
 GLOBAL MIN_APPROACH_THR IS 0.     // hard throttle floor on approach
 
+// Adaptive autothrottle estimator + scheduler
+GLOBAL AT_GAIN_INIT       IS 1.0.   // m/s² per throttle initial throttle effectiveness estimate
+GLOBAL AT_GAIN_MIN        IS 0.08.  // m/s² per throttle floor for gain estimate
+GLOBAL AT_GAIN_MAX        IS 6.0.   // m/s² per throttle cap for gain estimate
+GLOBAL AT_GAIN_ALPHA      IS 0.92.  // EWMA hold factor for gain estimate
+GLOBAL AT_GAIN_DTHR_MIN   IS 0.010. // min |dthr| per cycle to accept a gain sample
+GLOBAL AT_TAU_INIT        IS 0.60.  // s initial effective throttle lag estimate
+GLOBAL AT_TAU_MIN         IS 0.15.  // s min effective lag
+GLOBAL AT_TAU_MAX         IS 3.00.  // s max effective lag
+GLOBAL AT_TAU_ALPHA       IS 0.95.  // EWMA hold factor for lag estimate
+GLOBAL AT_TAU_DTHR_MIN    IS 0.003. // min |dthr| per cycle to accept lag sample
+GLOBAL AT_TAU_ERR_MIN     IS 0.040. // min |cmd-cur| throttle error for lag sample
+GLOBAL AT_AUTH_ALPHA      IS 0.92.  // EWMA hold factor for thrust authority estimate
+GLOBAL AT_IDLE_ALPHA      IS 0.96.  // EWMA hold factor for idle decel estimate
+GLOBAL AT_IDLE_THR_THRESH IS 0.03.  // throttle threshold considered idle
+GLOBAL AT_IDLE_DECEL_INIT IS 0.70.  // m/s² initial idle decel estimate
+GLOBAL AT_IDLE_DECEL_MAX  IS 6.00.  // m/s² max idle decel sample retained
+GLOBAL AT_A_UP_FRAC       IS 0.85.  // fraction of thrust authority allowed as +a_cmd clamp
+GLOBAL AT_A_UP_MIN_FRAC   IS 0.60.  // min fraction of ACL_MAX kept as +a_cmd clamp floor
+GLOBAL AT_A_UP_MIN        IS 0.80.  // m/s² min +a_cmd clamp
+GLOBAL AT_A_UP_MAX        IS 4.50.  // m/s² max +a_cmd clamp
+GLOBAL AT_A_DN_GAIN       IS 1.10.  // multiplier on observed idle decel for -a_cmd clamp
+GLOBAL AT_A_DN_MIN_FRAC   IS 0.50.  // min fraction of ACL_MAX kept as -a_cmd clamp floor
+GLOBAL AT_A_DN_MIN        IS 0.60.  // m/s² min -a_cmd clamp magnitude
+GLOBAL AT_A_DN_MAX        IS 5.00.  // m/s² max -a_cmd clamp magnitude
+GLOBAL AT_INNER_BW        IS 0.35.  // 1/s target inner-loop bandwidth for kp scheduling
+GLOBAL AT_KP_THR_MIN      IS 0.08.  // min scheduled KP_ACL_THR
+GLOBAL AT_KP_THR_MAX      IS 0.90.  // max scheduled KP_ACL_THR
+GLOBAL AT_KI_SPD_MIN      IS 0.004. // min scheduled KI_SPD
+GLOBAL AT_KI_SPD_MAX      IS 0.040. // max scheduled KI_SPD
+GLOBAL AT_TAU_REF_S       IS 0.60.  // s reference lag for base throttle slew scaling
+GLOBAL AT_THR_SLEW_MIN    IS 0.12.  // /s min scheduled throttle slew
+GLOBAL AT_THR_SLEW_MAX    IS 0.80.  // /s max scheduled throttle slew
+GLOBAL AT_INT_BLEED       IS 0.995. // integral bleed factor while blocked by anti-windup
+
 // Derived approach speed schedule (minimal tuning):
 // - Pre-capture/intercept: target Vint = Vapp + derived additive.
 // - Final: target Vapp.
@@ -285,6 +320,11 @@ GLOBAL IFC_DISPLAY_PERIOD   IS 0.10. // s  primary zone (10 Hz)
 GLOBAL IFC_HEADER_PERIOD    IS 0.20. // s  header + breadcrumb (5 Hz)
 GLOBAL IFC_SECONDARY_PERIOD IS 0.20. // s  debug panel (5 Hz)
 GLOBAL IFC_LOGGER_PERIOD    IS 0.50. // s  logger bar (2 Hz)
+GLOBAL IFC_CSV_LOG_PERIOD   IS 2.00. // s  CSV telemetry write period (0.5 Hz)
+                                      // WARNING: kOS LOG..TO blocks the main loop for the
+                                      // duration of the file I/O. On Windows with AV this
+                                      // can be 100-500 ms per call — keep this period large
+                                      // or disable logging to avoid autothrottle lag.
 GLOBAL IFC_ALERT_EXPIRE_S   IS 5.0.  // s  auto-clear alert after this long
 
 // ----------------------------

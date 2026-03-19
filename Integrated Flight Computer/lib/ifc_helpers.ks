@@ -185,6 +185,21 @@ FUNCTION GET_AOA {
   RETURN 0.
 }
 
+// Safe current throttle read for telemetry/estimators.
+// Prefer CONTROL suffixes when available; fall back to IFC command state.
+FUNCTION GET_CURRENT_THROTTLE {
+  IF SHIP:HASSUFFIX("CONTROL") {
+    LOCAL ctrl IS SHIP:CONTROL.
+    IF ctrl:HASSUFFIX("MAINTHROTTLE") {
+      RETURN CLAMP(ctrl:MAINTHROTTLE, 0, 1).
+    }
+    IF ctrl:HASSUFFIX("PILOTMAINTHROTTLE") {
+      RETURN CLAMP(ctrl:PILOTMAINTHROTTLE, 0, 1).
+    }
+  }
+  RETURN CLAMP(THROTTLE_CMD, 0, 1).
+}
+
 // Current aircraft pitch above the horizon.
 FUNCTION GET_PITCH {
   RETURN 90 - VECTORANGLE(SHIP:FACING:FOREVECTOR, SHIP:UP:VECTOR).

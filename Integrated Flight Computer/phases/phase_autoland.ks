@@ -20,6 +20,14 @@ FUNCTION RUN_AUTOLAND {
   }
 }
 
+FUNCTION _DEPLOY_TOUCHDOWN_SPOILERS {
+  LOCAL ag_sp IS 0.
+  IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("ag_spoilers") {
+    SET ag_sp TO ACTIVE_AIRCRAFT["ag_spoilers"].
+  }
+  IF ag_sp > 0 { TRIGGER_AG(ag_sp, TRUE). }
+}
+
 // ─────────────────────────────────────────────────────────
 // BOUNCE RECOVERY helper
 // Detects a post-touchdown bounce and transitions back to FLARE.
@@ -175,20 +183,13 @@ FUNCTION _RUN_FLARE {
   // from IAS loss that idle throttle causes on high-drag aircraft.
   // Minimum throttle is 0 (no forced idle floor) so the aircraft can still
   // reduce thrust naturally when above Vref.
-  LOCAL spd_err_f IS vref - ias.
-  LOCAL a_cmd_f IS CLAMP(KP_SPD_ACL * spd_err_f, -ACL_MAX, ACL_MAX).
-  LOCAL a_raw_f IS CLAMP((ias - PREV_IAS) / IFC_ACTUAL_DT, -10, 10).
-  SET PREV_IAS      TO ias.
-  SET A_ACTUAL_FILT TO A_ACTUAL_FILT * ACL_FILTER_ALPHA + a_raw_f * (1 - ACL_FILTER_ALPHA).
-  LOCAL a_err_f IS a_cmd_f - A_ACTUAL_FILT.
-  SET THR_INTEGRAL TO CLAMP(THR_INTEGRAL + spd_err_f * IFC_ACTUAL_DT, -THR_INTEGRAL_LIM, THR_INTEGRAL_LIM).
-  LOCAL raw_thr_f IS CLAMP(KP_ACL_THR * a_err_f + KI_SPD * THR_INTEGRAL, 0, 1).
-  SET THROTTLE_CMD TO MOVE_TOWARD(THROTTLE_CMD, raw_thr_f, THR_SLEW_PER_S * IFC_ACTUAL_DT).
+  AT_RUN_SPEED_HOLD(vref, 0, 1).
 
   // Transition: touchdown.
   // If KSP reports LANDED, commit immediately (no debounce) so flare ends
   // the moment the wheels touch.  Keep the fallback path debounced.
   IF SHIP:STATUS = "LANDED" {
+    _DEPLOY_TOUCHDOWN_SPOILERS().
     SET TOUCHDOWN_CAPTURE_PITCH_DEG TO GET_PITCH().
     SET TOUCHDOWN_INIT_DONE         TO FALSE.
     SET TOUCHDOWN_CANDIDATE_UT      TO -1.
@@ -209,6 +210,7 @@ FUNCTION _RUN_FLARE {
       }
       // Capture pre-impact pitch while still in flare; this is a better
       // nose-hold reference than waiting until touchdown transients begin.
+      _DEPLOY_TOUCHDOWN_SPOILERS().
       SET TOUCHDOWN_CAPTURE_PITCH_DEG TO GET_PITCH().
       SET TOUCHDOWN_INIT_DONE         TO FALSE.
       SET TOUCHDOWN_CANDIDATE_UT      TO -1.
@@ -247,9 +249,7 @@ FUNCTION _RUN_TOUCHDOWN {
   // One-time touchdown handoff work.
   IF NOT TOUCHDOWN_INIT_DONE {
     // Spoilers (action group from aircraft config).
-    LOCAL ag_sp IS 0.
-    IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("ag_spoilers") { SET ag_sp TO ACTIVE_AIRCRAFT["ag_spoilers"]. }
-    IF ag_sp > 0 { TRIGGER_AG(ag_sp, TRUE). }
+    _DEPLOY_TOUCHDOWN_SPOILERS().
 
     // Reverse thrust (action group from aircraft config).
     LOCAL ag_tr IS 0.

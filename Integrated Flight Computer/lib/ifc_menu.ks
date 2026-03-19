@@ -430,7 +430,7 @@ FUNCTION MENU_DO_MANUAL {
   SET IFC_MANUAL_MODE TO NOT IFC_MANUAL_MODE.
   IF IFC_MANUAL_MODE {
     AA_DISABLE_ALL().
-    LOCK THROTTLE TO SHIP:CONTROL:MAINTHROTTLE.
+    UNLOCK THROTTLE.
     IFC_SET_ALERT("Manual override active", "WARN").
     IF IFC_UI_MODE <> UI_MODE_MENU_OVERLAY {
       IFC_SET_UI_MODE(UI_MODE_MANUAL_OVERRIDE).
@@ -484,6 +484,8 @@ FUNCTION _FMS_DEFAULT_LEG {
   IF ltype = LEG_CRUISE {
     RETURN LEXICON("type", LEG_CRUISE,
       "params", LEXICON("alt_m", CRUISE_DEFAULT_ALT_M, "spd", CRUISE_DEFAULT_SPD,
+                        "nav_type", "waypoint",
+                        "course_deg", 90, "dist_nm", 100, "time_min", 60,
                         "wpt0", -1, "wpt1", -1, "wpt2", -1)).
   }
   IF ltype = LEG_APPROACH {
@@ -618,6 +620,27 @@ FUNCTION _FMS_LEG_LINE_TEXT {
     RETURN "TAKEOFF   RWY " + rwy.
   }
   IF t = LEG_CRUISE {
+    LOCAL alt_m_val IS CRUISE_DEFAULT_ALT_M.
+    LOCAL spd_val   IS CRUISE_DEFAULT_SPD.
+    IF p:HASKEY("alt_m") { SET alt_m_val TO p["alt_m"]. }
+    IF p:HASKEY("spd")   { SET spd_val   TO p["spd"]. }
+    LOCAL alt_m_r IS ROUND(alt_m_val, 0).
+    LOCAL nt IS "waypoint".
+    IF p:HASKEY("nav_type") { SET nt TO p["nav_type"]. }
+    IF nt = "course_dist" {
+      LOCAL cdeg IS 90.
+      LOCAL dnm  IS 100.
+      IF p:HASKEY("course_deg") { SET cdeg TO ROUND(p["course_deg"], 0). }
+      IF p:HASKEY("dist_nm")    { SET dnm  TO ROUND(p["dist_nm"], 0). }
+      RETURN "CRUISE    " + alt_m_r + "m  " + cdeg + "° " + dnm + "nm".
+    }
+    IF nt = "course_time" {
+      LOCAL cdeg IS 90.
+      LOCAL tmin IS 60.
+      IF p:HASKEY("course_deg") { SET cdeg TO ROUND(p["course_deg"], 0). }
+      IF p:HASKEY("time_min")   { SET tmin TO ROUND(p["time_min"], 0). }
+      RETURN "CRUISE    " + alt_m_r + "m  " + cdeg + "° " + tmin + "min".
+    }
     LOCAL wpts IS "".
     LOCAL slot IS 0.
     UNTIL slot >= FMS_WPT_SLOTS {
@@ -632,13 +655,8 @@ FUNCTION _FMS_LEG_LINE_TEXT {
       }
       SET slot TO slot + 1.
     }
-    LOCAL alt_m_val IS CRUISE_DEFAULT_ALT_M.
-    LOCAL spd_val   IS CRUISE_DEFAULT_SPD.
-    IF p:HASKEY("alt_m") { SET alt_m_val TO p["alt_m"]. }
-    IF p:HASKEY("spd")   { SET spd_val   TO p["spd"]. }
-    LOCAL alt_ft IS ROUND(alt_m_val * 3.281 / 100, 0) * 100.
-    IF wpts = "" { RETURN "CRUISE    " + alt_ft + "ft  " + ROUND(spd_val, 0) + "m/s". }
-    RETURN "CRUISE    " + alt_ft + "ft  " + wpts.
+    IF wpts = "" { RETURN "CRUISE    " + alt_m_r + "m  " + ROUND(spd_val, 0) + "m/s". }
+    RETURN "CRUISE    " + alt_m_r + "m  " + wpts.
   }
   IF t = LEG_APPROACH {
     LOCAL pidx IS 0.

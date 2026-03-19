@@ -42,6 +42,13 @@ GLOBAL THROTTLE_CMD     IS 0.
 GLOBAL THR_INTEGRAL     IS 0.   // accumulated speed error for integral trim
 GLOBAL PREV_IAS         IS 0.   // IAS from previous cycle for d(IAS)/dt measurement
 GLOBAL A_ACTUAL_FILT    IS 0.   // low-pass filtered measured acceleration (m/s²)
+GLOBAL AT_EST_INIT         IS FALSE. // estimator initialization latch
+GLOBAL AT_PREV_THR_CUR     IS 0.     // previous measured main throttle
+GLOBAL AT_PREV_A_FILT      IS 0.     // previous filtered acceleration
+GLOBAL AT_GAIN_EST         IS 1.0.   // estimated d(accel)/d(throttle)
+GLOBAL AT_TAU_EST          IS 0.6.   // estimated effective throttle lag (s)
+GLOBAL AT_A_THRUST_MAX_EST IS 0.0.   // estimated max positive accel authority (m/s²)
+GLOBAL AT_IDLE_DECEL_EST   IS 0.7.   // estimated idle decel authority (m/s², positive magnitude)
 GLOBAL APP_ON_FINAL IS FALSE. // TRUE once LOC/GS capture is stable for final-speed mode
 GLOBAL APP_FINAL_ARM_UT IS -1. // timer used to debounce entry to final-speed mode
 GLOBAL APP_SPD_MODE IS "INIT". // FIXES / INTERCEPT / FINAL / SHORT_FINAL
@@ -55,9 +62,10 @@ GLOBAL APP_GS_CAP_OK IS 0.  // 1 when |GS| is inside capture band, else 0
 // ----------------------------
 // ILS deviation state  (updated each cycle in ILS_TRACK)
 // ----------------------------
-GLOBAL ILS_LOC_DEV  IS 0.   // m, + = right of centerline
-GLOBAL ILS_GS_DEV   IS 0.   // m, + = above glideslope
-GLOBAL ILS_DIST_M   IS 0.   // m  horizontal from threshold (+ = on approach)
+GLOBAL ILS_LOC_DEV      IS 0.   // m, + = right of centerline
+GLOBAL ILS_GS_DEV       IS 0.   // m, + = above glideslope
+GLOBAL ILS_DIST_M       IS 0.   // m  horizontal from threshold (+ = on approach)
+GLOBAL ILS_INTERCEPT_ALT IS 0.  // m MSL altitude held until GS capture
 
 // Previous-cycle values for derivative term
 GLOBAL PREV_LOC_DEV IS 0.
@@ -127,6 +135,16 @@ GLOBAL TELEM_RO_YAW_GATE   IS 0.  // rollout yaw gate: 0=active,1=speed,2=guard,
 GLOBAL TELEM_RO_PITCH_TGT  IS 0.  // rollout: target pitch attitude (deg)
 GLOBAL TELEM_RO_PITCH_ERR  IS 0.  // rollout: pitch attitude error (deg)
 GLOBAL TELEM_RO_PITCH_FF   IS 0.  // rollout: feedforward pitch command bias
+GLOBAL TELEM_AT_V_TGT      IS 0.  // adaptive throttle: target IAS (m/s)
+GLOBAL TELEM_AT_A_CMD      IS 0.  // adaptive throttle: commanded accel (m/s²)
+GLOBAL TELEM_AT_A_ACT      IS 0.  // adaptive throttle: filtered measured accel (m/s²)
+GLOBAL TELEM_AT_GAIN       IS 0.  // adaptive throttle: estimated throttle effectiveness
+GLOBAL TELEM_AT_TAU        IS 0.  // adaptive throttle: estimated throttle lag (s)
+GLOBAL TELEM_AT_A_UP_LIM   IS 0.  // adaptive throttle: +accel clamp (m/s²)
+GLOBAL TELEM_AT_A_DN_LIM   IS 0.  // adaptive throttle: -accel clamp magnitude (m/s²)
+GLOBAL TELEM_AT_KP_THR     IS 0.  // adaptive throttle: scheduled KP_ACL_THR
+GLOBAL TELEM_AT_KI_SPD     IS 0.  // adaptive throttle: scheduled KI_SPD
+GLOBAL TELEM_AT_THR_SLEW   IS 0.  // adaptive throttle: scheduled throttle slew (/s)
 
 // ----------------------------
 // Flap detent state
@@ -178,11 +196,14 @@ GLOBAL IFC_MANUAL_MODE IS FALSE. // TRUE = autopilot suspended, pilot has contro
 // ----------------------------
 // Cruise phase state
 // ----------------------------
-GLOBAL CRUISE_WAYPOINTS   IS LIST().  // ordered list of beacon IDs to navigate
-GLOBAL CRUISE_WP_INDEX    IS 0.       // current index into CRUISE_WAYPOINTS
-GLOBAL CRUISE_ALT_M       IS 3000.    // target cruise altitude MSL (m)
-GLOBAL CRUISE_SPD_MPS     IS 150.     // target cruise IAS (m/s)
-GLOBAL CRUISE_DEST_PLATE  IS 0.       // (legacy) approach plate for destination
+GLOBAL CRUISE_WAYPOINTS   IS LIST().      // ordered list of beacon IDs to navigate
+GLOBAL CRUISE_WP_INDEX    IS 0.           // current index into CRUISE_WAYPOINTS
+GLOBAL CRUISE_ALT_M       IS 3000.        // target cruise altitude MSL (m)
+GLOBAL CRUISE_SPD_MPS     IS 150.         // target cruise IAS (m/s)
+GLOBAL CRUISE_DEST_PLATE  IS 0.           // (legacy) approach plate for destination
+GLOBAL CRUISE_NAV_TYPE    IS "waypoint".  // "waypoint" | "course_dist" | "course_time"
+GLOBAL CRUISE_COURSE_DEG  IS 0.           // compass heading for course-based cruise
+GLOBAL CRUISE_END_UT      IS -1.          // UT when course_time cruise ends (-1 = unused)
 
 // ----------------------------
 // Autoland phase state
@@ -220,6 +241,13 @@ GLOBAL GUI_FIELD_DEC_BTNS IS LIST().  // [<] buttons in the edit panel
 GLOBAL GUI_FIELD_INC_BTNS IS LIST().  // [>] buttons in the edit panel
 GLOBAL GUI_SLOT_SAVE_BTNS IS LIST().  // [SAVE n] buttons for slots 1-5
 GLOBAL GUI_SLOT_LOAD_BTNS IS LIST().  // [LOAD n] buttons for slots 1-5
+GLOBAL GUI_PLAN_LBL IS 0.            // "FLIGHT PLAN (n legs)" label
+GLOBAL GUI_EDIT_HDR_LBL IS 0.        // (unused — kept for compatibility)
+GLOBAL GUI_FIELD_NAME_LBLS IS LIST(). // (unused — kept for compatibility)
+GLOBAL GUI_EDIT_WIN IS 0.            // edit sub-window handle
+GLOBAL GUI_EDIT_HANDLES IS LIST().   // widget handles in edit sub-window
+GLOBAL GUI_EDIT_LEG_TYPE IS -1.      // leg type currently shown in edit window
+GLOBAL GUI_EDIT_NAV_TYPE IS "".      // cruise nav_type currently shown in edit window
 
 // ----------------------------
 // Init / reset
@@ -244,6 +272,13 @@ FUNCTION IFC_INIT_STATE {
   SET THR_INTEGRAL  TO 0.
   SET PREV_IAS      TO GET_IAS().
   SET A_ACTUAL_FILT TO 0.
+  SET AT_EST_INIT         TO FALSE.
+  SET AT_PREV_THR_CUR     TO 0.
+  SET AT_PREV_A_FILT      TO 0.
+  SET AT_GAIN_EST         TO AT_GAIN_INIT.
+  SET AT_TAU_EST          TO AT_TAU_INIT.
+  SET AT_A_THRUST_MAX_EST TO 0.
+  SET AT_IDLE_DECEL_EST   TO AT_IDLE_DECEL_INIT.
   SET APP_ON_FINAL TO FALSE.
   SET APP_FINAL_ARM_UT TO -1.
   SET APP_SPD_MODE TO "INIT".
@@ -256,9 +291,10 @@ FUNCTION IFC_INIT_STATE {
   SET APP_LOC_CAP_OK TO 0.
   SET APP_GS_CAP_OK TO 0.
 
-  SET ILS_LOC_DEV  TO 0.
-  SET ILS_GS_DEV   TO 0.
-  SET ILS_DIST_M   TO 0.
+  SET ILS_LOC_DEV       TO 0.
+  SET ILS_GS_DEV        TO 0.
+  SET ILS_DIST_M        TO 0.
+  SET ILS_INTERCEPT_ALT TO 0.
   SET PREV_LOC_DEV TO 0.
   SET PREV_GS_DEV  TO 0.
 
@@ -316,6 +352,16 @@ FUNCTION IFC_INIT_STATE {
   SET TELEM_RO_PITCH_TGT TO 0.
   SET TELEM_RO_PITCH_ERR TO 0.
   SET TELEM_RO_PITCH_FF TO 0.
+  SET TELEM_AT_V_TGT    TO 0.
+  SET TELEM_AT_A_CMD    TO 0.
+  SET TELEM_AT_A_ACT    TO 0.
+  SET TELEM_AT_GAIN     TO 0.
+  SET TELEM_AT_TAU      TO 0.
+  SET TELEM_AT_A_UP_LIM TO 0.
+  SET TELEM_AT_A_DN_LIM TO 0.
+  SET TELEM_AT_KP_THR   TO 0.
+  SET TELEM_AT_KI_SPD   TO 0.
+  SET TELEM_AT_THR_SLEW TO 0.
 
   LOCAL initial_det IS 0.
   LOCAL max_det     IS 3.
@@ -356,12 +402,22 @@ FUNCTION IFC_INIT_STATE {
   GUI_FIELD_INC_BTNS:CLEAR().
   GUI_SLOT_SAVE_BTNS:CLEAR().
   GUI_SLOT_LOAD_BTNS:CLEAR().
+  SET GUI_PLAN_LBL     TO 0.
+  SET GUI_EDIT_HDR_LBL TO 0.
+  GUI_FIELD_NAME_LBLS:CLEAR().
+  SET GUI_EDIT_WIN      TO 0.
+  GUI_EDIT_HANDLES:CLEAR().
+  SET GUI_EDIT_LEG_TYPE TO -1.
+  SET GUI_EDIT_NAV_TYPE TO "".
 
   SET CRUISE_WAYPOINTS  TO LIST().
   SET CRUISE_WP_INDEX   TO 0.
   SET CRUISE_ALT_M      TO 3000.
   SET CRUISE_SPD_MPS    TO CRUISE_DEFAULT_SPD.
   SET CRUISE_DEST_PLATE TO 0.
+  SET CRUISE_NAV_TYPE   TO "waypoint".
+  SET CRUISE_COURSE_DEG TO 0.
+  SET CRUISE_END_UT     TO -1.
 
   SET APP_SPOILERS_ARMED  TO FALSE.
   SET TO_RWY_HDG          TO 90.
@@ -401,4 +457,5 @@ FUNCTION IFC_LOAD_PLATE {
   SET ACTIVE_FIXES    TO ACTIVE_PLATE["fixes"].
   SET ACTIVE_ALT_AT   TO ACTIVE_PLATE["alt_at"].
   SET FIX_INDEX TO 0.
+  AT_RESET().
 }

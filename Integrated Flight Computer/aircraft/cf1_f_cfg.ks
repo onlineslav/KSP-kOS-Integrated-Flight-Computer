@@ -17,14 +17,14 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
   RETURN LEXICON(
 
     // ── Identity ──────────────────────────────────────────
-    "name",         "CF1-E Kerbmaster",     // shown in telemetry
+    "name",         "CF1-F Kerbmaster",     // shown in telemetry
 
     // ── Approach speeds (m/s IAS) ─────────────────────────
     // Vapp: target speed from FAF to flare.
     // Vref: threshold crossing speed (used for display/logging).
     // Reduce Vapp toward Vref during the flare by cutting throttle.
-    "v_app",        76.0,
-    "v_ref",        70.0,
+    "v_app",        73.0,
+    "v_ref",        68.0,
     // Optional approach-speed schedule shaping (set to -1 to use globals):
     // Intercept target is derived as:
     //   Vint = Vapp + clamp((Vapp - Vref) * gain, min_add, max_add)
@@ -186,6 +186,6 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
 
     // ── Notes ─────────────────────────────────────────────
     // Free-text, shown at startup for crew awareness.
-    "notes",        "Template - fill in before use."
+    "notes",        "CF1-F Kerbmaster"
   ).
 }

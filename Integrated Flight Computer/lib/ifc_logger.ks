@@ -77,6 +77,7 @@
 
 GLOBAL LOG_ACTIVE IS FALSE.
 GLOBAL LOG_FILE   IS "".
+GLOBAL LOG_LAST_WRITE_UT IS -1.
 
 FUNCTION LOGGER_INIT {
   LOCAL log_dir IS "0:/Integrated Flight Computer/logs".
@@ -95,15 +96,18 @@ FUNCTION LOGGER_INIT {
   }
   SET LOG_FILE TO candidate.
 
-  LOG "t_s,phase,subphase,ias_ms,vapp_ms,spd_err_ms,agl_m,vs_ms,pitch_deg,aoa_deg,hdg_deg,bank_deg,thr_cmd,thr_cur,thr_intg,aa_hdg_cmd_deg,aa_fpa_cmd_deg,ils_loc_m,ils_gs_m,ils_dist_km,loc_corr_deg,gs_corr_deg,flare_fpa_cmd,flare_tgt_vs,flare_frac,steer_hdg_deg,steer_blend,ro_loc_corr_deg,ro_hdg_err_deg,ro_yaw_tgt,ro_yaw_scale,ro_yaw_gate,yaw_cmd,roll_cmd,pitch_cmd,ro_pitch_tgt_deg,ro_pitch_err_deg,ro_pitch_ff,ro_roll_assist,flaps_cur,flaps_tgt,phase_el_s,status" TO LOG_FILE.
+  LOG "t_s,phase,subphase,ias_ms,vapp_ms,spd_err_ms,agl_m,vs_ms,pitch_deg,aoa_deg,hdg_deg,bank_deg,thr_cmd,thr_cur,thr_intg,at_gain,at_tau_s,at_a_up,at_a_dn,at_kp_thr,at_ki_spd,at_thr_slew,aa_hdg_cmd_deg,aa_fpa_cmd_deg,ils_loc_m,ils_gs_m,ils_dist_km,loc_corr_deg,gs_corr_deg,flare_fpa_cmd,flare_tgt_vs,flare_frac,steer_hdg_deg,steer_blend,ro_loc_corr_deg,ro_hdg_err_deg,ro_yaw_tgt,ro_yaw_scale,ro_yaw_gate,yaw_cmd,roll_cmd,pitch_cmd,ro_pitch_tgt_deg,ro_pitch_err_deg,ro_pitch_ff,ro_roll_assist,flaps_cur,flaps_tgt,phase_el_s,status" TO LOG_FILE.
 
   SET LOG_ACTIVE TO TRUE.
+  SET LOG_LAST_WRITE_UT TO TIME:SECONDS - IFC_CSV_LOG_PERIOD.
   SET IFC_ALERT_TEXT TO "Logging -> " + LOG_FILE.
   SET IFC_ALERT_UT   TO TIME:SECONDS.
 }
 
 FUNCTION LOGGER_WRITE {
   IF NOT LOG_ACTIVE { RETURN. }
+  IF TIME:SECONDS - LOG_LAST_WRITE_UT < IFC_CSV_LOG_PERIOD { RETURN. }
+  SET LOG_LAST_WRITE_UT TO TIME:SECONDS.
 
   LOCAL ias   IS GET_IAS().
   LOCAL v_tgt IS ACTIVE_V_APP.
@@ -124,8 +128,15 @@ FUNCTION LOGGER_WRITE {
     ROUND(GET_COMPASS_HDG(),          2)   + "," +
     bank                                   + "," +
     ROUND(THROTTLE_CMD,               4)   + "," +
-    ROUND(SHIP:CONTROL:MAINTHROTTLE,  4)   + "," +
+    ROUND(GET_CURRENT_THROTTLE(),     4)   + "," +
     ROUND(THR_INTEGRAL,               3)   + "," +
+    ROUND(TELEM_AT_GAIN,              4)   + "," +
+    ROUND(TELEM_AT_TAU,               3)   + "," +
+    ROUND(TELEM_AT_A_UP_LIM,          3)   + "," +
+    ROUND(TELEM_AT_A_DN_LIM,          3)   + "," +
+    ROUND(TELEM_AT_KP_THR,            4)   + "," +
+    ROUND(TELEM_AT_KI_SPD,            4)   + "," +
+    ROUND(TELEM_AT_THR_SLEW,          4)   + "," +
     ROUND(TELEM_AA_HDG_CMD,           2)   + "," +
     ROUND(TELEM_AA_FPA_CMD,           3)   + "," +
     ROUND(ILS_LOC_DEV,                2)   + "," +
@@ -163,6 +174,7 @@ FUNCTION LOGGER_CLOSE {
   LOG "# end T+" + ROUND(TIME:SECONDS - IFC_MISSION_START_UT, 1) +
       "  IAS " + ROUND(GET_IAS(), 1) + " m/s" TO LOG_FILE.
   SET LOG_ACTIVE TO FALSE.
+  SET LOG_LAST_WRITE_UT TO -1.
   SET IFC_ALERT_TEXT TO "Log saved -> " + LOG_FILE.
   SET IFC_ALERT_UT   TO TIME:SECONDS.
 }

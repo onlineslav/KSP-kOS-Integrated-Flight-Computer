@@ -37,6 +37,7 @@ LOCAL ifc_root IS "0:/Integrated Flight Computer/".
 RUNPATH(ifc_root + "lib/ifc_constants.ks").
 RUNPATH(ifc_root + "lib/ifc_state.ks").
 RUNPATH(ifc_root + "lib/ifc_helpers.ks").
+RUNPATH(ifc_root + "lib/ifc_autothrottle.ks").
 RUNPATH(ifc_root + "lib/ifc_ui.ks").
 RUNPATH(ifc_root + "lib/ifc_menu.ks").
 RUNPATH(ifc_root + "lib/ifc_display.ks").
@@ -285,7 +286,17 @@ FUNCTION _INIT_LEG {
 
   IF leg_type = LEG_TAKEOFF {
     LOCAL rwy_id IS params["rwy_id"].
-    LOCAL ils_id IS "KSC_ILS_" + rwy_id.
+    LOCAL ils_id IS "".
+    LOCAL ksc_ils_id IS "KSC_ILS_" + rwy_id.
+    LOCAL daf_ils_id IS "DAF_ILS_" + rwy_id.
+    LOCAL isl_ils_id IS "ISL_ILS_" + rwy_id.
+    IF NAV_BEACON_DB:HASKEY(ksc_ils_id) {
+      SET ils_id TO ksc_ils_id.
+    } ELSE IF NAV_BEACON_DB:HASKEY(daf_ils_id) {
+      SET ils_id TO daf_ils_id.
+    } ELSE IF NAV_BEACON_DB:HASKEY(isl_ils_id) {
+      SET ils_id TO isl_ils_id.
+    }
     LOCAL ils IS GET_BEACON(ils_id).
     IF NOT ils:HASKEY("ll") {
       IFC_SET_ALERT("ABORT: no beacon for RWY " + rwy_id, "ERROR").
@@ -302,27 +313,75 @@ FUNCTION _INIT_LEG {
     SET IFC_SUBPHASE TO SUBPHASE_TO_PREFLIGHT.
 
   } ELSE IF leg_type = LEG_CRUISE {
-    // Accept flat params (waypoints/alt_m/spd) or legacy route wrapper.
     LOCAL wpts  IS LIST().
     LOCAL alt_m IS CRUISE_DEFAULT_ALT_M.
     LOCAL spd   IS CRUISE_DEFAULT_SPD.
+    LOCAL nt    IS "waypoint".
+
     IF params:HASKEY("route") {
+      // Legacy route wrapper
       LOCAL route IS params["route"].
       SET wpts  TO route["waypoints"].
       SET alt_m TO route["cruise_alt_m"].
       SET spd   TO route["cruise_spd"].
+    } ELSE IF params:HASKEY("nav_type") {
+      // FMS leg format: nav_type + wpt0/1/2 or course params
+      SET nt TO params["nav_type"].
+      IF params:HASKEY("alt_m") { SET alt_m TO params["alt_m"]. }
+      IF params:HASKEY("spd")   { SET spd   TO params["spd"]. }
+
+      IF nt = "course_dist" {
+        LOCAL cdeg IS 90.
+        LOCAL dnm  IS 100.
+        IF params:HASKEY("course_deg") { SET cdeg TO params["course_deg"]. }
+        IF params:HASKEY("dist_nm")    { SET dnm  TO params["dist_nm"]. }
+        // Create a synthetic beacon at the destination; navigate to it normally.
+        LOCAL dest_ll IS GEO_DESTINATION(SHIP:GEOPOSITION, cdeg, dnm * 1852).
+        IF NAV_BEACON_DB:HASKEY("_CRUISE_TGT") { NAV_BEACON_DB:REMOVE("_CRUISE_TGT"). }
+        REGISTER_BEACON(MAKE_BEACON("_CRUISE_TGT", BTYPE_WPT,
+          dest_ll, alt_m, LEXICON("name", "Course target"))).
+        wpts:ADD("_CRUISE_TGT").
+        SET CRUISE_COURSE_DEG TO cdeg.
+
+      } ELSE IF nt = "course_time" {
+        LOCAL cdeg IS 90.
+        LOCAL tmin IS 60.
+        IF params:HASKEY("course_deg") { SET cdeg TO params["course_deg"]. }
+        IF params:HASKEY("time_min")   { SET tmin TO params["time_min"]. }
+        SET CRUISE_COURSE_DEG TO cdeg.
+        SET CRUISE_END_UT     TO TIME:SECONDS + tmin * 60.
+
+      } ELSE {
+        // "waypoint" nav_type: build wpt list from wpt0/wpt1/wpt2 indices
+        LOCAL slot IS 0.
+        UNTIL slot >= FMS_WPT_SLOTS {
+          LOCAL wkey IS "wpt" + slot.
+          IF params:HASKEY(wkey) {
+            LOCAL widx IS ROUND(params[wkey], 0).
+            IF widx >= 0 AND widx < CUSTOM_WPT_IDS:LENGTH {
+              wpts:ADD(CUSTOM_WPT_IDS[widx]).
+            }
+          }
+          SET slot TO slot + 1.
+        }
+      }
     } ELSE {
+      // Old flat format: params["waypoints"] is already a list of beacon IDs
       IF params:HASKEY("waypoints") { SET wpts  TO params["waypoints"]. }
       IF params:HASKEY("alt_m")     { SET alt_m TO params["alt_m"]. }
       IF params:HASKEY("spd")       { SET spd   TO params["spd"]. }
     }
+
+    SET CRUISE_NAV_TYPE   TO nt.
     SET CRUISE_WAYPOINTS  TO wpts.
     SET CRUISE_ALT_M      TO alt_m.
     SET CRUISE_SPD_MPS    TO spd.
     SET CRUISE_DEST_PLATE TO 0.
     SET CRUISE_WP_INDEX   TO 0.
     SET THR_INTEGRAL      TO 0.
+    SET PREV_IAS          TO GET_IAS().
     SET A_ACTUAL_FILT     TO 0.
+    AT_RESET().
     SET_PHASE(PHASE_CRUISE).
 
   } ELSE IF leg_type = LEG_APPROACH {
@@ -347,6 +406,7 @@ FUNCTION _INIT_LEG {
     SET THR_INTEGRAL  TO 0.
     SET PREV_IAS      TO GET_IAS().
     SET A_ACTUAL_FILT TO 0.
+    AT_RESET().
     // Apply Vapp override after plate load
     IF IFC_MENU_OPT_VAPP > 0 {
       SET ACTIVE_V_APP   TO IFC_MENU_OPT_VAPP.

@@ -15,20 +15,31 @@
 // Same cascade structure as the approach throttle,
 // but targets CRUISE_SPD_MPS directly.
 FUNCTION _RUN_CRUISE_THROTTLE {
-  LOCAL ias IS GET_IAS().
-  LOCAL spd_err IS CRUISE_SPD_MPS - ias.
-  LOCAL a_cmd IS CLAMP(KP_SPD_ACL * spd_err, -ACL_MAX, ACL_MAX).
-  LOCAL a_raw IS CLAMP((ias - PREV_IAS) / IFC_ACTUAL_DT, -10, 10).
-  SET PREV_IAS      TO ias.
-  SET A_ACTUAL_FILT TO A_ACTUAL_FILT * ACL_FILTER_ALPHA + a_raw * (1 - ACL_FILTER_ALPHA).
-  LOCAL a_err IS a_cmd - A_ACTUAL_FILT.
-  SET THR_INTEGRAL TO CLAMP(THR_INTEGRAL + spd_err * IFC_ACTUAL_DT, -THR_INTEGRAL_LIM, THR_INTEGRAL_LIM).
-  LOCAL raw_thr IS CLAMP(KP_ACL_THR * a_err + KI_SPD * THR_INTEGRAL, 0, 1).
-  SET THROTTLE_CMD TO MOVE_TOWARD(THROTTLE_CMD, raw_thr, THR_SLEW_PER_S * IFC_ACTUAL_DT).
+  AT_RUN_SPEED_HOLD(CRUISE_SPD_MPS, 0, 1).
 }
 
 // ── Main cruise tick ─────────────────────────────────────
 FUNCTION RUN_CRUISE {
+  // Course + time mode: fly a fixed heading until the timer expires.
+  IF CRUISE_NAV_TYPE = "course_time" {
+    IF TIME:SECONDS >= CRUISE_END_UT {
+      SET IFC_ALERT_TEXT TO "CRUISE complete".
+      SET IFC_ALERT_UT   TO TIME:SECONDS.
+      SET_PHASE(PHASE_DONE).
+      RETURN.
+    }
+    LOCAL alt_err IS SHIP:ALTITUDE - CRUISE_ALT_M.
+    LOCAL fpa_cmd IS CLAMP(-alt_err * KP_ALT_FPA, MAX_DESC_FPA, MAX_CLIMB_FPA).
+    AA_SET_DIRECTOR(CRUISE_COURSE_DEG, fpa_cmd).
+    SET TELEM_AA_HDG_CMD TO CRUISE_COURSE_DEG.
+    SET TELEM_AA_FPA_CMD TO fpa_cmd.
+    SET TELEM_LOC_CORR   TO 0.
+    SET TELEM_GS_CORR    TO 0.
+    _RUN_CRUISE_THROTTLE().
+    RETURN.
+  }
+
+  // Waypoint mode (also handles course_dist via synthetic "_CRUISE_TGT" beacon).
   IF CRUISE_WP_INDEX >= CRUISE_WAYPOINTS:LENGTH {
     SET IFC_ALERT_TEXT TO "CRUISE complete".
     SET IFC_ALERT_UT   TO TIME:SECONDS.
@@ -53,6 +64,10 @@ FUNCTION RUN_CRUISE {
 
   LOCAL alt_err IS SHIP:ALTITUDE - tgt_alt.
   LOCAL fpa_cmd IS CLAMP(-alt_err * KP_ALT_FPA, MAX_DESC_FPA, MAX_CLIMB_FPA).
+  // Suppress descent during large heading changes to prevent spiral dives.
+  LOCAL hdg_err IS WRAP_360(brg - SHIP:HEADING).
+  IF hdg_err > 180 { SET hdg_err TO 360 - hdg_err. }
+  IF hdg_err > 45 AND fpa_cmd < 0 { SET fpa_cmd TO 0. }
 
   AA_SET_DIRECTOR(brg, fpa_cmd).
   SET TELEM_AA_HDG_CMD TO brg.
