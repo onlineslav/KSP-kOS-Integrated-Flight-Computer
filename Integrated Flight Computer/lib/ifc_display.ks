@@ -254,6 +254,37 @@ FUNCTION DISPLAY_TAKEOFF {
   UI_P("  PITCH CMD " + ROUND(SHIP:CONTROL:PITCH, 3) + "   THRUST " + ROUND(SHIP:AVAILABLETHRUST, 0) + " kN", UI_PRI_TOP + 5).
 }
 
+FUNCTION DISPLAY_ASCENT {
+  LOCAL mach     IS ROUND(TELEM_ASC_MACH, 2).
+  LOCAL q_pa     IS ROUND(TELEM_ASC_Q, 0).
+  LOCAL apo_km   IS ROUND(TELEM_ASC_APO / 1000, 1).
+  LOCAL j_ab     IS ROUND(TELEM_ASC_J_AB, 1).
+  LOCAL j_rk     IS ROUND(TELEM_ASC_J_RK, 1).
+  LOCAL bias     IS ROUND(TELEM_ASC_PITCH_BIAS, 2).
+  LOCAL blend    IS ROUND(TELEM_ASC_BLEND, 2).
+  LOCAL validity IS TELEM_ASC_VALIDITY.
+
+  LOCAL spool_str IS "".
+  IF TELEM_ASC_SPOOLING { SET spool_str TO "  [SPOOL]". }
+
+  _DISPLAY_AIR_DATA().
+
+  UI_P("  MACH " + STR_RJUST("" + mach, 5) + "   q " +
+       STR_RJUST("" + q_pa, 6) + " Pa   APO " +
+       STR_RJUST("" + apo_km, 7) + " km", UI_PRI_TOP + 2).
+
+  UI_P("  J_AB " + STR_RJUST("" + j_ab, 7) +
+       "   J_RK " + STR_RJUST("" + j_rk, 7) +
+       "   [" + validity + "]", UI_PRI_TOP + 3).
+
+  UI_P("  BIAS " + STR_RJUST("" + bias, 6) + " deg" +
+       "   BLEND " + STR_RJUST("" + blend, 4) +
+       spool_str, UI_PRI_TOP + 4).
+
+  UI_P("  FPA CMD " + ROUND(TELEM_AA_FPA_CMD, 2) + " deg" +
+       "   HDG " + ROUND(TELEM_AA_HDG_CMD, 1) + " deg", UI_PRI_TOP + 5).
+}
+
 FUNCTION DISPLAY_COMPLETE {
   LOCAL elapsed IS UI_FORMAT_TIME(TIME:SECONDS - IFC_MISSION_START_UT).
   UI_CLR(UI_PRI_TOP).
@@ -281,6 +312,14 @@ FUNCTION DISPLAY_SECONDARY_DEBUG {
     UI_P("  RWY HDG " + ROUND(TO_RWY_HDG, 1) + "  steer " + ROUND(ROLLOUT_STEER_HDG, 1) + "  locC " + ROUND(TELEM_RO_LOC_CORR, 3), UI_SEC_TOP).
     UI_P("  yawTgt " + ROUND(TELEM_RO_YAW_TGT, 3) + "  scale " + ROUND(TELEM_RO_YAW_SCALE, 2) + "  gate " + ROUND(TELEM_RO_YAW_GATE, 0), UI_SEC_TOP + 1).
     UI_P("  climbFPAcmd " + ROUND(TO_CLIMB_FPA_CMD, 2) + "  ThrI " + ROUND(THR_INTEGRAL, 3), UI_SEC_TOP + 2).
+    RETURN.
+  }
+
+  IF IFC_PHASE = PHASE_ASCENT {
+    LOCAL dv_est IS ROUND(_ASC_ROCKET_DV_AVAIL(), 0).
+    UI_P("  Edot_f " + ROUND(TELEM_ASC_EDOT_VAL, 1) + "  Edot_o " + ROUND(TELEM_ASC_EDOT_ORB, 1) + " J/kg/s", UI_SEC_TOP).
+    UI_P("  J_AB " + ROUND(TELEM_ASC_J_AB, 1) + "  J_RK " + ROUND(TELEM_ASC_J_RK, 1) + "  [" + TELEM_ASC_VALIDITY + "]", UI_SEC_TOP + 1).
+    UI_P("  ΔV_rk " + dv_est + " m/s  drag " + ROUND(TELEM_ASC_DRAG_RK, 0) + " N", UI_SEC_TOP + 2).
     RETURN.
   }
 
@@ -393,13 +432,7 @@ FUNCTION _DISPLAY_PRIMARY_BY_PHASE {
   IF IFC_PHASE = PHASE_TOUCHDOWN { DISPLAY_TOUCHDOWN(). RETURN. }
   IF IFC_PHASE = PHASE_ROLLOUT { DISPLAY_ROLLOUT(). RETURN. }
 
-  IF IFC_PHASE = PHASE_ASCENT {
-    _DISPLAY_AIR_DATA().
-    UI_P("  ASCENT phase scaffold active", UI_PRI_TOP + 3).
-    UI_CLR(UI_PRI_TOP + 4).
-    UI_CLR(UI_PRI_TOP + 5).
-    RETURN.
-  }
+  IF IFC_PHASE = PHASE_ASCENT { DISPLAY_ASCENT(). RETURN. }
 
   IF IFC_PHASE = PHASE_REENTRY {
     _DISPLAY_AIR_DATA().

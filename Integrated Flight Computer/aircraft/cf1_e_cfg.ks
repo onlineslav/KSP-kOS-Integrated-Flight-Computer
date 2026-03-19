@@ -184,6 +184,19 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "touchdown_confirm_s", -1, // s debounce for FLARE->TOUCHDOWN (-1 = global)
     "touchdown_confirm_max_abs_vs", -1, // m/s max |VS| at FLARE->TOUCHDOWN commit (-1 = global)
 
+    // ── Ascent guidance ───────────────────────────────────
+    // All values fall back to ifc_constants.ks defaults when set to -1.
+    // Tune these per-vehicle based on structural and engine characteristics.
+    "ascent_q_target",          -1,  // Pa  corridor centre q              (-1 = 30000)
+    "ascent_q_max",             -1,  // Pa  structural dynamic-press limit (-1 = 60000)
+    "ascent_q_min",             -1,  // Pa  corridor lower bound           (-1 =  8000)
+    "ascent_heat_limit",        -1,  // Pa·m/s  heating proxy limit        (-1 = 3.5e8)
+    "ascent_k_prop",            -1,  // propellant equivalency coefficient (-1 = 0.5)
+    "ascent_aoa_limit",         -1,  // deg  max AoA in ascent             (-1 = aa_max_aoa)
+    "ascent_regime_mach",       -1,  // Mach  AB thermal regime boundary   (-1 = 4.5)
+    "ascent_zoom_target_m",     -1,  // m   apoapsis target before switch  (-1 = 45000)
+    "ascent_apoapsis_target_m", -1,  // m   target orbit apoapsis          (-1 = 80000)
+
     // ── Notes ─────────────────────────────────────────────
     // Free-text, shown at startup for crew awareness.
     "notes",        "Template - fill in before use."

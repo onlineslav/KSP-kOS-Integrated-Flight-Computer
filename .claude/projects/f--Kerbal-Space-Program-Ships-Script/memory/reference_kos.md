@@ -1,0 +1,25 @@
+---
+name: kOS reserved names and language rules
+description: Exhaustive list of kOS protected variable/function names and language-level gotchas for this project
+type: reference
+---
+
+Full authoritative reference is in CLAUDE.md at the repo root. Key highlights:
+
+**Cannot use as variable or function names (will error in kOS 1.4+):**
+- Language keywords: IF, ELSE, UNTIL, FOR, FROM, FUNCTION, GLOBAL, LOCAL, SET, LOCK, UNLOCK, WAIT, WHEN, THEN, STAGE, LIST, LOG, ON, OFF, TRUE, FALSE, RETURN, PARAMETER, BREAK, PRINT, TOGGLE, ADD, REMOVE, etc.
+- SHIP field aliases: ALTITUDE, VELOCITY, MASS, HEADING, BODY, APOAPSIS, PERIAPSIS, NORTH, UP, STATUS, AIRSPEED, VERTICALSPEED, GROUNDSPEED, MAXTHRUST, FACING, PROGRADE, RETROGRADE, LATITUDE, LONGITUDE, GEOPOSITION, ANGULARVEL, OBT, SHIPNAME, SRFPROGRADE, SRFRETROGRADE, SENSORS
+- Flight controls: THROTTLE, STEERING, WHEELTHROTTLE, WHEELSTEERING
+- System globals: TIME, SHIP, TARGET, STAGE, ALT, ETA, CORE, CONFIG, WARP, MAPVIEW, ADDONS, ARCHIVE, TERMINAL, CONSTANT, KUNIVERSE, VERSION, MISSIONTIME, SESSIONTIME, NEXTNODE, HASNODE, ALLNODES, HASTARGET, ENCOUNTER, HOMECONNECTION, CONTROLCONNECTION, SOLARPRIMEVECTOR, OPCODESLEFT, LOADDISTANCE
+- Action groups: SAS, RCS, LIGHTS, BRAKES, GEAR, ABORT, AG1-AG10, LEGS, CHUTES, CHUTESSAFE, PANELS, RADIATORS, LADDERS, BAYS, INTAKES, DRILLS, DEPLOYDRILLS, FUELCELLS, ISRU
+- Resources: LIQUIDFUEL, OXIDIZER, ELECTRICCHARGE, MONOPROPELLANT, INTAKEAIR, SOLIDFUEL
+- Colors: WHITE, BLACK, RED, GREEN, BLUE, YELLOW, CYAN, MAGENTA, PURPLE, GREY, GRAY
+- Built-in functions: ABS, SQRT, SIN, COS, TAN, ARCSIN, ARCCOS, ARCTAN, ARCTAN2, MOD, MIN, MAX, ROUND, FLOOR, CEILING, LN, LOG10, RANDOM, V(), R(), Q(), HEADING(), LOOKDIRUP(), VDOT(), VCRS(), VANG(), VXCL(), LEXICON(), LEX(), QUEUE(), STACK(), UNIQUESET(), RANGE(), LATLNG(), NODE(), TIMESTAMP(), TIMESPAN(), RGB(), RGBA(), POSITIONAT(), VELOCITYAT(), ORBITAT(), etc.
+
+**Safe (commonly confused):** SPEED, THRUST, FUEL, ORBIT, ENGINES, CONTROL, PARTS, CREW, SCIENCE
+
+**Critical gotcha:** `LOG` is a keyword (file logging). Use `IFC_SET_ALERT()` or `LOGGER_WRITE()` instead of bare LOG in this codebase.
+
+**Critical gotcha:** `LIST` is both a keyword and a function. Don't name variables LIST.
+
+**Critical gotcha:** `STAGE` is both a keyword (triggers staging) AND a structure — doubly off-limits.

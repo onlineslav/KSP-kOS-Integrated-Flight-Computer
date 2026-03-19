@@ -87,7 +87,12 @@ GLOBAL FAR_AVAILABLE IS FALSE.
 // Loop timing
 // ----------------------------
 GLOBAL IFC_CYCLE_UT  IS 0.    // TIME:SECONDS at start of last cycle (for real dt)
+GLOBAL IFC_RAW_DT    IS 0.05. // unclamped elapsed time of the most recent loop cycle (s)
 GLOBAL IFC_ACTUAL_DT IS 0.05. // measured elapsed time of the most recent loop cycle (s)
+GLOBAL IFC_LOOP_COUNT IS 0.   // total control-loop iterations since IFC_INIT_STATE
+GLOBAL IFC_LOOP_COUNT_SNAPSHOT IS 0. // loop counter snapshot at last CSV write
+GLOBAL IFC_RAW_DT_MAX IS 0.05. // max raw dt observed since last CSV write
+GLOBAL IFC_RAW_DT_MIN IS 0.05. // min raw dt observed since last CSV write
 
 // ----------------------------
 // Telemetry (legacy rate-limiter; kept for ifc_telemetry.ks compat)
@@ -109,6 +114,7 @@ GLOBAL IFC_ALERT_LAST_LINE IS "__INIT__". // last rendered alert row text (preve
 GLOBAL IFC_MENU_OPEN      IS FALSE.  // TRUE when menu overlay is visible
 GLOBAL IFC_MENU_DIRTY     IS FALSE.  // TRUE when overlay needs redraw
 GLOBAL IFC_UI_MODE        IS "".     // active interaction mode (UI_MODE_*)
+GLOBAL IFC_FAST_MODE      IS FALSE.  // TRUE = skip UI/menu rendering work in main loop
 GLOBAL IFC_EVENT_QUEUE    IS LIST(). // recent events, newest at end
 GLOBAL IFC_EVENT_LAST_UT  IS -99.    // last alert UT mirrored into queue
 GLOBAL IFC_EVENT_LAST_TEXT IS "".    // last mirrored alert text
@@ -250,6 +256,122 @@ GLOBAL GUI_EDIT_LEG_TYPE IS -1.      // leg type currently shown in edit window
 GLOBAL GUI_EDIT_NAV_TYPE IS "".      // cruise nav_type currently shown in edit window
 
 // ----------------------------
+// Ascent phase state
+// ----------------------------
+GLOBAL ASC_INITIALIZED    IS FALSE.  // TRUE after ASC_STATE_INIT has run
+
+// Engine classification lists (cached at ascent init, never iterated in loop)
+GLOBAL ASC_AB_ENGINES     IS LIST().
+GLOBAL ASC_RK_ENGINES     IS LIST().
+
+// Propellant capacity for equivalency weight (stored at init)
+GLOBAL ASC_LF_MAX         IS 1.0.   // kg  total liquid fuel capacity
+GLOBAL ASC_OX_MAX         IS 1.0.   // kg  total oxidizer capacity
+
+// Estimator validity state
+GLOBAL ASC_ESTIMATOR_VALIDITY IS "VALID".
+
+// Frame-consistent facing vectors (refreshed each cycle, used by all downstream)
+GLOBAL ASC_STAR_V         IS V(1,0,0).
+GLOBAL ASC_TOP_V          IS V(0,1,0).
+GLOBAL ASC_NFWD_V         IS V(0,0,-1). // -FOREVECTOR (backward body axis = +Z in AEROFORCE frame)
+
+// Control-smoothed signals  (fast α, drives pitch/throttle commands)
+GLOBAL ASC_AERO_ALONG_CTRL IS 0. // N  along-track aero force, fast copy
+GLOBAL ASC_Q_CTRL          IS 0. // Pa dynamic pressure, fast copy
+GLOBAL ASC_AOA_CTRL        IS 0. // deg angle of attack, fast copy
+
+// Valuation-smoothed signals  (slow α, drives mode-switch decisions only)
+GLOBAL ASC_AERO_ALONG_VAL  IS 0. // N  along-track aero force, slow copy
+GLOBAL ASC_EDOT_VAL        IS 0. // J/kg/s  specific orbital energy rate, slow copy
+GLOBAL ASC_APO_VAL         IS 0. // m  smoothed apoapsis altitude
+GLOBAL ASC_MDOT_AB_VAL     IS 0. // kg/s  AB mass flow, slow copy
+GLOBAL ASC_MDOT_RK_VAL     IS 0. // kg/s  rocket mass flow estimate, slow copy
+
+// Dedicated drag filter for J_rk  (heaviest filter in the system)
+GLOBAL ASC_DRAG_RK_VAL     IS 0. // N  along-track drag magnitude for J_rk estimate
+GLOBAL ASC_DRAG_DDOT       IS 0. // N/s  smoothed drag rate of change (for zoom projection)
+GLOBAL ASC_DRAG_PREV       IS 0. // N  previous cycle drag (raw) for dD/dt
+
+// Specific orbital energy tracking
+GLOBAL ASC_ENERGY_PREV     IS 0. // J/kg  energy at end of previous cycle
+GLOBAL ASC_EDOT_ORBITAL    IS 0. // J/kg/s  dE/dt from orbital state (raw, for logging)
+GLOBAL ASC_EDOT_ORB_FILT   IS 0. // J/kg/s  EMA-smoothed orbital Ė (validity cross-check)
+
+// Mode valuations
+GLOBAL ASC_J_AB            IS 0. // J/kg per kg/s  air-breathing mode value
+GLOBAL ASC_J_RK            IS 0. // J/kg per kg/s  rocket mode value
+
+// AoA oscillation tracking
+GLOBAL ASC_AOA_MAX_WIN     IS 0. // deg  max AoA seen in current validity window
+GLOBAL ASC_AOA_MIN_WIN     IS 0. // deg  min AoA seen in current validity window
+GLOBAL ASC_AOA_WIN_UT      IS 0. // UT  start of current AoA window
+
+// Apoapsis growth rate tracking
+GLOBAL ASC_APO_PREV        IS 0. // m  apoapsis at start of growth window
+GLOBAL ASC_APO_PREV_UT     IS 0. // UT  start of growth window
+
+// Mode switch persistence
+GLOBAL ASC_PERSIST_UT      IS -1. // UT when J_rk > J_ab was first satisfied (-1 = not active)
+
+// Steering reference blend (0 = surface prograde, 1 = orbital prograde)
+GLOBAL ASC_STEER_BLEND     IS 0.
+GLOBAL ASC_BLEND_START_UT  IS -1.
+
+// Pitch bias (slew-rate-limited, fed to AA Director as FPA offset)
+GLOBAL ASC_PITCH_BIAS      IS 0. // deg  current active pitch bias above prograde
+
+// Spooling state
+GLOBAL ASC_IS_SPOOLING     IS FALSE.
+
+// Flameout flag (set by WHEN...THEN trigger; cleared on phase exit)
+GLOBAL ASC_FLAMEOUT        IS FALSE.
+
+// AB thrust ratio cache — updated each cycle for the WHEN...THEN trigger.
+// Using a cached scalar keeps the WHEN condition expression cheap.
+GLOBAL ASC_AB_THR_RATIO       IS 1.   // actual / available AB thrust (1 = healthy)
+// Regime Mach boundary cached at ascent init — avoids AC_PARAM call in WHEN expression.
+GLOBAL ASC_REGIME_MACH_CACHED IS 4.5. // Mach
+// Per-aircraft ascent parameters cached at ascent init — avoids AC_PARAM
+// lookups inside per-cycle guidance/valuation hot paths.
+GLOBAL ASC_Q_TARGET_CACHED         IS ASC_Q_TARGET_DEFAULT.
+GLOBAL ASC_Q_MAX_CACHED            IS ASC_Q_MAX_DEFAULT.
+GLOBAL ASC_Q_MIN_CACHED            IS ASC_Q_MIN_DEFAULT.
+GLOBAL ASC_HEAT_LIMIT_CACHED       IS 3.5e8.
+GLOBAL ASC_ZOOM_APO_TARGET_CACHED  IS ASC_APO_ZOOM_TARGET_DEFAULT.
+GLOBAL ASC_FINAL_APO_TARGET_CACHED IS ASC_APO_FINAL_DEFAULT.
+GLOBAL ASC_AOA_LIMIT_CACHED        IS AA_MAX_AOA.
+GLOBAL ASC_CORRIDOR_FPA_MAX_CACHED IS 25.0.
+GLOBAL ASC_DUALMODE_RK_ISP_CACHED  IS ASC_DUALMODE_RK_ISP_DEFAULT.
+GLOBAL ASC_DUALMODE_RK_THR_CACHED  IS ASC_DUALMODE_RK_THR_FRAC_DEFAULT.
+GLOBAL ASC_K_PROP_CACHED           IS ASC_K_PROP_DEFAULT.
+
+// Telemetry exports  (TELEM_ prefix = readable by logger without phase-local access)
+GLOBAL TELEM_ASC_J_AB       IS 0.
+GLOBAL TELEM_ASC_J_RK       IS 0.
+GLOBAL TELEM_ASC_VALIDITY   IS "VALID".
+GLOBAL TELEM_ASC_Q          IS 0.
+GLOBAL TELEM_ASC_Q_RAW      IS 0.
+GLOBAL TELEM_ASC_MACH       IS 0.
+GLOBAL TELEM_ASC_APO        IS 0.
+GLOBAL TELEM_ASC_DRAG_RK    IS 0.
+GLOBAL TELEM_ASC_W_PROP     IS 1.
+GLOBAL TELEM_ASC_EDOT_VAL   IS 0.
+GLOBAL TELEM_ASC_EDOT_ORB   IS 0.
+GLOBAL TELEM_ASC_PITCH_BIAS IS 0.
+GLOBAL TELEM_ASC_BLEND      IS 0.
+GLOBAL TELEM_ASC_SPOOLING   IS FALSE.
+GLOBAL TELEM_ASC_AB_THR_RATIO    IS 0.
+GLOBAL TELEM_ASC_AB_T_NOW        IS 0.
+GLOBAL TELEM_ASC_AB_T_AVAIL      IS 0.
+GLOBAL TELEM_ASC_AB_IGN_ON       IS 0.
+GLOBAL TELEM_ASC_AB_FLAMEOUTS    IS 0.
+GLOBAL TELEM_ASC_RK_T_NOW        IS 0.
+GLOBAL TELEM_ASC_RK_T_AVAIL      IS 0.
+GLOBAL TELEM_ASC_RK_IGN_ON       IS 0.
+GLOBAL TELEM_ASC_RK_FLAMEOUTS    IS 0.
+
+// ----------------------------
 // Init / reset
 // ----------------------------
 FUNCTION IFC_INIT_STATE {
@@ -319,7 +441,12 @@ FUNCTION IFC_INIT_STATE {
   SET IFC_EVENT_LAST_TEXT TO "".
   SET IFC_EVENT_VIEW_IDX TO 0.
   SET IFC_CYCLE_UT     TO TIME:SECONDS.
-  SET IFC_ACTUAL_DT TO IFC_LOOP_DT.
+  SET IFC_RAW_DT       TO IFC_LOOP_DT.
+  SET IFC_ACTUAL_DT    TO IFC_LOOP_DT.
+  SET IFC_LOOP_COUNT   TO 0.
+  SET IFC_LOOP_COUNT_SNAPSHOT TO 0.
+  SET IFC_RAW_DT_MAX   TO IFC_LOOP_DT.
+  SET IFC_RAW_DT_MIN   TO IFC_LOOP_DT.
   SET FLARE_PITCH_CMD  TO 0.
   SET FLARE_ENTRY_VS   TO 0.
   SET FLARE_ENTRY_AGL  TO FLARE_AGL_M.
@@ -431,6 +558,79 @@ FUNCTION IFC_INIT_STATE {
   SET TO_CLIMB_FPA_CMD    TO 0.
   SET TO_SPOOL_PREV_AVAIL TO SHIP:AVAILABLETHRUST.
   SET TO_SPOOL_STABLE_UT  TO -1.
+
+  // Ascent guidance state
+  SET ASC_INITIALIZED    TO FALSE.
+  ASC_AB_ENGINES:CLEAR().
+  ASC_RK_ENGINES:CLEAR().
+  SET ASC_LF_MAX         TO 1.0.
+  SET ASC_OX_MAX         TO 1.0.
+  SET ASC_ESTIMATOR_VALIDITY TO ASC_VALID.
+  SET ASC_STAR_V         TO V(1,0,0).
+  SET ASC_TOP_V          TO V(0,1,0).
+  SET ASC_NFWD_V         TO V(0,0,-1).
+  SET ASC_AERO_ALONG_CTRL TO 0.
+  SET ASC_Q_CTRL         TO 0.
+  SET ASC_AOA_CTRL       TO 0.
+  SET ASC_AERO_ALONG_VAL TO 0.
+  SET ASC_EDOT_VAL       TO 0.
+  SET ASC_APO_VAL        TO MAX(SHIP:ORBIT:APOAPSIS, 0).
+  SET ASC_MDOT_AB_VAL    TO 0.
+  SET ASC_MDOT_RK_VAL    TO 0.
+  SET ASC_DRAG_RK_VAL    TO 0.
+  SET ASC_DRAG_DDOT      TO 0.
+  SET ASC_DRAG_PREV      TO 0.
+  SET ASC_ENERGY_PREV    TO 0.
+  SET ASC_EDOT_ORBITAL   TO 0.
+  SET ASC_J_AB           TO 0.
+  SET ASC_J_RK           TO 0.
+  SET ASC_AOA_MAX_WIN    TO GET_AOA().
+  SET ASC_AOA_MIN_WIN    TO GET_AOA().
+  SET ASC_AOA_WIN_UT     TO TIME:SECONDS.
+  SET ASC_APO_PREV       TO MAX(SHIP:ORBIT:APOAPSIS, 0).
+  SET ASC_APO_PREV_UT    TO TIME:SECONDS.
+  SET ASC_PERSIST_UT     TO -1.
+  SET ASC_STEER_BLEND    TO 0.
+  SET ASC_BLEND_START_UT TO -1.
+  SET ASC_PITCH_BIAS     TO 0.
+  SET ASC_IS_SPOOLING    TO FALSE.
+  SET ASC_FLAMEOUT       TO FALSE.
+  SET ASC_AB_THR_RATIO   TO 1.
+  SET ASC_REGIME_MACH_CACHED TO ASC_REGIME_MACH_DEFAULT.
+  SET ASC_Q_TARGET_CACHED         TO ASC_Q_TARGET_DEFAULT.
+  SET ASC_Q_MAX_CACHED            TO ASC_Q_MAX_DEFAULT.
+  SET ASC_Q_MIN_CACHED            TO ASC_Q_MIN_DEFAULT.
+  SET ASC_HEAT_LIMIT_CACHED       TO 3.5e8.
+  SET ASC_ZOOM_APO_TARGET_CACHED  TO ASC_APO_ZOOM_TARGET_DEFAULT.
+  SET ASC_FINAL_APO_TARGET_CACHED TO ASC_APO_FINAL_DEFAULT.
+  SET ASC_AOA_LIMIT_CACHED        TO AA_MAX_AOA.
+  SET ASC_CORRIDOR_FPA_MAX_CACHED TO 25.0.
+  SET ASC_DUALMODE_RK_ISP_CACHED  TO ASC_DUALMODE_RK_ISP_DEFAULT.
+  SET ASC_DUALMODE_RK_THR_CACHED  TO ASC_DUALMODE_RK_THR_FRAC_DEFAULT.
+  SET ASC_K_PROP_CACHED           TO ASC_K_PROP_DEFAULT.
+  SET TELEM_ASC_J_AB     TO 0.
+  SET TELEM_ASC_J_RK     TO 0.
+  SET TELEM_ASC_VALIDITY TO ASC_VALID.
+  SET TELEM_ASC_Q        TO 0.
+  SET TELEM_ASC_Q_RAW    TO 0.
+  SET TELEM_ASC_MACH     TO 0.
+  SET TELEM_ASC_APO      TO 0.
+  SET TELEM_ASC_DRAG_RK  TO 0.
+  SET TELEM_ASC_W_PROP   TO 1.
+  SET TELEM_ASC_EDOT_VAL TO 0.
+  SET TELEM_ASC_EDOT_ORB TO 0.
+  SET TELEM_ASC_PITCH_BIAS TO 0.
+  SET TELEM_ASC_BLEND    TO 0.
+  SET TELEM_ASC_SPOOLING TO FALSE.
+  SET TELEM_ASC_AB_THR_RATIO TO 0.
+  SET TELEM_ASC_AB_T_NOW     TO 0.
+  SET TELEM_ASC_AB_T_AVAIL   TO 0.
+  SET TELEM_ASC_AB_IGN_ON    TO 0.
+  SET TELEM_ASC_AB_FLAMEOUTS TO 0.
+  SET TELEM_ASC_RK_T_NOW     TO 0.
+  SET TELEM_ASC_RK_T_AVAIL   TO 0.
+  SET TELEM_ASC_RK_IGN_ON    TO 0.
+  SET TELEM_ASC_RK_FLAMEOUTS TO 0.
 }
 
 // Called once after ACTIVE_PLATE and ACTIVE_AIRCRAFT are set.

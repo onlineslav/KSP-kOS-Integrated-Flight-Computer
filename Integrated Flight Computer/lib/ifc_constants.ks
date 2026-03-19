@@ -342,3 +342,153 @@ GLOBAL UI_MODE_COMPLETE       IS "MODE_COMPLETE".
 GLOBAL IFC_EVENT_MAX            IS 16. // max retained alert/event entries
 GLOBAL IFC_EVENT_HISTORY_ROWS   IS 6.  // history rows shown in menu overlay
 GLOBAL IFC_MENU_MAX_CHARS_TICK  IS 64. // max queued keypresses consumed per MENU_TICK
+
+// ============================================================
+// ASCENT GUIDANCE
+// ============================================================
+
+// ----------------------------
+// Ascent sub-phase names
+// ----------------------------
+GLOBAL SUBPHASE_ASC_AB_CORRIDOR    IS "AB_CORRIDOR".
+GLOBAL SUBPHASE_ASC_AB_ZOOM        IS "AB_ZOOM".
+GLOBAL SUBPHASE_ASC_ROCKET_SUSTAIN IS "RKT_SUSTAIN".
+GLOBAL SUBPHASE_ASC_CLOSEOUT       IS "RKT_CLOSEOUT".
+GLOBAL SUBPHASE_ASC_CIRCULARISE    IS "CIRCULARISE".
+
+// ----------------------------
+// Estimator validity states
+// ----------------------------
+GLOBAL ASC_VALID   IS "VALID".
+GLOBAL ASC_DEGRADED IS "DEGRADED".
+GLOBAL ASC_INVALID  IS "INVALID".
+
+// ----------------------------
+// Kerbin physical constants
+// ----------------------------
+GLOBAL KERBIN_MU IS 3.5316e12.  // m^3/s^2  gravitational parameter
+GLOBAL KERBIN_R  IS 600000.0.   // m        equatorial radius
+GLOBAL KERBIN_ATMO_TOP IS 70000.0. // m     top of atmosphere
+
+// ----------------------------
+// Signal smoothing alphas
+// (higher = faster response, less smoothing)
+// Valuation signals: slow/stable  Control signals: fast/responsive
+// ----------------------------
+GLOBAL ASC_EMA_CTRL_AERO  IS 0.40. // along-track aero force (control copy)
+GLOBAL ASC_EMA_CTRL_Q     IS 0.35. // dynamic pressure (control copy)
+GLOBAL ASC_EMA_CTRL_AOA   IS 0.40. // angle of attack (control copy)
+
+GLOBAL ASC_EMA_VAL_AERO   IS 0.15. // along-track aero force (valuation copy)
+GLOBAL ASC_EMA_VAL_EDOT   IS 0.15. // orbital energy rate (valuation copy)
+GLOBAL ASC_EMA_VAL_APO    IS 0.20. // apoapsis altitude (valuation copy)
+GLOBAL ASC_EMA_VAL_MDOT   IS 0.20. // mass flow, both modes (valuation copy)
+
+GLOBAL ASC_EMA_DRAG_RK    IS 0.10. // drag for J_rk — dedicated heavy filter
+GLOBAL ASC_EMA_EDOT_ORB   IS 0.15. // orbital-state Ė cross-check (same band as valuation)
+
+// ----------------------------
+// Dynamic pressure corridor defaults
+// (override per-aircraft via ascent_q_target / ascent_q_max / ascent_q_min)
+// ----------------------------
+// FAR DYNPRES on this stack reports kPa; convert to Pa for corridor logic.
+// Set to 1.0 only if your FAR build already reports Pa.
+GLOBAL ASC_FAR_Q_SCALE      IS 1000.  // multiply FAR DYNPRES by this to get Pa
+GLOBAL ASC_Q_TARGET_DEFAULT IS 30000. // Pa  corridor centre
+GLOBAL ASC_Q_MAX_DEFAULT    IS 60000. // Pa  structural limit
+GLOBAL ASC_Q_MIN_DEFAULT    IS 8000.  // Pa  lower corridor bound
+GLOBAL ASC_Q_REF            IS 30000. // Pa  gain-scheduling reference point
+
+// ----------------------------
+// Pitch corridor control
+// ----------------------------
+GLOBAL ASC_Q_KP             IS 2.5e-4.  // deg/Pa  q-error to pitch-bias gain
+GLOBAL ASC_APO_RATE_KP      IS 5.0e-4.  // deg/(m/s)  apoapsis growth rate bias
+GLOBAL ASC_APO_RATE_TGT     IS 60.0.    // m/s  desired apoapsis growth rate
+GLOBAL ASC_PITCH_BIAS_MAX   IS 20.0.    // deg  max pitch bias above prograde
+GLOBAL ASC_PITCH_BIAS_MIN   IS -5.0.    // deg  max pitch bias below prograde
+GLOBAL ASC_PITCH_SLEW_DPS   IS 1.0.     // deg/s  max bias slew rate
+
+// ----------------------------
+// Zoom phase
+// ----------------------------
+GLOBAL ASC_ZOOM_PITCH_RATE  IS 0.75.    // deg/s  controlled pitch rise rate
+GLOBAL ASC_ZOOM_PITCH_MAX   IS 40.0.    // deg    max pitch in zoom
+GLOBAL ASC_Q_ZOOM_ENTRY     IS 0.70.    // fraction of q_target below which zoom eligible
+GLOBAL ASC_ZOOM_APO_WINDOW_S IS 8.0.   // s  window for apoapsis growth rate estimation
+
+// ----------------------------
+// Mode switch persistence
+// ----------------------------
+GLOBAL ASC_PERSIST_MIN_S    IS 2.0.  // s  minimum persistence window
+GLOBAL ASC_PERSIST_MAX_S    IS 6.0.  // s  maximum persistence window
+GLOBAL ASC_PERSIST_CONF_BAND IS 0.3. // J confidence band fraction for adaptive window
+
+// ----------------------------
+// J_rk drag estimation
+// ----------------------------
+GLOBAL ASC_DRAG_LOOKAHEAD_S IS 4.0.  // s  drag projection horizon during zoom
+GLOBAL ASC_DRAG_FLOOR_FRAC  IS 0.05. // fraction of current drag as absolute floor
+
+// ----------------------------
+// Fuel exhaustion floor
+// ----------------------------
+GLOBAL ASC_FUEL_FLOOR_DV_MARGIN IS 150. // m/s  safety margin above estimated circ ΔV
+GLOBAL ASC_PROP_DENSITY         IS 5.0. // kg/unit  LiquidFuel and Oxidizer (KSP stock)
+
+// ----------------------------
+// Propellant equivalency
+// ----------------------------
+GLOBAL ASC_K_PROP_DEFAULT   IS 0.5.  // coefficient (higher = longer AB preference when OX scarce)
+
+// ----------------------------
+// Dual-mode (AB + rocket) surrogate for pre-switch J_rk valuation
+// ----------------------------
+// While a dual-mode engine is still in AB mode, infer its rocket-mode potential
+// conservatively to avoid over-valuing J_rk from AB-mode ISP/thrust.
+GLOBAL ASC_DUALMODE_RK_ISP_DEFAULT      IS 320.0. // s   conservative closed-cycle ISP
+GLOBAL ASC_DUALMODE_RK_THR_FRAC_DEFAULT IS 0.25.  // 0-1 fraction of current available thrust
+
+// ----------------------------
+// Guard thresholds (prevent division by zero)
+// ----------------------------
+GLOBAL ASC_MIN_MDOT         IS 0.01. // kg/s  minimum mass flow to compute J
+GLOBAL ASC_MIN_VORB         IS 50.0. // m/s   minimum orbital speed for projections
+GLOBAL ASC_MIN_Q_GAIN       IS 3000. // Pa    minimum q for gain scheduling denominator
+
+// ----------------------------
+// Flameout / regime detection
+// ----------------------------
+GLOBAL ASC_FLAMEOUT_THR_RATIO IS 0.5. // actual/available thrust below this = flameout
+GLOBAL ASC_REGIME_MACH_DEFAULT IS 4.5. // Mach  default RAPIER-type regime boundary
+
+// ----------------------------
+// Estimator validity thresholds
+// ----------------------------
+GLOBAL ASC_AOA_OSC_THRESH   IS 3.0.  // deg  AoA oscillation amplitude for DEGRADED
+GLOBAL ASC_AOA_OSC_WINDOW_S IS 2.0.  // s    AoA oscillation check window
+GLOBAL ASC_EDOT_TOL         IS 0.15. // fractional disagreement force-Ė vs orbital-Ė
+
+// ----------------------------
+// Apoapsis targets
+// ----------------------------
+// Default rocket-takeover target (apoapsis at which we're willing to switch modes).
+// Final orbit apoapsis target is specified in aircraft config or here as fallback.
+GLOBAL ASC_APO_ZOOM_TARGET_DEFAULT IS 45000.  // m  target apo before committing mode switch
+GLOBAL ASC_APO_FINAL_DEFAULT       IS 80000.  // m  target orbit apoapsis
+GLOBAL ASC_APO_BAND_M              IS 5000.   // m  apoapsis within this of target = closeout
+
+// ----------------------------
+// Rocket sustain control
+// ----------------------------
+GLOBAL ASC_APO_KP           IS 0.0015. // deg/m  apoapsis error to pitch bias
+GLOBAL ASC_ETA_FLATTEN_S    IS 90.0.   // s   ETA:APOAPSIS below this starts flattening
+GLOBAL ASC_PITCH_MAX_SUSTAIN IS 25.0.  // deg  max pitch command in rocket phases
+GLOBAL ASC_STEER_BLEND_S    IS 4.0.    // s   surface→orbital prograde blend duration
+GLOBAL ASC_SPOOL_THR_THRESH IS 0.05.  // fraction of rated AB thrust = spool-down complete
+
+// ----------------------------
+// Circularisation
+// ----------------------------
+GLOBAL ASC_CIRC_ETA_S       IS 45.0.  // s   coast to apoapsis trigger
+GLOBAL ASC_CIRC_PERI_TGT    IS 75000. // m   target periapsis for circularisation check

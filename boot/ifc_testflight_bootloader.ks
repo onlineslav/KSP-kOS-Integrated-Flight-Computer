@@ -35,12 +35,81 @@ IF sync_local_scripts {
   _SYNC_ONE("0:/boot/ifc_testflight_bootloader.ks", "1:/boot/ifc_testflight_bootloader.ks").
 }
 
-LOCAL test_script IS "0:/Integrated Flight Computer/tests/takeoff_vr_probe.ks".
+GLOBAL TESTS_REL_DIR IS "Integrated Flight Computer/tests".
+GLOBAL TESTS_ABS_DIR IS "0:/Integrated Flight Computer/tests/".
+GLOBAL TEST_KEYS IS LIST(
+  "1","2","3","4","5","6","7","8","9",
+  "A","B","C","D","E","F","G","H","I","J","K","L","M",
+  "N","O","P","R","S","T","U","V","W","X","Y","Z"
+).
 
-IF EXISTS(test_script) {
+FUNCTION _GET_TEST_SCRIPTS {
+  LOCAL out IS LIST().
+  IF NOT VOLUME(0):EXISTS(TESTS_REL_DIR) { RETURN out. }
+  LOCAL dir_item IS VOLUME(0):OPEN(TESTS_REL_DIR).
+  IF dir_item:ISFILE { RETURN out. }
+
+  LOCAL dir_lex IS dir_item:LEXICON.
+  LOCAL i IS 0.
+  UNTIL i >= dir_lex:KEYS:LENGTH {
+    LOCAL key IS dir_lex:KEYS[i].
+    LOCAL item IS dir_lex[key].
+    IF item:ISFILE AND item:EXTENSION:TOLOWER = "ks" {
+      out:ADD(TESTS_ABS_DIR + item:NAME).
+    }
+    SET i TO i + 1.
+  }
+
+  RETURN out.
+}
+
+FUNCTION _PROMPT_TEST_SELECTION {
+  PARAMETER scripts.
+
+  IF scripts:LENGTH = 0 { RETURN "". }
+
+  LOCAL shown IS MIN(scripts:LENGTH, TEST_KEYS:LENGTH).
+  IF scripts:LENGTH > TEST_KEYS:LENGTH {
+    PRINT "IFC test boot: showing first " + shown + " scripts only.".
+  }
+
+  PRINT "".
+  PRINT "Available test scripts:".
+  LOCAL i IS 0.
+  UNTIL i >= shown {
+    PRINT "  [" + TEST_KEYS[i] + "] " + scripts[i].
+    SET i TO i + 1.
+  }
+
+  PRINT "".
+  PRINT "Press selection key, or Q to abort.".
+  TERMINAL:INPUT:CLEAR().
+
+  UNTIL FALSE {
+    LOCAL ch IS TERMINAL:INPUT:GETCHAR().
+    IF ch = "q" OR ch = "Q" {
+      RETURN "".
+    }
+
+    LOCAL k IS 0.
+    UNTIL k >= shown {
+      IF ch:TOUPPER = TEST_KEYS[k] {
+        RETURN scripts[k].
+      }
+      SET k TO k + 1.
+    }
+  }
+}
+
+LOCAL tests IS _GET_TEST_SCRIPTS().
+LOCAL test_script IS _PROMPT_TEST_SELECTION(tests).
+
+IF test_script = "" {
+  PRINT "IFC test boot: no test selected.".
+} ELSE IF EXISTS(test_script) {
   PRINT "IFC test boot: loading " + test_script.
   RUNPATH(test_script).
 } ELSE {
-  PRINT "IFC test boot: ERROR - no runnable script found.".
+  PRINT "IFC test boot: selected script does not exist.".
   PRINT "  missing: " + test_script.
 }

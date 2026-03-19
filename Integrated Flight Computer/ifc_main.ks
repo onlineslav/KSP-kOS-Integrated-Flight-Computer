@@ -51,6 +51,7 @@ RUNPATH(ifc_root + "nav/nav_custom_wpts.ks").
 RUNPATH(ifc_root + "phases/phase_approach.ks").
 RUNPATH(ifc_root + "phases/phase_autoland.ks").
 RUNPATH(ifc_root + "phases/phase_takeoff.ks").
+RUNPATH(ifc_root + "lib/ifc_ascent_state.ks").
 RUNPATH(ifc_root + "phases/phase_ascent.ks").
 RUNPATH(ifc_root + "phases/phase_reentry.ks").
 RUNPATH(ifc_root + "nav/nav_routes.ks").
@@ -457,18 +458,35 @@ FUNCTION _RUN_FLIGHT_PLAN {
   UNTIL IFC_PHASE = PHASE_DONE {
     LOCAL actual_dt IS TIME:SECONDS - IFC_CYCLE_UT.
     SET IFC_CYCLE_UT  TO TIME:SECONDS.
-    SET IFC_ACTUAL_DT TO CLAMP(actual_dt, 0.01, 0.5).
+    SET IFC_RAW_DT    TO MAX(actual_dt, 0).
+    SET IFC_ACTUAL_DT TO CLAMP(IFC_RAW_DT, 0.01, 0.5).
+    SET IFC_LOOP_COUNT TO IFC_LOOP_COUNT + 1.
+    IF IFC_RAW_DT > IFC_RAW_DT_MAX { SET IFC_RAW_DT_MAX TO IFC_RAW_DT. }
+    IF IFC_RAW_DT < IFC_RAW_DT_MIN { SET IFC_RAW_DT_MIN TO IFC_RAW_DT. }
 
-    LOCAL menu_result IS MENU_TICK().
-    IF menu_result = "QUIT" {
-      SET IFC_PHASE TO PHASE_DONE.
-      IFC_SET_UI_MODE(UI_MODE_COMPLETE).
+    LOCAL menu_result IS "".
+    IF IFC_FAST_MODE {
+      // Fast-mode: avoid menu/UI overhead; keep a minimal quit key path.
+      IF TERMINAL:INPUT:HASCHAR {
+        LOCAL ch IS TERMINAL:INPUT:GETCHAR().
+        IF ch = "q" OR ch = "Q" {
+          SET menu_result TO "QUIT".
+          SET IFC_PHASE TO PHASE_DONE.
+          IFC_SET_UI_MODE(UI_MODE_COMPLETE).
+        }
+      }
+    } ELSE {
+      SET menu_result TO MENU_TICK().
+      IF menu_result = "QUIT" {
+        SET IFC_PHASE TO PHASE_DONE.
+        IFC_SET_UI_MODE(UI_MODE_COMPLETE).
+      }
     }
 
     IF NOT IFC_MANUAL_MODE {
       IF IFC_PHASE = PHASE_TAKEOFF {
         RUN_TAKEOFF().
-        IF DEFINED VR_PROBE_HOOKS_READY AND VR_PROBE_HOOKS_READY {
+        IF NOT IFC_FAST_MODE AND DEFINED VR_PROBE_HOOKS_READY AND VR_PROBE_HOOKS_READY {
           VR_PROBE_TICK().
         }
       } ELSE IF IFC_PHASE = PHASE_CRUISE {
@@ -498,8 +516,12 @@ FUNCTION _RUN_FLIGHT_PLAN {
     }
 
     LOGGER_WRITE().
-    DISPLAY_TICK().
-    WAIT IFC_LOOP_DT.
+    IF NOT IFC_FAST_MODE { DISPLAY_TICK(). }
+    IF IFC_FAST_MODE {
+      WAIT 0.
+    } ELSE {
+      WAIT IFC_LOOP_DT.
+    }
   }
 
   // ── Shutdown ──────────────────────────────────────────
@@ -518,7 +540,7 @@ FUNCTION _RUN_FLIGHT_PLAN {
   SET LAST_DISPLAY_UT  TO 0.
   SET LAST_HEADER_UT   TO 0.
   SET LAST_LOGGER_UT   TO 0.
-  DISPLAY_TICK().
+  IF NOT IFC_FAST_MODE { DISPLAY_TICK(). }
 }
 
 // ── Interactive startup (FMS pre-arm screen) ──────────────
