@@ -12,7 +12,17 @@
       "Bash(find 'c:/Portable Programs/Kerbal Space Program/Ships/Script/Integrated Flight Computer/aircraft' -type f -name *.ks)",
       "WebFetch(domain:ksp-kos.github.io)",
       "Read(//mnt/c/Portable Programs/Kerbal Space Program/Ships/Script/**)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(ls -t \"f:/Kerbal Space Program/Ships/Script/Integrated Flight Computer/logs/\"*.csv)",
+      "Bash(cmd /c \"dir /O-D /B \"\"f:\\\\Kerbal Space Program\\\\Ships\\\\Script\\\\Integrated Flight Computer\\\\logs\\\\*.csv\"\" | head -5\")",
+      "Bash(powershell -Command \"Get-ChildItem ''f:\\\\Kerbal Space Program\\\\Ships\\\\Script\\\\Integrated Flight Computer\\\\logs\\\\*.csv'' | Sort-Object LastWriteTime -Descending | Select-Object -First 5 | Select-Object Name, LastWriteTime\")",
+      "Bash(powershell -Command \"Get-Item ''f:\\\\Kerbal Space Program\\\\Ships\\\\Script\\\\Integrated Flight Computer\\\\logs\\\\ifc_log_1687260.csv'' | Select-Object Length, LastWriteTime\")",
+      "Bash(cmd /c \"dir /b /od \"\"f:\\\\Kerbal Space Program\\\\Ships\\\\Script\\\\Integrated Flight Computer\\\\logs\\\\*.csv\"\"\")",
+      "Bash(powershell -Command \"Get-ChildItem ''f:\\\\Kerbal Space Program\\\\Ships\\\\Script\\\\Integrated Flight Computer\\\\logs\\\\*.csv'' | Sort-Object LastWriteTime | Select-Object -Last 3 | Select-Object Name, LastWriteTime\")",
+      "Bash(powershell -Command \"Get-ChildItem ''f:\\\\Kerbal Space Program\\\\Ships\\\\Script\\\\Integrated Flight Computer\\\\logs\\\\*.csv'' | Sort-Object LastWriteTime | Select-Object -Last 5 | Select-Object Name, LastWriteTime\")",
+      "Bash(powershell -Command \"\\(Get-Content ''f:\\\\Kerbal Space Program\\\\Ships\\\\Script\\\\Integrated Flight Computer\\\\logs\\\\ifc_log_1687240.csv'' | Measure-Object -Line\\).Lines\")",
+      "Bash(powershell -Command \"\\(Get-Content ''f:\\\\Kerbal Space Program\\\\Ships\\\\Script\\\\Integrated Flight Computer\\\\logs\\\\ifc_log_1686978.csv'' | Measure-Object -Line\\).Lines\")",
+      "Bash(powershell -Command \":*)"
     ]
   }
 }

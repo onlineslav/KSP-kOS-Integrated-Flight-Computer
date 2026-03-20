@@ -134,6 +134,13 @@ FUNCTION _ASC_CHECK_PERSIST {
     RETURN FALSE.
   }
 
+  // Block planned transitions while q exceeds structural limit.
+  // Emergency exits (flameout, fuel floor) bypass this function.
+  IF ASC_Q_CTRL > ASC_Q_MAX_CACHED {
+    SET ASC_PERSIST_UT TO -1.
+    RETURN FALSE.
+  }
+
   LOCAL diff IS ASC_J_RK - ASC_J_AB.
   IF diff <= 0 {
     SET ASC_PERSIST_UT TO -1.
@@ -225,13 +232,12 @@ FUNCTION _ASC_CHECK_FLAMEOUT {
 
   LOCAL t_act   IS 0.
   LOCAL t_avail IS 0.
-  LOCAL pressure IS SHIP:BODY:ATM:ALTITUDEPRESSURE(SHIP:ALTITUDE).
   LOCAL i IS 0.
   UNTIL i >= ASC_AB_ENGINES:LENGTH {
     LOCAL eng IS ASC_AB_ENGINES[i].
     IF eng:IGNITION {
       SET t_act   TO t_act   + eng:THRUST.
-      SET t_avail TO t_avail + eng:AVAILABLETHRUSTAT(pressure).
+      SET t_avail TO t_avail + eng:AVAILABLETHRUSTAT(ASC_PRESSURE_CACHED).
     }
     SET i TO i + 1.
   }
@@ -277,14 +283,25 @@ FUNCTION _ASC_CORRIDOR {
   LOCAL apo_rate IS (ASC_APO_VAL - ASC_APO_PREV) / elapsed.
   LOCAL apo_bias IS (ASC_APO_RATE_TGT - apo_rate) * ASC_APO_RATE_KP * q_scale.
 
-  LOCAL bias_cmd IS CLAMP(q_bias + apo_bias, ASC_PITCH_BIAS_MIN, ASC_PITCH_BIAS_MAX).
+  // --- Pitch bias: vertical-speed feedforward -----------------------
+  // Anticipates altitude overshoot by adding a nose-down term proportional
+  // to upward VS.  Activates when climbing; zero or negative VS = no effect.
+  // This prevents the aircraft from climbing several km past the q-target
+  // altitude before the reactive q-corridor term catches up.
+  // Tapered linearly to zero by ASC_VS_FF_ALT_CUTOFF: useful at low altitude
+  // where q-overshoot is a risk; at high altitude q falls naturally and
+  // applying this feedforward drives the vehicle into a dive.
+  LOCAL vs_alt_scale IS 1 - CLAMP(SHIP:ALTITUDE / ASC_VS_FF_ALT_CUTOFF, 0, 1).
+  LOCAL vs_ff IS -CLAMP(SHIP:VERTICALSPEED, 0, 500) * ASC_VS_KP * vs_alt_scale.
+
+  LOCAL bias_cmd IS CLAMP(q_bias + apo_bias + vs_ff, ASC_PITCH_BIAS_MIN, ASC_PITCH_BIAS_MAX).
   SET ASC_PITCH_BIAS TO MOVE_TOWARD(ASC_PITCH_BIAS, bias_cmd,
                                     ASC_PITCH_SLEW_DPS * dt).
 
   // --- Steering: surface prograde + pitch bias ----------------------
   LOCAL surf_fpa IS _ASC_SURF_FPA_SMOOTH(dt).
   LOCAL q_max IS ASC_Q_MAX_CACHED.
-  LOCAL fpa_floor IS -15.0.
+  LOCAL fpa_floor IS ASC_CORRIDOR_FPA_MIN.
   // Safety guard: never command a descent while still in the low-altitude
   // climb-out segment unless apoapsis is already well above the zoom target.
   IF ALT:RADAR < 1500 AND SHIP:ORBIT:APOAPSIS < zoom_apo * 0.90 {
@@ -339,6 +356,14 @@ FUNCTION _ASC_CORRIDOR {
     RETURN.
   }
 
+  // --- Mach floor: planned mode transitions require approaching regime boundary ---
+  // Emergency exits (flameout, fuel floor above) bypass this gate.
+  // Also gates exit 4 (q-low corridor floor) since it falls below this RETURN.
+  IF TELEM_ASC_MACH < ASC_REGIME_MACH_CACHED * ASC_SWITCH_MACH_FLOOR_FRAC {
+    SET ASC_PERSIST_UT TO -1.
+    RETURN.
+  }
+
   // --- Exit 2/3: J_rk > J_ab persistence met ----------------------
   IF _ASC_CHECK_PERSIST() {
     SET ASC_PERSIST_UT TO -1.
@@ -360,6 +385,23 @@ FUNCTION _ASC_CORRIDOR {
     IFC_SET_ALERT("ASC: q below corridor low  →  ZOOM").
     SET_SUBPHASE(SUBPHASE_ASC_AB_ZOOM).
     RETURN.
+  }
+
+  // --- Exit 5: AB speed ceiling ----------------------------------------
+  // When orbital energy rate (Ė_orb) has been persistently near zero, the
+  // AB engines have reached their thrust-drag equilibrium and can no longer
+  // accelerate the vehicle toward orbit.  Commit to rockets regardless of
+  // the J comparison — staying in AB mode makes no further progress.
+  IF ASC_EDOT_VAL < ASC_CEIL_EDOT_THR AND ASC_ESTIMATOR_VALIDITY <> ASC_INVALID {
+    IF ASC_CEIL_PERSIST_UT < 0 { SET ASC_CEIL_PERSIST_UT TO TIME:SECONDS. }
+    ELSE IF TIME:SECONDS - ASC_CEIL_PERSIST_UT >= ASC_CEIL_PERSIST_S {
+      IFC_SET_ALERT("ASC: AB speed ceiling  →  ZOOM").
+      SET ASC_CEIL_PERSIST_UT TO -1.
+      SET_SUBPHASE(SUBPHASE_ASC_AB_ZOOM).
+      RETURN.
+    }
+  } ELSE {
+    SET ASC_CEIL_PERSIST_UT TO -1.
   }
 }
 
@@ -547,8 +589,11 @@ FUNCTION _ASC_ROCKET_SUSTAIN {
 
   _ASC_SET_THR_CMD(1.0, dt, 1.0).
 
-  // --- Exit: apoapsis within target band ----------------------------
-  IF ABS(SHIP:ORBIT:APOAPSIS - final_apo) < ASC_APO_BAND_M {
+  // --- Exit: apoapsis at or above lower band edge -------------------
+  // One-sided check: trigger as soon as apo reaches (target - band).
+  // Catches both the normal case (apo settling in band) and the fast-growth
+  // case where apo blows through the narrow two-sided window in one cycle.
+  IF SHIP:ORBIT:APOAPSIS >= final_apo - ASC_APO_BAND_M {
     IFC_SET_ALERT("ASC: apo on target  →  RKT CLOSEOUT").
     SET ASC_PITCH_BIAS TO 0.
     SET ASC_STEER_BLEND TO 1.0. // fully orbital from here
@@ -592,7 +637,13 @@ FUNCTION _ASC_ROCKET_CLOSEOUT {
   SET TELEM_LOC_CORR   TO 0.
   SET TELEM_GS_CORR    TO 0.
 
-  _ASC_SET_THR_CMD(1.0, dt, 0.8).
+  // Cut thrust if apoapsis has overshot the upper band edge — coast rather
+  // than adding more energy.  Engine will re-light in CIRCULARISE if needed.
+  LOCAL closeout_thr IS 1.0.
+  IF SHIP:ORBIT:APOAPSIS > final_apo + ASC_APO_BAND_M {
+    SET closeout_thr TO 0.0.
+  }
+  _ASC_SET_THR_CMD(closeout_thr, dt, 0.8).
 
   // --- Exit: near apoapsis, ready to coast and circularise ----------
   IF ETA:APOAPSIS < ASC_CIRC_ETA_S {

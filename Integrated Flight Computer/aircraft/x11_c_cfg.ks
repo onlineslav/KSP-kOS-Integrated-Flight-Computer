@@ -1,26 +1,18 @@
 @LAZYGLOBAL OFF.
 
 // ============================================================
-// aircraft_template.ks  -  Integrated Flight Computer
-//
-// Copy this file, rename it for your aircraft (e.g. "x10d.ks"),
-// fill in the values below, then pass it to IFC_MAIN like so:
-//
-//   RUNONCEPATH("0:/Integrated Flight Computer/aircraft/x10d.ks").
-//   SET ACTIVE_AIRCRAFT TO BUILD_AIRCRAFT_CONFIG().
-//
-// The aircraft config lexicon is then read by the IFC to set
-// approach speeds and action group assignments.
+// x11_c_cfg.ks  -  Integrated Flight Computer
+// Aircraft config for the X11-C.
 // ============================================================
 
 // notes from test flight:
-// stall speed no flaps 72m/s
+// (stall speed not yet determined — values below inherited from X10-G, needs tuning)
 
 FUNCTION BUILD_AIRCRAFT_CONFIG {
   RETURN LEXICON(
 
     // ── Identity ──────────────────────────────────────────
-    "name",         "X10-G Bigboi",           // shown in telemetry
+    "name",         "X11-C",           // shown in telemetry
 
     // ── Approach speeds (m/s IAS) ─────────────────────────
     // Vapp: target speed from FAF to flare.
@@ -190,6 +182,6 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
 
     // ── Notes ─────────────────────────────────────────────
     // Free-text, shown at startup for crew awareness.
-    "notes",        "X10-G Spaceplane"
+    "notes",        "X11-C"
   ).
 }

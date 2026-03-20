@@ -142,13 +142,13 @@ FUNCTION _ASC_P_TRAJ_RK {
 // rocket ISP degrades and drag losses are larger.  This narrows as altitude
 // rises â€” exactly the asymmetry that makes AB mode worth extending.
 FUNCTION _ASC_P_ATM {
-  LOCAL pressure IS SHIP:BODY:ATM:ALTITUDEPRESSURE(SHIP:ALTITUDE). // atm
+  // Uses ASC_PRESSURE_CACHED — must be called after ASC_STATE_UPDATE sets it.
   // AVAILABLETHRUSTAT uses atm units (0 = vacuum, 1 = sea level).
   // At sea level pressure, rocket performance is worst.
   // Above ~25 km the penalty vanishes.
-  IF pressure <= 0.01 { RETURN 1.0. }
-  IF pressure >= 0.80 { RETURN 0.6. }
-  RETURN 1 - 0.4 * (pressure / 0.80).
+  IF ASC_PRESSURE_CACHED <= 0.01 { RETURN 1.0. }
+  IF ASC_PRESSURE_CACHED >= 0.80 { RETURN 0.6. }
+  RETURN 1 - 0.4 * (ASC_PRESSURE_CACHED / 0.80).
 }
 
 // â”€â”€ Estimator validity update â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -227,14 +227,13 @@ FUNCTION _ASC_COMPUTE_J_RK {
   // Per-engine projection: RAPIER-type engines may have facing that differs
   // from the ship axis (e.g., canted nozzles), so we must use eng:FACING
   // for each engine individually â€” matching how AB thrust is computed.
-  LOCAL pressure IS SHIP:BODY:ATM:ALTITUDEPRESSURE(SHIP:ALTITUDE).
   LOCAL dual_thr_frac IS ASC_DUALMODE_RK_THR_CACHED.
   LOCAL t_rk_along IS 0.
   LOCAL i IS 0.
   UNTIL i >= ASC_RK_ENGINES:LENGTH {
     LOCAL eng IS ASC_RK_ENGINES[i].
-    LOCAL thr_eff IS eng:AVAILABLETHRUSTAT(pressure).
-    IF _ASC_IS_DUALMODE_AB_PRIMARY(eng) {
+    LOCAL thr_eff IS eng:AVAILABLETHRUSTAT(ASC_PRESSURE_CACHED).
+    IF ASC_RK_DUALMODE[i] AND eng:PRIMARYMODE {
       SET thr_eff TO thr_eff * dual_thr_frac.
     }
     SET t_rk_along TO t_rk_along
@@ -273,7 +272,6 @@ FUNCTION _ASC_COMPUTE_J_RK {
 // Returns 0 if no rocket engines are classified or mass is degenerate.
 //
 FUNCTION _ASC_ROCKET_DV_AVAIL {
-  LOCAL pressure IS SHIP:BODY:ATM:ALTITUDEPRESSURE(SHIP:ALTITUDE).
   LOCAL g0       IS 9.80665.
   LOCAL dual_isp_cap IS ASC_DUALMODE_RK_ISP_CACHED.
   LOCAL dual_thr_frac IS ASC_DUALMODE_RK_THR_CACHED.
@@ -284,9 +282,9 @@ FUNCTION _ASC_ROCKET_DV_AVAIL {
   LOCAL i IS 0.
   UNTIL i >= ASC_RK_ENGINES:LENGTH {
     LOCAL eng IS ASC_RK_ENGINES[i].
-    LOCAL isp IS eng:ISPAT(pressure).
-    LOCAL thr IS eng:AVAILABLETHRUSTAT(pressure).
-    IF _ASC_IS_DUALMODE_AB_PRIMARY(eng) {
+    LOCAL isp IS eng:ISPAT(ASC_PRESSURE_CACHED).
+    LOCAL thr IS eng:AVAILABLETHRUSTAT(ASC_PRESSURE_CACHED).
+    IF ASC_RK_DUALMODE[i] AND eng:PRIMARYMODE {
       SET isp TO MIN(isp, dual_isp_cap).
       SET thr TO thr * dual_thr_frac.
     }
@@ -313,6 +311,13 @@ FUNCTION _ASC_ROCKET_DV_AVAIL {
 // comparison, to prevent arriving at circularisation with insufficient Î”V.
 //
 FUNCTION _ASC_CHECK_FUEL_FLOOR {
+  // Don't trigger before apoapsis has reached a meaningful fraction of the
+  // zoom target — committing rockets at very low apoapsis wastes the
+  // remaining Oberth opportunity in the AB phase.
+  IF ASC_APO_VAL < ASC_ZOOM_APO_TARGET_CACHED * ASC_FUEL_FLOOR_MIN_APO_FRAC {
+    RETURN FALSE.
+  }
+
   LOCAL final_apo IS ASC_FINAL_APO_TARGET_CACHED.
   LOCAL v_now     IS SHIP:VELOCITY:ORBIT:MAG.
 
@@ -375,6 +380,20 @@ FUNCTION ASC_STATE_INIT {
       }
     }
     SET j TO j + 1.
+  }
+
+  // --- Pre-compute per-engine dual-mode flag (avoids suffix queries in hot path) ---
+  // ASC_RK_DUALMODE[i] = TRUE iff ASC_RK_ENGINES[i] is also in ASC_AB_ENGINES
+  // (i.e., a multimode engine currently in AB mode).
+  ASC_RK_DUALMODE:CLEAR().
+  LOCAL dm IS 0.
+  UNTIL dm >= ASC_RK_ENGINES:LENGTH {
+    LOCAL dm_eng IS ASC_RK_ENGINES[dm].
+    LOCAL is_dual IS dm_eng:HASSUFFIX("MULTIMODE") AND dm_eng:MULTIMODE
+                  AND dm_eng:HASSUFFIX("PRIMARYMODE")
+                  AND _ASC_LIST_HAS_ENGINE(ASC_AB_ENGINES, dm_eng).
+    ASC_RK_DUALMODE:ADD(is_dual).
+    SET dm TO dm + 1.
   }
 
   // --- Store propellant capacities for equivalency weight ---
@@ -455,6 +474,9 @@ FUNCTION ASC_STATE_UPDATE {
 
   IF dt < 0.001 { RETURN. } // guard against zero or negative dt
 
+  // Cache atmospheric pressure once per cycle — used by all downstream functions.
+  SET ASC_PRESSURE_CACHED TO SHIP:BODY:ATM:ALTITUDEPRESSURE(SHIP:ALTITUDE).
+
   // â”€â”€ Step 1: cache facing vectors (single query per cycle) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   SET ASC_STAR_V TO SHIP:FACING:STARVECTOR.
   SET ASC_TOP_V  TO SHIP:FACING:TOPVECTOR.
@@ -480,7 +502,6 @@ FUNCTION ASC_STATE_UPDATE {
   // â”€â”€ Step 4: AB thrust and mass flow (iterate cached list only) â”€â”€â”€â”€â”€
   LOCAL t_ab_along  IS 0.
   LOCAL mdot_ab_raw IS 0.
-  LOCAL pressure IS SHIP:BODY:ATM:ALTITUDEPRESSURE(SHIP:ALTITUDE).
 
   LOCAL i IS 0.
   UNTIL i >= ASC_AB_ENGINES:LENGTH {
@@ -505,7 +526,7 @@ FUNCTION ASC_STATE_UPDATE {
     IF eng:IGNITION {
       SET ab_ign_on TO ab_ign_on + 1.
       SET t_ab_now_total   TO t_ab_now_total   + eng:THRUST.
-      SET t_ab_avail_total TO t_ab_avail_total + eng:AVAILABLETHRUSTAT(pressure).
+      SET t_ab_avail_total TO t_ab_avail_total + eng:AVAILABLETHRUSTAT(ASC_PRESSURE_CACHED).
       IF eng:FLAMEOUT { SET ab_flameouts TO ab_flameouts + 1. }
     }
     SET ii TO ii + 1.
@@ -528,9 +549,9 @@ FUNCTION ASC_STATE_UPDATE {
   LOCAL k IS 0.
   UNTIL k >= ASC_RK_ENGINES:LENGTH {
     LOCAL eng IS ASC_RK_ENGINES[k].
-    LOCAL thr_avail IS eng:AVAILABLETHRUSTAT(pressure).
-    LOCAL isp IS eng:ISPAT(pressure).
-    IF _ASC_IS_DUALMODE_AB_PRIMARY(eng) {
+    LOCAL thr_avail IS eng:AVAILABLETHRUSTAT(ASC_PRESSURE_CACHED).
+    LOCAL isp IS eng:ISPAT(ASC_PRESSURE_CACHED).
+    IF ASC_RK_DUALMODE[k] AND eng:PRIMARYMODE {
       SET isp TO MIN(isp, dual_isp_cap).
       SET thr_avail TO thr_avail * dual_thr_frac.
     }
