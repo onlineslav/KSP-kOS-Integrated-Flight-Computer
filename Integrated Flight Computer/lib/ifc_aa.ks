@@ -89,18 +89,24 @@ FUNCTION AA_INIT {
 FUNCTION AA_SET_DIRECTOR {
   PARAMETER hdg_deg, fpa_deg.
 
+  // AA Director controls nose attitude, not flight path angle.
+  // To achieve the desired FPA, command pitch = FPA + AoA so that
+  // the nose is pointed high enough for the velocity vector to match fpa_deg.
+  // GET_AOA() returns 0 when FAR is unavailable (graceful fallback).
+  LOCAL pitch_cmd IS fpa_deg + GET_AOA().
+
   LOCAL aa IS _AA_GET_HANDLE().
   IF aa = 0 {
     SET AA_AVAILABLE TO FALSE.
     // Fallback: write to the global that is locked to STEERING in _RUN_FLIGHT_PLAN.
-    // A direct LOCK STEERING here would capture hdg_deg/fpa_deg as locals that go
+    // A direct LOCK STEERING here would capture hdg_deg/pitch_cmd as locals that go
     // out of scope after this function returns, producing stale or zero steering.
-    SET IFC_DESIRED_STEERING TO HEADING(hdg_deg, fpa_deg).
+    SET IFC_DESIRED_STEERING TO HEADING(hdg_deg, pitch_cmd).
     RETURN.
   }
   SET AA_AVAILABLE TO TRUE.
 
-  LOCAL dir_vec IS HEADING(hdg_deg, fpa_deg):VECTOR.
+  LOCAL dir_vec IS HEADING(hdg_deg, pitch_cmd):VECTOR.
   SET TELEM_AA_DIR_VX TO dir_vec:X.
   SET TELEM_AA_DIR_VY TO dir_vec:Y.
   SET TELEM_AA_DIR_VZ TO dir_vec:Z.
@@ -114,7 +120,7 @@ FUNCTION AA_SET_DIRECTOR {
   SET TELEM_AA_DIR_HDG_DEG   TO MOD(ARCTAN2(VDOT(dir_vec, _est), VDOT(dir_vec, _nrth)) + 360, 360).
   // Keep kOS LOCK STEERING aligned with the commanded direction so it never
   // fights AA Director (AA overrides SHIP:CONTROL but this is defensive).
-  SET IFC_DESIRED_STEERING TO HEADING(hdg_deg, fpa_deg).
+  SET IFC_DESIRED_STEERING TO HEADING(hdg_deg, pitch_cmd).
   SET aa:DIRECTION TO dir_vec.
 
   // Ensure Director mode is active; leave FBW running for inner-loop stability.
