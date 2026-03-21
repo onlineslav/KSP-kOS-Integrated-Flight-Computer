@@ -36,8 +36,9 @@ GLOBAL ACTIVE_ALT_AT   IS LEXICON(). // beacon_id -> target altitude (m)
 GLOBAL FIX_INDEX IS 0.
 
 // ----------------------------
-// Throttle command
+// Steering and throttle commands
 // ----------------------------
+GLOBAL IFC_DESIRED_STEERING IS HEADING(90, 0). // locked once at flight start; phase code writes to this
 GLOBAL THROTTLE_CMD     IS 0.
 GLOBAL THR_INTEGRAL     IS 0.   // accumulated speed error for integral trim
 GLOBAL PREV_IAS         IS 0.   // IAS from previous cycle for d(IAS)/dt measurement
@@ -62,10 +63,14 @@ GLOBAL APP_GS_CAP_OK IS 0.  // 1 when |GS| is inside capture band, else 0
 // ----------------------------
 // ILS deviation state  (updated each cycle in ILS_TRACK)
 // ----------------------------
-GLOBAL ILS_LOC_DEV      IS 0.   // m, + = right of centerline
-GLOBAL ILS_GS_DEV       IS 0.   // m, + = above glideslope
-GLOBAL ILS_DIST_M       IS 0.   // m  horizontal from threshold (+ = on approach)
-GLOBAL ILS_INTERCEPT_ALT IS 0.  // m MSL altitude held until GS capture
+GLOBAL ILS_LOC_DEV      IS 0.      // m, + = right of centerline
+GLOBAL ILS_GS_DEV       IS 0.      // m, + = above glideslope
+GLOBAL ILS_DIST_M       IS 0.      // m  horizontal from threshold (+ = on approach)
+GLOBAL ILS_INTERCEPT_ALT IS 0.     // m MSL altitude held until GS capture
+
+// Cached per plate-load (eliminates per-cycle GET_BEACON + TAN calls in _COMPUTE_ILS_DEVIATIONS)
+GLOBAL ILS_GS_TAN_CACHED IS 0.     // TAN(ACTIVE_GS_ANGLE), set in IFC_LOAD_PLATE
+GLOBAL ILS_THR_GEO_LL    IS 0.     // GeoCoordinates of ILS threshold, set in IFC_LOAD_PLATE
 
 // Previous-cycle values for derivative term
 GLOBAL PREV_LOC_DEV IS 0.
@@ -82,6 +87,17 @@ GLOBAL AA_FBW_ON       IS FALSE.
 // FAR state flag
 // ----------------------------
 GLOBAL FAR_AVAILABLE IS FALSE.
+
+// ----------------------------
+// Per-cycle cached vessel vectors
+// Computed once at the top of the main loop; all subsystems read these instead of
+// querying SHIP:FACING / SHIP:UP / SHIP:NORTH directly (saves ~6 cross-VM calls/consumer).
+// ----------------------------
+GLOBAL IFC_FACING_FWD  IS V(0, 0, 1).   // SHIP:FACING:FOREVECTOR
+GLOBAL IFC_FACING_STAR IS V(1, 0, 0).   // SHIP:FACING:STARVECTOR
+GLOBAL IFC_FACING_TOP  IS V(0, 1, 0).   // SHIP:FACING:TOPVECTOR
+GLOBAL IFC_UP_VEC      IS V(0, 1, 0).   // SHIP:UP:VECTOR
+GLOBAL IFC_NORTH_VEC   IS V(0, 0, 1).   // SHIP:NORTH:VECTOR
 
 // ----------------------------
 // Loop timing
@@ -125,6 +141,11 @@ GLOBAL IFC_EVENT_VIEW_IDX IS 0.      // newest event index shown in history view
 // Written each cycle by phase functions so ifc_logger can read them
 // without needing access to local variables.
 // ----------------------------
+// Per-cycle attitude telemetry (computed once in main loop; display + logger read these)
+GLOBAL TELEM_COMPASS_HDG   IS 0.  // compass heading of nose (deg, 0=N 90=E)
+GLOBAL TELEM_PITCH_DEG     IS 0.  // nose pitch above horizon (deg)
+GLOBAL TELEM_BANK_DEG      IS 0.  // bank angle (deg, + = right wing down)
+
 GLOBAL TELEM_AA_HDG_CMD    IS 0.  // heading sent to AA Director (deg)
 GLOBAL TELEM_AA_FPA_CMD    IS 0.  // FPA sent to AA Director (deg)
 GLOBAL TELEM_LOC_CORR      IS 0.  // ILS localizer heading correction (deg)
@@ -260,6 +281,11 @@ GLOBAL GUI_EDIT_NAV_TYPE IS "".      // cruise nav_type currently shown in edit 
 // ----------------------------
 GLOBAL ASC_INITIALIZED    IS FALSE.  // TRUE after ASC_STATE_INIT has run
 
+// Heading / FPA filter state (captured at ascent init)
+GLOBAL ASC_HDG_REF        IS 90.0.  // deg  locked heading at phase entry
+GLOBAL ASC_SURF_FPA_FILT  IS 0.0.   // deg  EMA-smoothed surface FPA
+GLOBAL ASC_HDG_CMD_FILT   IS 90.0.  // deg  EMA-smoothed heading command
+
 // Engine classification lists (cached at ascent init, never iterated in loop)
 GLOBAL ASC_AB_ENGINES     IS LIST().
 GLOBAL ASC_RK_ENGINES     IS LIST().
@@ -283,6 +309,7 @@ GLOBAL ASC_AOA_CTRL        IS 0. // deg angle of attack, fast copy
 
 // Valuation-smoothed signals  (slow α, drives mode-switch decisions only)
 GLOBAL ASC_AERO_ALONG_VAL  IS 0. // N  along-track aero force, slow copy
+GLOBAL ASC_Q_VAL           IS 0. // Pa dynamic pressure, slow copy (for penalty functions)
 GLOBAL ASC_EDOT_VAL        IS 0. // J/kg/s  specific orbital energy rate, slow copy
 GLOBAL ASC_APO_VAL         IS 0. // m  smoothed apoapsis altitude
 GLOBAL ASC_MDOT_AB_VAL     IS 0. // kg/s  AB mass flow, slow copy
@@ -393,6 +420,7 @@ FUNCTION IFC_INIT_STATE {
   SET ACTIVE_ALT_AT   TO LEXICON().
   SET FIX_INDEX TO 0.
 
+  SET IFC_DESIRED_STEERING TO HEADING(90, 0).
   SET THROTTLE_CMD  TO 0.
   SET THR_INTEGRAL  TO 0.
   SET PREV_IAS      TO GET_IAS().
@@ -420,8 +448,10 @@ FUNCTION IFC_INIT_STATE {
   SET ILS_GS_DEV        TO 0.
   SET ILS_DIST_M        TO 0.
   SET ILS_INTERCEPT_ALT TO 0.
-  SET PREV_LOC_DEV TO 0.
-  SET PREV_GS_DEV  TO 0.
+  SET PREV_LOC_DEV      TO 0.
+  SET PREV_GS_DEV       TO 0.
+  SET ILS_GS_TAN_CACHED TO 0.
+  SET ILS_THR_GEO_LL    TO 0.
 
   SET AA_AVAILABLE   TO FALSE.
   SET AA_DIRECTOR_ON TO FALSE.
@@ -446,6 +476,11 @@ FUNCTION IFC_INIT_STATE {
   SET IFC_CYCLE_UT     TO TIME:SECONDS.
   SET IFC_RAW_DT       TO IFC_LOOP_DT.
   SET IFC_ACTUAL_DT    TO IFC_LOOP_DT.
+  SET IFC_FACING_FWD   TO SHIP:FACING:FOREVECTOR.
+  SET IFC_FACING_STAR  TO SHIP:FACING:STARVECTOR.
+  SET IFC_FACING_TOP   TO SHIP:FACING:TOPVECTOR.
+  SET IFC_UP_VEC       TO SHIP:UP:VECTOR.
+  SET IFC_NORTH_VEC    TO SHIP:NORTH:VECTOR.
   SET IFC_LOOP_COUNT   TO 0.
   SET IFC_LOOP_COUNT_SNAPSHOT TO 0.
   SET IFC_RAW_DT_MAX   TO IFC_LOOP_DT.
@@ -466,6 +501,9 @@ FUNCTION IFC_INIT_STATE {
   SET ROLLOUT_STEER_HDG       TO GET_COMPASS_HDG().
   SET ROLLOUT_REV_DEACTIVATED TO FALSE.
 
+  SET TELEM_COMPASS_HDG  TO 0.
+  SET TELEM_PITCH_DEG    TO 0.
+  SET TELEM_BANK_DEG     TO 0.
   SET TELEM_AA_HDG_CMD   TO 0.
   SET TELEM_AA_FPA_CMD   TO 0.
   SET TELEM_LOC_CORR     TO 0.
@@ -564,6 +602,9 @@ FUNCTION IFC_INIT_STATE {
 
   // Ascent guidance state
   SET ASC_INITIALIZED    TO FALSE.
+  SET ASC_HDG_REF        TO 90.0.
+  SET ASC_SURF_FPA_FILT  TO 0.0.
+  SET ASC_HDG_CMD_FILT   TO 90.0.
   ASC_AB_ENGINES:CLEAR().
   ASC_RK_ENGINES:CLEAR().
   SET ASC_LF_MAX         TO 1.0.
@@ -576,6 +617,7 @@ FUNCTION IFC_INIT_STATE {
   SET ASC_Q_CTRL         TO 0.
   SET ASC_AOA_CTRL       TO 0.
   SET ASC_AERO_ALONG_VAL TO 0.
+  SET ASC_Q_VAL          TO 0.
   SET ASC_EDOT_VAL       TO 0.
   SET ASC_APO_VAL        TO MAX(SHIP:ORBIT:APOAPSIS, 0).
   SET ASC_MDOT_AB_VAL    TO 0.
@@ -642,9 +684,12 @@ FUNCTION IFC_INIT_STATE {
 // Called once after ACTIVE_PLATE and ACTIVE_AIRCRAFT are set.
 FUNCTION IFC_LOAD_PLATE {
   SET ACTIVE_ILS_ID   TO ACTIVE_PLATE["ils_id"].
-  SET ACTIVE_RWY_HDG  TO GET_BEACON(ACTIVE_ILS_ID)["hdg"].
-  SET ACTIVE_GS_ANGLE TO GET_BEACON(ACTIVE_ILS_ID)["gs_angle"].
-  SET ACTIVE_THR_ALT  TO GET_BEACON(ACTIVE_ILS_ID)["alt_asl"].
+  LOCAL ils_bcn IS GET_BEACON(ACTIVE_ILS_ID).
+  SET ACTIVE_RWY_HDG  TO ils_bcn["hdg"].
+  SET ACTIVE_GS_ANGLE TO ils_bcn["gs_angle"].
+  SET ACTIVE_THR_ALT  TO ils_bcn["alt_asl"].
+  SET ILS_GS_TAN_CACHED TO TAN(ACTIVE_GS_ANGLE).
+  SET ILS_THR_GEO_LL    TO ils_bcn["ll"].
   IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("v_app") {
     SET ACTIVE_V_APP  TO ACTIVE_AIRCRAFT["v_app"].
   } ELSE {

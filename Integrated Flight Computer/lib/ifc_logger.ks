@@ -150,108 +150,117 @@ FUNCTION LOGGER_WRITE {
   LOCAL ias   IS GET_IAS().
   LOCAL v_tgt IS ACTIVE_V_APP.
   IF IFC_PHASE = PHASE_APPROACH { SET v_tgt TO ACTIVE_V_TGT. }
-  LOCAL bank  IS ROUND(90 - VECTORANGLE(SHIP:FACING:STARVECTOR, SHIP:UP:VECTOR), 3).
+  LOCAL bank  IS ROUND(TELEM_BANK_DEG, 3).
   LOCAL ship_t_now   IS SHIP:THRUST.
   LOCAL ship_t_avail IS SHIP:AVAILABLETHRUST.
+  // P5: avoid SHIP:ENGINES traversal (expensive); use ascent telemetry during
+  // ascent phase and fall back to a single traversal only for other phases.
   LOCAL ship_ign_on IS 0.
   LOCAL ship_flameouts IS 0.
-  LOCAL all_eng IS SHIP:ENGINES.
-  LOCAL ei IS 0.
-  UNTIL ei >= all_eng:LENGTH {
-    LOCAL eng IS all_eng[ei].
-    IF eng:IGNITION {
-      SET ship_ign_on TO ship_ign_on + 1.
-      IF eng:FLAMEOUT { SET ship_flameouts TO ship_flameouts + 1. }
+  IF IFC_PHASE = PHASE_ASCENT {
+    SET ship_ign_on    TO TELEM_ASC_AB_IGN_ON    + TELEM_ASC_RK_IGN_ON.
+    SET ship_flameouts TO TELEM_ASC_AB_FLAMEOUTS + TELEM_ASC_RK_FLAMEOUTS.
+  } ELSE {
+    LOCAL all_eng IS SHIP:ENGINES.
+    LOCAL ei IS 0.
+    UNTIL ei >= all_eng:LENGTH {
+      LOCAL eng IS all_eng[ei].
+      IF eng:IGNITION {
+        SET ship_ign_on TO ship_ign_on + 1.
+        IF eng:FLAMEOUT { SET ship_flameouts TO ship_flameouts + 1. }
+      }
+      SET ei TO ei + 1.
     }
-    SET ei TO ei + 1.
   }
 
-  LOCAL row IS
-    ROUND(TIME:SECONDS - IFC_MISSION_START_UT, 2) + "," +
-    IFC_PHASE                              + "," +
-    IFC_SUBPHASE                           + "," +
-    ROUND(ias,                        2)   + "," +
-    ROUND(v_tgt,                      2)   + "," +
-    ROUND(v_tgt - ias,                2)   + "," +
-    ROUND(GET_AGL(),                  2)   + "," +
-    ROUND(SHIP:VERTICALSPEED,         2)   + "," +
-    ROUND(GET_PITCH(),                2)   + "," +
-    ROUND(GET_AOA(),                  2)   + "," +
-    ROUND(GET_COMPASS_HDG(),          2)   + "," +
-    bank                                   + "," +
-    ROUND(THROTTLE_CMD,               4)   + "," +
-    ROUND(GET_CURRENT_THROTTLE(),     4)   + "," +
-    ROUND(THR_INTEGRAL,               3)   + "," +
-    ROUND(TELEM_AT_GAIN,              4)   + "," +
-    ROUND(TELEM_AT_TAU,               3)   + "," +
-    ROUND(TELEM_AT_A_UP_LIM,          3)   + "," +
-    ROUND(TELEM_AT_A_DN_LIM,          3)   + "," +
-    ROUND(TELEM_AT_KP_THR,            4)   + "," +
-    ROUND(TELEM_AT_KI_SPD,            4)   + "," +
-    ROUND(TELEM_AT_THR_SLEW,          4)   + "," +
-    ROUND(TELEM_AA_HDG_CMD,           2)   + "," +
-    ROUND(TELEM_AA_FPA_CMD,           3)   + "," +
-    ROUND(ILS_LOC_DEV,                2)   + "," +
-    ROUND(ILS_GS_DEV,                 2)   + "," +
-    ROUND(ILS_DIST_M / 1000,          3)   + "," +
-    ROUND(TELEM_LOC_CORR,             3)   + "," +
-    ROUND(TELEM_GS_CORR,              3)   + "," +
-    ROUND(FLARE_PITCH_CMD,            3)   + "," +
-    ROUND(TELEM_FLARE_TGT_VS,         3)   + "," +
-    ROUND(TELEM_FLARE_FRAC,           3)   + "," +
-    ROUND(ROLLOUT_STEER_HDG,          2)   + "," +
-    ROUND(TELEM_STEER_BLEND,          3)   + "," +
-    ROUND(TELEM_RO_LOC_CORR,          3)   + "," +
-    ROUND(TELEM_RO_HDG_ERR,           3)   + "," +
-    ROUND(TELEM_RO_YAW_TGT,           4)   + "," +
-    ROUND(TELEM_RO_YAW_SCALE,         3)   + "," +
-    ROUND(TELEM_RO_YAW_GATE,          0)   + "," +
-    ROUND(SHIP:CONTROL:YAW,           4)   + "," +
-    ROUND(SHIP:CONTROL:ROLL,          4)   + "," +
-    ROUND(SHIP:CONTROL:PITCH,         4)   + "," +
-    ROUND(TELEM_RO_PITCH_TGT,         3)   + "," +
-    ROUND(TELEM_RO_PITCH_ERR,         3)   + "," +
-    ROUND(TELEM_RO_PITCH_FF,          4)   + "," +
-    ROUND(TELEM_RO_ROLL_ASSIST,       0)   + "," +
-    FLAPS_CURRENT_DETENT                   + "," +
-    FLAPS_TARGET_DETENT                    + "," +
-    ROUND(TELEM_ASC_J_AB,             3)   + "," +
-    ROUND(TELEM_ASC_J_RK,             3)   + "," +
-    TELEM_ASC_VALIDITY                     + "," +
-    ROUND(TELEM_ASC_Q,                1)   + "," +
-    ROUND(TELEM_ASC_Q_RAW,            1)   + "," +
-    ROUND(TELEM_ASC_MACH,             3)   + "," +
-    ROUND(TELEM_ASC_APO,              0)   + "," +
-    ROUND(TELEM_ASC_DRAG_RK,          1)   + "," +
-    ROUND(TELEM_ASC_W_PROP,           4)   + "," +
-    ROUND(TELEM_ASC_EDOT_VAL,         2)   + "," +
-    ROUND(TELEM_ASC_EDOT_ORB,         2)   + "," +
-    ROUND(TELEM_ASC_PITCH_BIAS,       3)   + "," +
-    ROUND(TELEM_ASC_BLEND,            3)   + "," +
-    ROUND(CHOOSE 1 IF TELEM_ASC_SPOOLING ELSE 0, 0) + "," +
-    ROUND(TELEM_ASC_AB_THR_RATIO,     4)   + "," +
-    ROUND(TELEM_ASC_AB_T_NOW,         2)   + "," +
-    ROUND(TELEM_ASC_AB_T_AVAIL,       2)   + "," +
-    ROUND(TELEM_ASC_AB_IGN_ON,        0)   + "," +
-    ROUND(TELEM_ASC_AB_FLAMEOUTS,     0)   + "," +
-    ROUND(TELEM_ASC_RK_T_NOW,         2)   + "," +
-    ROUND(TELEM_ASC_RK_T_AVAIL,       2)   + "," +
-    ROUND(TELEM_ASC_RK_IGN_ON,        0)   + "," +
-    ROUND(TELEM_ASC_RK_FLAMEOUTS,     0)   + "," +
-    ROUND(ship_t_now,                 2)   + "," +
-    ROUND(ship_t_avail,               2)   + "," +
-    ROUND(ship_ign_on,                0)   + "," +
-    ROUND(ship_flameouts,             0)   + "," +
-    ROUND(IFC_RAW_DT,                 3)   + "," +
-    ROUND(IFC_ACTUAL_DT,              3)   + "," +
-    ROUND(IFC_LOOP_COUNT,             0)   + "," +
-    ROUND(hz_est,                     2)   + "," +
-    ROUND(raw_dt_max,                 3)   + "," +
-    ROUND(raw_dt_min,                 3)   + "," +
-    ROUND(PHASE_ELAPSED(),            2)   + "," +
-    SHIP:STATUS.
+  // P6b: build row as a LIST then JOIN to avoid repeated string allocations.
+  LOCAL row_parts IS LIST(
+    ROUND(TIME:SECONDS - IFC_MISSION_START_UT, 2),
+    IFC_PHASE,
+    IFC_SUBPHASE,
+    ROUND(ias,                        2),
+    ROUND(v_tgt,                      2),
+    ROUND(v_tgt - ias,                2),
+    ROUND(GET_AGL(),                  2),
+    ROUND(SHIP:VERTICALSPEED,         2),
+    ROUND(TELEM_PITCH_DEG,            2),
+    ROUND(GET_AOA(),                  2),
+    ROUND(TELEM_COMPASS_HDG,          2),
+    bank,
+    ROUND(THROTTLE_CMD,               4),
+    ROUND(GET_CURRENT_THROTTLE(),     4),
+    ROUND(THR_INTEGRAL,               3),
+    ROUND(TELEM_AT_GAIN,              4),
+    ROUND(TELEM_AT_TAU,               3),
+    ROUND(TELEM_AT_A_UP_LIM,          3),
+    ROUND(TELEM_AT_A_DN_LIM,          3),
+    ROUND(TELEM_AT_KP_THR,            4),
+    ROUND(TELEM_AT_KI_SPD,            4),
+    ROUND(TELEM_AT_THR_SLEW,          4),
+    ROUND(TELEM_AA_HDG_CMD,           2),
+    ROUND(TELEM_AA_FPA_CMD,           3),
+    ROUND(ILS_LOC_DEV,                2),
+    ROUND(ILS_GS_DEV,                 2),
+    ROUND(ILS_DIST_M / 1000,          3),
+    ROUND(TELEM_LOC_CORR,             3),
+    ROUND(TELEM_GS_CORR,              3),
+    ROUND(FLARE_PITCH_CMD,            3),
+    ROUND(TELEM_FLARE_TGT_VS,         3),
+    ROUND(TELEM_FLARE_FRAC,           3),
+    ROUND(ROLLOUT_STEER_HDG,          2),
+    ROUND(TELEM_STEER_BLEND,          3),
+    ROUND(TELEM_RO_LOC_CORR,          3),
+    ROUND(TELEM_RO_HDG_ERR,           3),
+    ROUND(TELEM_RO_YAW_TGT,           4),
+    ROUND(TELEM_RO_YAW_SCALE,         3),
+    ROUND(TELEM_RO_YAW_GATE,          0),
+    ROUND(SHIP:CONTROL:YAW,           4),
+    ROUND(SHIP:CONTROL:ROLL,          4),
+    ROUND(SHIP:CONTROL:PITCH,         4),
+    ROUND(TELEM_RO_PITCH_TGT,         3),
+    ROUND(TELEM_RO_PITCH_ERR,         3),
+    ROUND(TELEM_RO_PITCH_FF,          4),
+    ROUND(TELEM_RO_ROLL_ASSIST,       0),
+    FLAPS_CURRENT_DETENT,
+    FLAPS_TARGET_DETENT,
+    ROUND(TELEM_ASC_J_AB,             3),
+    ROUND(TELEM_ASC_J_RK,             3),
+    TELEM_ASC_VALIDITY,
+    ROUND(TELEM_ASC_Q,                1),
+    ROUND(TELEM_ASC_Q_RAW,            1),
+    ROUND(TELEM_ASC_MACH,             3),
+    ROUND(TELEM_ASC_APO,              0),
+    ROUND(TELEM_ASC_DRAG_RK,          1),
+    ROUND(TELEM_ASC_W_PROP,           4),
+    ROUND(TELEM_ASC_EDOT_VAL,         2),
+    ROUND(TELEM_ASC_EDOT_ORB,         2),
+    ROUND(TELEM_ASC_PITCH_BIAS,       3),
+    ROUND(TELEM_ASC_BLEND,            3),
+    CHOOSE 1 IF TELEM_ASC_SPOOLING ELSE 0,
+    ROUND(TELEM_ASC_AB_THR_RATIO,     4),
+    ROUND(TELEM_ASC_AB_T_NOW,         2),
+    ROUND(TELEM_ASC_AB_T_AVAIL,       2),
+    ROUND(TELEM_ASC_AB_IGN_ON,        0),
+    ROUND(TELEM_ASC_AB_FLAMEOUTS,     0),
+    ROUND(TELEM_ASC_RK_T_NOW,         2),
+    ROUND(TELEM_ASC_RK_T_AVAIL,       2),
+    ROUND(TELEM_ASC_RK_IGN_ON,        0),
+    ROUND(TELEM_ASC_RK_FLAMEOUTS,     0),
+    ROUND(ship_t_now,                 2),
+    ROUND(ship_t_avail,               2),
+    ROUND(ship_ign_on,                0),
+    ROUND(ship_flameouts,             0),
+    ROUND(IFC_RAW_DT,                 3),
+    ROUND(IFC_ACTUAL_DT,              3),
+    ROUND(IFC_LOOP_COUNT,             0),
+    ROUND(hz_est,                     2),
+    ROUND(raw_dt_max,                 3),
+    ROUND(raw_dt_min,                 3),
+    ROUND(PHASE_ELAPSED(),            2),
+    SHIP:STATUS
+  ).
 
-  LOG row TO LOG_FILE.
+  LOG row_parts:JOIN(",") TO LOG_FILE.
 }
 
 FUNCTION LOGGER_CLOSE {

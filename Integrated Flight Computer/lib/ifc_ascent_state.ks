@@ -81,7 +81,7 @@ FUNCTION _ASC_IS_DUALMODE_AB_PRIMARY {
 
 // P_q: dynamic pressure outside the optimal corridor degrades J_ab.
 FUNCTION _ASC_P_Q {
-  LOCAL q_dyn IS ASC_Q_CTRL.
+  LOCAL q_dyn IS ASC_Q_VAL.
   LOCAL q_tgt IS ASC_Q_TARGET_CACHED.
   LOCAL q_max IS ASC_Q_MAX_CACHED.
   LOCAL q_min IS ASC_Q_MIN_CACHED.
@@ -99,9 +99,10 @@ FUNCTION _ASC_P_Q {
 }
 
 // P_heat: aerodynamic heating proxy  q * v  approaching limit degrades J_ab.
+// v_mag must be passed in from the caller (already computed at top of ASC_STATE_UPDATE).
 FUNCTION _ASC_P_HEAT {
-  LOCAL v_mag IS SHIP:VELOCITY:ORBIT:MAG.
-  LOCAL q_dyn IS ASC_Q_CTRL.
+  PARAMETER v_mag.
+  LOCAL q_dyn IS ASC_Q_VAL.
   LOCAL proxy IS q_dyn * v_mag.
   LOCAL lim IS ASC_HEAT_LIMIT_CACHED. // PaÂ·m/s
   IF proxy <= lim * 0.75 { RETURN 1.0. }
@@ -205,7 +206,7 @@ FUNCTION _ASC_COMPUTE_J_AB {
   LOCAL edot_ab IS v_mag * (t_ab_along + ASC_AERO_ALONG_VAL) / SHIP:MASS.
 
   // Penalty multipliers.
-  LOCAL p IS _ASC_P_Q() * _ASC_P_HEAT() * _ASC_P_CTRL() * _ASC_P_TRAJ().
+  LOCAL p IS _ASC_P_Q() * _ASC_P_HEAT(v_mag) * _ASC_P_CTRL() * _ASC_P_TRAJ().
 
   SET ASC_J_AB TO (edot_ab / ASC_MDOT_AB_VAL) * p.
 }
@@ -407,12 +408,23 @@ FUNCTION ASC_STATE_INIT {
   // --- Seed EMA states from current measurements ---
   // Pre-seeding prevents the large startup transient that arises when
   // filters are initialised to zero and converge from far below reality.
-  LOCAL v_mag IS SHIP:VELOCITY:ORBIT:MAG.
+  LOCAL v_orb_init IS SHIP:VELOCITY:ORBIT.
+  LOCAL v_mag IS v_orb_init:MAG.
   LOCAL q_now IS 0.
   LOCAL aoa_now IS 0.
+  LOCAL drag_seed IS 0.
   IF FAR_AVAILABLE {
     SET q_now   TO ADDONS:FAR:DYNPRES * ASC_FAR_Q_SCALE.
     SET aoa_now TO ADDONS:FAR:AOA.
+    // Seed drag from current aeroforce to prevent J_RK overvaluation at phase entry.
+    IF v_mag > ASC_MIN_VORB {
+      SET ASC_STAR_V TO IFC_FACING_STAR.
+      SET ASC_TOP_V  TO IFC_FACING_TOP.
+      SET ASC_NFWD_V TO -IFC_FACING_FWD.
+      LOCAL aero_orb_init IS _ASC_BODY_TO_ORB(ADDONS:FAR:AEROFORCE).
+      LOCAL aero_along_init IS VDOT(aero_orb_init, v_orb_init:NORMALIZED).
+      SET drag_seed TO MAX(-aero_along_init, 0).
+    }
   }
   LOCAL apo_now IS MAX(SHIP:ORBIT:APOAPSIS, 0).
 
@@ -420,9 +432,10 @@ FUNCTION ASC_STATE_INIT {
   SET ASC_Q_CTRL          TO q_now.
   SET ASC_AOA_CTRL        TO aoa_now.
   SET ASC_AERO_ALONG_VAL  TO 0.
-  SET ASC_DRAG_RK_VAL     TO 0.
+  SET ASC_Q_VAL           TO q_now.
+  SET ASC_DRAG_RK_VAL     TO drag_seed.
   SET ASC_DRAG_DDOT       TO 0.
-  SET ASC_DRAG_PREV       TO 0.
+  SET ASC_DRAG_PREV       TO drag_seed.
   SET ASC_EDOT_VAL        TO 0.
   SET ASC_APO_VAL         TO apo_now.
   SET ASC_MDOT_AB_VAL     TO 0.
@@ -478,9 +491,9 @@ FUNCTION ASC_STATE_UPDATE {
   SET ASC_PRESSURE_CACHED TO SHIP:BODY:ATM:ALTITUDEPRESSURE(SHIP:ALTITUDE).
 
   // â”€â”€ Step 1: cache facing vectors (single query per cycle) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  SET ASC_STAR_V TO SHIP:FACING:STARVECTOR.
-  SET ASC_TOP_V  TO SHIP:FACING:TOPVECTOR.
-  SET ASC_NFWD_V TO -SHIP:FACING:FOREVECTOR.
+  SET ASC_STAR_V TO IFC_FACING_STAR.
+  SET ASC_TOP_V  TO IFC_FACING_TOP.
+  SET ASC_NFWD_V TO -IFC_FACING_FWD.
 
   // â”€â”€ Step 2: orbital velocity unit vector â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   LOCAL v_orb IS SHIP:VELOCITY:ORBIT.
@@ -544,6 +557,7 @@ FUNCTION ASC_STATE_UPDATE {
   LOCAL dual_thr_frac IS ASC_DUALMODE_RK_THR_CACHED.
   LOCAL t_rk_now_total   IS 0.
   LOCAL t_rk_avail_total IS 0.
+  LOCAL t_rk_along       IS 0.
   LOCAL rk_ign_on IS 0.
   LOCAL rk_flameouts IS 0.
   LOCAL k IS 0.
@@ -560,6 +574,11 @@ FUNCTION ASC_STATE_UPDATE {
       SET rk_ign_on TO rk_ign_on + 1.
       SET t_rk_now_total TO t_rk_now_total + eng:THRUST.
       IF eng:FLAMEOUT { SET rk_flameouts TO rk_flameouts + 1. }
+      // Along-track component for edot_force; exclude dual-mode engines in AB mode
+      // since those are already counted in t_ab_along (step 4).
+      IF NOT (ASC_RK_DUALMODE[k] AND eng:PRIMARYMODE) AND NOT eng:FLAMEOUT {
+        SET t_rk_along TO t_rk_along + eng:THRUST * VDOT(eng:FACING:FOREVECTOR, v_hat).
+      }
     }
     IF isp > 1 {
       // Keep units aligned with AB path: eng:MASSFLOW is converted to kg/s.
@@ -587,6 +606,7 @@ FUNCTION ASC_STATE_UPDATE {
 
   // Valuation copies  (slow â€” for mode comparison only)
   SET ASC_AERO_ALONG_VAL  TO ASC_EMA_VAL_AERO  * aero_along_raw + (1 - ASC_EMA_VAL_AERO)  * ASC_AERO_ALONG_VAL.
+  SET ASC_Q_VAL           TO ASC_EMA_VAL_Q      * q_raw          + (1 - ASC_EMA_VAL_Q)     * ASC_Q_VAL.
   SET ASC_MDOT_AB_VAL     TO ASC_EMA_VAL_MDOT  * mdot_ab_raw    + (1 - ASC_EMA_VAL_MDOT)  * ASC_MDOT_AB_VAL.
   SET ASC_MDOT_RK_VAL     TO ASC_EMA_VAL_MDOT  * mdot_rk_raw    + (1 - ASC_EMA_VAL_MDOT)  * ASC_MDOT_RK_VAL.
 
@@ -621,7 +641,7 @@ FUNCTION ASC_STATE_UPDATE {
   // Force-projection Ä–  (valuation signal for J_ab, J_rk).
   LOCAL edot_force IS 0.
   IF v_mag > ASC_MIN_VORB {
-    SET edot_force TO v_mag * (t_ab_along + aero_along_raw) / SHIP:MASS.
+    SET edot_force TO v_mag * (t_ab_along + t_rk_along + aero_along_raw) / SHIP:MASS.
   }
   SET ASC_EDOT_VAL TO ASC_EMA_VAL_EDOT * edot_force + (1 - ASC_EMA_VAL_EDOT) * ASC_EDOT_VAL.
 

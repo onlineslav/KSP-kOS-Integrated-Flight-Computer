@@ -35,11 +35,6 @@ FUNCTION _ASC_SURF_FPA {
   RETURN ARCSIN(CLAMP(SHIP:VERTICALSPEED / spd, -1, 1)).
 }
 
-// Locked ascent heading reference captured when ascent initialises.
-GLOBAL ASC_HDG_REF IS 90.0.
-GLOBAL ASC_SURF_FPA_FILT IS 0.0.
-GLOBAL ASC_HDG_CMD_FILT  IS 90.0.
-
 // Orbital flight path angle in degrees.
 FUNCTION _ASC_ORB_FPA {
   LOCAL v_orb IS SHIP:VELOCITY:ORBIT.
@@ -228,7 +223,7 @@ FUNCTION _ASC_CHECK_FLAMEOUT {
 
   LOCAL regime_mach IS ASC_REGIME_MACH_CACHED.
   // Near the regime boundary: thrust decline is scheduled, not a failure.
-  IF TELEM_ASC_MACH >= regime_mach * 0.85 { RETURN. }
+  IF TELEM_ASC_MACH >= regime_mach * ASC_FLAMEOUT_MACH_GUARD_FRAC { RETURN. }
 
   LOCAL t_act   IS 0.
   LOCAL t_avail IS 0.
@@ -304,7 +299,7 @@ FUNCTION _ASC_CORRIDOR {
   LOCAL fpa_floor IS ASC_CORRIDOR_FPA_MIN.
   // Safety guard: never command a descent while still in the low-altitude
   // climb-out segment unless apoapsis is already well above the zoom target.
-  IF ALT:RADAR < 1500 AND SHIP:ORBIT:APOAPSIS < zoom_apo * 0.90 {
+  IF ALT:RADAR < ASC_CORRIDOR_GUARD_AGL_M AND SHIP:ORBIT:APOAPSIS < zoom_apo * ASC_CORRIDOR_GUARD_APO_FRAC {
     SET fpa_floor TO 2.0.
   }
   LOCAL fpa_cmd  IS CLAMP(surf_fpa + ASC_PITCH_BIAS, fpa_floor, fpa_max).
@@ -439,7 +434,7 @@ FUNCTION _ASC_ZOOM {
   // Apo growth guard: stop pitching if rising too fast near target.
   LOCAL elapsed IS MAX(TIME:SECONDS - ASC_APO_PREV_UT, 0.5).
   LOCAL apo_rate IS (ASC_APO_VAL - ASC_APO_PREV) / elapsed.
-  IF apo_rate > 500 AND ASC_APO_VAL > zoom_apo * 0.80 {
+  IF apo_rate > ASC_ZOOM_APO_RATE_MAX AND ASC_APO_VAL > zoom_apo * 0.80 {
     SET pitch_target TO ASC_PITCH_BIAS. // hold
   }
 
@@ -448,7 +443,7 @@ FUNCTION _ASC_ZOOM {
 
   // --- Steering: surface prograde + rising pitch bias ---------------
   LOCAL surf_fpa IS _ASC_SURF_FPA_SMOOTH(dt).
-  LOCAL fpa_cmd  IS CLAMP(surf_fpa + ASC_PITCH_BIAS, -10.0, 55.0).
+  LOCAL fpa_cmd  IS CLAMP(surf_fpa + ASC_PITCH_BIAS, ASC_ZOOM_FPA_MIN, ASC_ZOOM_FPA_MAX).
   LOCAL hdg_cmd IS _ASC_HDG_SMOOTH(_ASC_SURFACE_HDG(), dt).
   AA_SET_DIRECTOR(hdg_cmd, fpa_cmd).
   SET TELEM_AA_HDG_CMD TO hdg_cmd.
@@ -530,12 +525,11 @@ FUNCTION _ASC_ROCKET_SUSTAIN {
   IF ASC_IS_SPOOLING {
     LOCAL t_ab_now   IS 0.
     LOCAL t_ab_rated IS 0.
-    LOCAL pressure   IS SHIP:BODY:ATM:ALTITUDEPRESSURE(SHIP:ALTITUDE).
     LOCAL i IS 0.
     UNTIL i >= ASC_AB_ENGINES:LENGTH {
       LOCAL eng IS ASC_AB_ENGINES[i].
       SET t_ab_now   TO t_ab_now   + eng:THRUST.
-      SET t_ab_rated TO t_ab_rated + eng:AVAILABLETHRUSTAT(pressure).
+      SET t_ab_rated TO t_ab_rated + eng:AVAILABLETHRUSTAT(ASC_PRESSURE_CACHED).
       SET i TO i + 1.
     }
     // Spool complete when AB thrust has decayed or engines are truly off.
@@ -626,7 +620,7 @@ FUNCTION _ASC_ROCKET_CLOSEOUT {
   LOCAL apo_guard IS 0.
   IF SHIP:ORBIT:APOAPSIS < apo_low {
     LOCAL deficit IS apo_low - SHIP:ORBIT:APOAPSIS.
-    SET apo_guard TO CLAMP(deficit * ASC_APO_KP * 2, 0, 10.0).
+    SET apo_guard TO CLAMP(deficit * ASC_APO_KP * 2, 0, ASC_APO_GUARD_MAX_DEG).
   }
 
   LOCAL fpa_cmd IS CLAMP(orb_fpa + apo_guard, -5.0, 10.0).
@@ -737,7 +731,7 @@ FUNCTION RUN_ASCENT {
     // trigger is no longer needed.
     WHEN ASC_AB_ENGINES:LENGTH > 0
      AND ASC_AB_THR_RATIO < ASC_FLAMEOUT_THR_RATIO
-     AND TELEM_ASC_MACH < ASC_REGIME_MACH_CACHED * 0.85
+     AND TELEM_ASC_MACH < ASC_REGIME_MACH_CACHED * ASC_FLAMEOUT_MACH_GUARD_FRAC
      AND (SHIP:AIRSPEED > 120 OR ALT:RADAR > 1000 OR SHIP:VERTICALSPEED > 25)
      AND IFC_PHASE = PHASE_ASCENT
      AND (IFC_SUBPHASE = SUBPHASE_ASC_AB_CORRIDOR

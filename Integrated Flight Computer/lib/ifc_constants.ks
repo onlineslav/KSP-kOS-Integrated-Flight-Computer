@@ -383,6 +383,7 @@ GLOBAL ASC_EMA_VAL_AERO   IS 0.15. // along-track aero force (valuation copy)
 GLOBAL ASC_EMA_VAL_EDOT   IS 0.15. // orbital energy rate (valuation copy)
 GLOBAL ASC_EMA_VAL_APO    IS 0.20. // apoapsis altitude (valuation copy)
 GLOBAL ASC_EMA_VAL_MDOT   IS 0.20. // mass flow, both modes (valuation copy)
+GLOBAL ASC_EMA_VAL_Q      IS 0.12. // dynamic pressure (valuation copy — slower than control)
 
 GLOBAL ASC_EMA_DRAG_RK    IS 0.10. // drag for J_rk — dedicated heavy filter
 GLOBAL ASC_EMA_EDOT_ORB   IS 0.15. // orbital-state Ė cross-check (same band as valuation)
@@ -417,12 +418,15 @@ GLOBAL ASC_VS_FF_ALT_CUTOFF IS 10000.  // m  altitude at which VS feedforward fa
 // ----------------------------
 // Zoom phase
 // ----------------------------
-GLOBAL ASC_ZOOM_PITCH_RATE  IS 0.75.    // deg/s  controlled pitch rise rate
-GLOBAL ASC_ZOOM_PITCH_MAX   IS 40.0.    // deg    max pitch in zoom
-GLOBAL ASC_Q_ZOOM_ENTRY     IS 0.70.    // fraction of q_target below which zoom eligible
-GLOBAL ASC_CEIL_EDOT_THR    IS 1000.0.  // m²/s³  orbital Ė below this = speed-ceiling
-GLOBAL ASC_CEIL_PERSIST_S   IS 20.0.    // s  orbital Ė must stay below threshold before committing
-GLOBAL ASC_ZOOM_APO_WINDOW_S IS 8.0.   // s  window for apoapsis growth rate estimation
+GLOBAL ASC_ZOOM_PITCH_RATE     IS 0.75.  // deg/s  controlled pitch rise rate
+GLOBAL ASC_ZOOM_PITCH_MAX      IS 40.0.  // deg    max pitch in zoom
+GLOBAL ASC_ZOOM_FPA_MIN        IS -10.0. // deg    FPA command floor in zoom phase
+GLOBAL ASC_ZOOM_FPA_MAX        IS 55.0.  // deg    FPA command ceiling in zoom phase
+GLOBAL ASC_ZOOM_APO_RATE_MAX   IS 500.0. // m/s    apoapsis growth rate above which pitch is held in zoom
+GLOBAL ASC_Q_ZOOM_ENTRY        IS 0.70.  // fraction of q_target below which zoom eligible
+GLOBAL ASC_CEIL_EDOT_THR       IS 1000.0. // m²/s³  orbital Ė below this = speed-ceiling
+GLOBAL ASC_CEIL_PERSIST_S      IS 20.0.  // s  orbital Ė must stay below threshold before committing
+GLOBAL ASC_ZOOM_APO_WINDOW_S   IS 8.0.  // s  window for apoapsis growth rate estimation
 
 // ----------------------------
 // Mode switch persistence
@@ -443,6 +447,9 @@ GLOBAL ASC_DRAG_FLOOR_FRAC  IS 0.05. // fraction of current drag as absolute flo
 GLOBAL ASC_FUEL_FLOOR_DV_MARGIN IS 150. // m/s  safety margin above estimated circ ΔV
 GLOBAL ASC_PROP_DENSITY         IS 5.0. // kg/unit  LiquidFuel and Oxidizer (KSP stock)
 GLOBAL ASC_CORRIDOR_FPA_MIN     IS 0.0.  // deg  FPA command floor in AB corridor (never command descent)
+GLOBAL ASC_CORRIDOR_GUARD_AGL_M IS 1500. // m AGL  below this, safety floor overrides FPA minimum
+GLOBAL ASC_CORRIDOR_GUARD_APO_FRAC IS 0.90. // fraction of zoom target: if apo below this, guard FPA floor applies
+GLOBAL ASC_APO_GUARD_MAX_DEG    IS 10.0. // deg  max nose-up guard bias applied in ROCKET_CLOSEOUT to recover apoapsis
 GLOBAL ASC_FUEL_FLOOR_MIN_APO_FRAC IS 0.50. // fraction of zoom_apo required before fuel floor can commit
 
 // ----------------------------
@@ -471,6 +478,7 @@ GLOBAL ASC_MIN_Q_GAIN       IS 3000. // Pa    minimum q for gain scheduling deno
 GLOBAL ASC_FLAMEOUT_THR_RATIO IS 0.5. // actual/available thrust below this = flameout
 GLOBAL ASC_REGIME_MACH_DEFAULT IS 4.5. // Mach  default RAPIER-type regime boundary
 GLOBAL ASC_SWITCH_MACH_FLOOR_FRAC IS 0.75. // fraction of regime Mach below which planned AB→rocket/ZOOM transitions are blocked
+GLOBAL ASC_FLAMEOUT_MACH_GUARD_FRAC IS 0.85. // fraction of regime Mach below which flameout detection is active (tighter than switch floor — near regime boundary, thrust decline is scheduled not a failure)
 
 // ----------------------------
 // Estimator validity thresholds

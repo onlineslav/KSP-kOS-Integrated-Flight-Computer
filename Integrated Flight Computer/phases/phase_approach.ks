@@ -296,7 +296,7 @@ FUNCTION _RUN_ILS_TRACK {
   // Bank angle limiter: AA has no native bank limit, so we implement it here.
   // Fade loc_corr to zero as bank approaches limit; add counter-correction if over.
   LOCAL max_bank IS AC_PARAM("aa_max_bank", AA_MAX_BANK, 0.001).
-  LOCAL bank IS 90 - VECTORANGLE(SHIP:FACING:STARVECTOR, SHIP:UP:VECTOR).
+  LOCAL bank IS TELEM_BANK_DEG.
   LOCAL bank_abs IS ABS(bank).
   LOCAL bank_fade_start IS max_bank * 0.70.
   LOCAL bank_fade_span  IS MAX(max_bank - bank_fade_start, 0.1).
@@ -385,10 +385,9 @@ FUNCTION _CHECK_FLAP_DEPLOYMENT {
   LOCAL ag_step_dn IS ac["ag_flaps_step_down"].
   IF ag_step_up <= 0 OR ag_step_dn <= 0 { RETURN. }
 
-  LOCAL ils IS GET_BEACON(ACTIVE_ILS_ID).
-  IF NOT ils:HASKEY("ll") { RETURN. }
-
-  LOCAL dist_km IS GEO_DISTANCE(SHIP:GEOPOSITION, ils["ll"]) / 1000.
+  // Use ILS_DIST_M cached by _COMPUTE_ILS_DEVIATIONS this cycle (P3c).
+  IF ILS_DIST_M <= 0 { RETURN. }
+  LOCAL dist_km IS ILS_DIST_M / 1000.
   LOCAL ias     IS GET_IAS().
 
   LOCAL max_det IS ROUND(AC_PARAM("flaps_max_detent", 3, 0)).
@@ -477,9 +476,9 @@ FUNCTION _CHECK_APPROACH_SPOILERS {
   LOCAL arm_km IS AC_PARAM("app_spoiler_arm_km", 0, 0.001).
   IF arm_ag <= 0 OR arm_km <= 0 { RETURN. }
 
-  LOCAL ils IS GET_BEACON(ACTIVE_ILS_ID).
-  IF NOT ils:HASKEY("ll") { RETURN. }
-  LOCAL dist_km IS GEO_DISTANCE(SHIP:GEOPOSITION, ils["ll"]) / 1000.
+  // Use ILS_DIST_M cached by _COMPUTE_ILS_DEVIATIONS this cycle (P3c).
+  IF ILS_DIST_M <= 0 { RETURN. }
+  LOCAL dist_km IS ILS_DIST_M / 1000.
   IF dist_km <= arm_km {
     TRIGGER_AG(arm_ag, TRUE).
     SET APP_SPOILERS_ARMED TO TRUE.
@@ -493,15 +492,14 @@ FUNCTION _CHECK_APPROACH_SPOILERS {
 // Returns a LEXICON: "loc" (m), "gs" (m), "dist" (m from thr)
 // ─────────────────────────────────────────────────────────
 FUNCTION _COMPUTE_ILS_DEVIATIONS {
-  LOCAL ils IS GET_BEACON(ACTIVE_ILS_ID).
-
-  // Threshold world-space position.
-  LOCAL thr_pos IS ils["ll"]:ALTITUDEPOSITION(ils["alt_asl"]).
+  // Threshold world-space position — use cached GeoCoordinates (P2b).
+  LOCAL thr_pos IS ILS_THR_GEO_LL:ALTITUDEPOSITION(ACTIVE_THR_ALT).
 
   // Unit vectors along and perpendicular to the runway (horizontal).
-  // HEADING(hdg, 0):FOREVECTOR gives the horizontal surface direction.
-  LOCAL rwy_fwd   IS HEADING(ils["hdg"],      0):FOREVECTOR.
-  LOCAL rwy_right IS HEADING(ils["hdg"] + 90, 0):FOREVECTOR.
+  // Build a single HEADING Direction and extract both vectors (P2c).
+  LOCAL rwy_dir   IS HEADING(ACTIVE_RWY_HDG, 0).
+  LOCAL rwy_fwd   IS rwy_dir:FOREVECTOR.
+  LOCAL rwy_right IS rwy_dir:STARVECTOR.
 
   // Displacement from threshold to aircraft.
   LOCAL disp IS SHIP:POSITION - thr_pos.
@@ -514,8 +512,12 @@ FUNCTION _COMPUTE_ILS_DEVIATIONS {
   LOCAL loc_m IS VDOT(disp, rwy_right).
 
   // Nominal glideslope altitude at this distance from threshold.
-  LOCAL gs_nom_alt IS ils["alt_asl"] + dist_m * TAN(ils["gs_angle"]).
+  // Use cached TAN(gs_angle) — set once in IFC_LOAD_PLATE (P2b).
+  LOCAL gs_nom_alt IS ACTIVE_THR_ALT + dist_m * ILS_GS_TAN_CACHED.
   LOCAL gs_m       IS SHIP:ALTITUDE - gs_nom_alt.  // positive = above GS
+
+  // Cache distance globally so flap/spoiler checks can reuse it (P3b).
+  SET ILS_DIST_M TO dist_m.
 
   RETURN LEXICON("loc", loc_m, "gs", gs_m, "dist", dist_m).
 }

@@ -448,6 +448,7 @@ FUNCTION _RUN_FLIGHT_PLAN {
 
   SAS OFF.
   LOCK THROTTLE TO THROTTLE_CMD.
+  LOCK STEERING TO IFC_DESIRED_STEERING.
 
   SET FLIGHT_PLAN       TO plan.
   SET FLIGHT_PLAN_INDEX TO 0.
@@ -464,6 +465,20 @@ FUNCTION _RUN_FLIGHT_PLAN {
     IF IFC_RAW_DT > IFC_RAW_DT_MAX { SET IFC_RAW_DT_MAX TO IFC_RAW_DT. }
     IF IFC_RAW_DT < IFC_RAW_DT_MIN { SET IFC_RAW_DT_MIN TO IFC_RAW_DT. }
 
+    // ── Per-loop vector cache (P1b) ────────────────────────
+    // Query each VM suffix once; all phase functions read these globals.
+    LOCAL _fac IS SHIP:FACING.
+    SET IFC_FACING_FWD  TO _fac:FOREVECTOR.
+    SET IFC_FACING_STAR TO _fac:STARVECTOR.
+    SET IFC_FACING_TOP  TO _fac:TOPVECTOR.
+    SET IFC_UP_VEC      TO SHIP:UP:VECTOR.
+    SET IFC_NORTH_VEC   TO SHIP:NORTH:VECTOR.
+    // Telemetry: heading / pitch / bank computed once here (P1d)
+    LOCAL _east IS VCRS(IFC_NORTH_VEC, IFC_UP_VEC).
+    SET TELEM_PITCH_DEG   TO 90 - VECTORANGLE(IFC_FACING_FWD, IFC_UP_VEC).
+    SET TELEM_COMPASS_HDG TO MOD(ARCTAN2(VDOT(IFC_FACING_FWD, _east), VDOT(IFC_FACING_FWD, IFC_NORTH_VEC)) + 360, 360).
+    SET TELEM_BANK_DEG    TO 90 - VECTORANGLE(IFC_FACING_STAR, IFC_UP_VEC).
+
     LOCAL menu_result IS "".
     IF IFC_FAST_MODE {
       // Fast-mode: avoid menu/UI overhead; keep a minimal quit key path.
@@ -471,14 +486,14 @@ FUNCTION _RUN_FLIGHT_PLAN {
         LOCAL ch IS TERMINAL:INPUT:GETCHAR().
         IF ch = "q" OR ch = "Q" {
           SET menu_result TO "QUIT".
-          SET IFC_PHASE TO PHASE_DONE.
+          SET_PHASE(PHASE_DONE).
           IFC_SET_UI_MODE(UI_MODE_COMPLETE).
         }
       }
     } ELSE {
       SET menu_result TO MENU_TICK().
       IF menu_result = "QUIT" {
-        SET IFC_PHASE TO PHASE_DONE.
+        SET_PHASE(PHASE_DONE).
         IFC_SET_UI_MODE(UI_MODE_COMPLETE).
       }
     }
@@ -517,11 +532,7 @@ FUNCTION _RUN_FLIGHT_PLAN {
 
     LOGGER_WRITE().
     IF NOT IFC_FAST_MODE { DISPLAY_TICK(). }
-    IF IFC_FAST_MODE {
-      WAIT 0.
-    } ELSE {
-      WAIT IFC_LOOP_DT.
-    }
+    WAIT IFC_LOOP_DT.
   }
 
   // ── Shutdown ──────────────────────────────────────────

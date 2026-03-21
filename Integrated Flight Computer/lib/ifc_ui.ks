@@ -5,8 +5,16 @@
 // Low-level screen engine. ASCII-only to avoid terminal charset issues.
 // ============================================================
 
+// Pre-built space strings " ", "  ", ... up to UI_W.
+// Populated in UI_INIT. Index k holds a string of k spaces.
+GLOBAL _UI_SPACES IS LIST("").
+
 FUNCTION STR_REPEAT {
   PARAMETER c, n.
+  // Fast path: spaces use the pre-built lookup table (P6a).
+  IF c = " " AND n >= 0 AND n < _UI_SPACES:LENGTH {
+    RETURN _UI_SPACES[n].
+  }
   LOCAL s IS "".
   LOCAL i IS 0.
   UNTIL i >= n {
@@ -112,6 +120,16 @@ FUNCTION UI_BAR_DEV {
 FUNCTION UI_INIT {
   SET UI_W TO MAX(TERMINAL:WIDTH, 42).
   LOCAL term_h IS MAX(TERMINAL:HEIGHT, 22).
+
+  // Build space-string lookup table up to terminal width (P6a).
+  _UI_SPACES:CLEAR().
+  LOCAL _sp IS "".
+  LOCAL _si IS 0.
+  UNTIL _si > UI_W {
+    _UI_SPACES:ADD(_sp).
+    SET _sp TO _sp + " ".
+    SET _si TO _si + 1.
+  }
 
   // Dynamic row layout: scale to terminal height while keeping
   // the original 22-row geometry as the minimum.

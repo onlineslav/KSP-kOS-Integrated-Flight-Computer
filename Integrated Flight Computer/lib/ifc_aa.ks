@@ -92,8 +92,10 @@ FUNCTION AA_SET_DIRECTOR {
   LOCAL aa IS _AA_GET_HANDLE().
   IF aa = 0 {
     SET AA_AVAILABLE TO FALSE.
-    // Fallback: kOS built-in steering.
-    LOCK STEERING TO HEADING(hdg_deg, fpa_deg).
+    // Fallback: write to the global that is locked to STEERING in _RUN_FLIGHT_PLAN.
+    // A direct LOCK STEERING here would capture hdg_deg/fpa_deg as locals that go
+    // out of scope after this function returns, producing stale or zero steering.
+    SET IFC_DESIRED_STEERING TO HEADING(hdg_deg, fpa_deg).
     RETURN.
   }
   SET AA_AVAILABLE TO TRUE.

@@ -201,19 +201,18 @@ FUNCTION GET_CURRENT_THROTTLE {
 }
 
 // Current aircraft pitch above the horizon.
+// Reads the per-loop cached facing/up vectors (IFC_FACING_FWD, IFC_UP_VEC).
 FUNCTION GET_PITCH {
-  RETURN 90 - VECTORANGLE(SHIP:FACING:FOREVECTOR, SHIP:UP:VECTOR).
+  RETURN 90 - VECTORANGLE(IFC_FACING_FWD, IFC_UP_VEC).
 }
 
 // Compass heading of SHIP:FACING (0-360, 0=North, 90=East).
 // SHIP:HEADING returns 0 on the ground in kOS; use vectors instead.
+// Reads the per-loop cached vectors to avoid redundant VM suffix calls.
 FUNCTION GET_COMPASS_HDG {
-  LOCAL fwd_v   IS SHIP:FACING:FOREVECTOR.
-  LOCAL up_v    IS SHIP:UP:VECTOR.
-  LOCAL north_v IS SHIP:NORTH:VECTOR.
-  LOCAL horiz   IS (fwd_v - up_v * VDOT(fwd_v, up_v)):NORMALIZED.
-  LOCAL east_v  IS VCRS(up_v, north_v):NORMALIZED.  // up × north = east in KSP surface frame
-  RETURN MOD(ARCTAN2(VDOT(horiz, east_v), VDOT(horiz, north_v)) + 360, 360).
+  LOCAL horiz  IS (IFC_FACING_FWD - IFC_UP_VEC * VDOT(IFC_FACING_FWD, IFC_UP_VEC)):NORMALIZED.
+  LOCAL east_v IS VCRS(IFC_UP_VEC, IFC_NORTH_VEC):NORMALIZED.  // up × north = east in KSP surface frame
+  RETURN MOD(ARCTAN2(VDOT(horiz, east_v), VDOT(horiz, IFC_NORTH_VEC)) + 360, 360).
 }
 
 // ----------------------------
