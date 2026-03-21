@@ -65,7 +65,8 @@ FUNCTION RUN_CRUISE {
   LOCAL alt_err IS SHIP:ALTITUDE - tgt_alt.
   LOCAL fpa_cmd IS CLAMP(-alt_err * KP_ALT_FPA, MAX_DESC_FPA, MAX_CLIMB_FPA).
   // Suppress descent during large heading changes to prevent spiral dives.
-  LOCAL hdg_err IS WRAP_360(brg - SHIP:HEADING).
+  // NOTE: SHIP:HEADING returns 0 in kOS; use the vector-based GET_COMPASS_HDG().
+  LOCAL hdg_err IS WRAP_360(brg - GET_COMPASS_HDG()).
   IF hdg_err > 180 { SET hdg_err TO 360 - hdg_err. }
   IF hdg_err > 45 AND fpa_cmd < 0 { SET fpa_cmd TO 0. }
 

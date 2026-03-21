@@ -112,20 +112,26 @@ FUNCTION LOGGER_INIT {
   LOCAL log_dir IS "0:/Integrated Flight Computer/logs".
   IF NOT EXISTS(log_dir) { CREATEDIR(log_dir). }
 
-  // Build a unique logfile name every run.
-  // Use centiseconds to reduce collisions, then add a numeric suffix
-  // if a file with the same name already exists (e.g. after quickload).
-  LOCAL ts IS ROUND(MOD(TIME:SECONDS * 100, 10000000), 0).
-  LOCAL base_name IS "ifc_log_" + ts.
-  LOCAL candidate IS log_dir + "/" + base_name + ".csv".
-  LOCAL suffix IS 0.
-  UNTIL NOT EXISTS(candidate) {
-    SET suffix TO suffix + 1.
-    SET candidate TO log_dir + "/" + base_name + "_" + suffix + ".csv".
+  // Build a unique logfile name using a persistent counter file.
+  // Reading one file is O(1) regardless of how many logs exist — no scan loop.
+  LOCAL counter_path IS log_dir + "/counter.txt".
+  LOCAL seq IS 1.
+  IF EXISTS(counter_path) {
+    LOCAL counter_str IS OPEN(counter_path):READALL:STRING:TRIM.
+    IF counter_str:LENGTH > 0 {
+      LOCAL parsed IS counter_str:TONUMBER(0).
+      IF parsed >= 1 { SET seq TO ROUND(parsed). }
+    }
   }
-  SET LOG_FILE TO candidate.
+  // Write the next sequence number back so subsequent runs get unique filenames.
+  IF EXISTS(counter_path) { DELETEPATH(counter_path). }
+  LOG (seq + 1) TO counter_path.
 
-  LOG "t_s,phase,subphase,ias_ms,vapp_ms,spd_err_ms,agl_m,vs_ms,pitch_deg,aoa_deg,hdg_deg,bank_deg,thr_cmd,thr_cur,thr_intg,at_gain,at_tau_s,at_a_up,at_a_dn,at_kp_thr,at_ki_spd,at_thr_slew,aa_hdg_cmd_deg,aa_fpa_cmd_deg,ils_loc_m,ils_gs_m,ils_dist_km,loc_corr_deg,gs_corr_deg,flare_fpa_cmd,flare_tgt_vs,flare_frac,steer_hdg_deg,steer_blend,ro_loc_corr_deg,ro_hdg_err_deg,ro_yaw_tgt,ro_yaw_scale,ro_yaw_gate,yaw_cmd,roll_cmd,pitch_cmd,ro_pitch_tgt_deg,ro_pitch_err_deg,ro_pitch_ff,ro_roll_assist,flaps_cur,flaps_tgt,asc_j_ab,asc_j_rk,asc_validity,asc_q_pa,asc_q_raw_pa,asc_mach,asc_apo_m,asc_drag_n,asc_w_prop,asc_edot_aero,asc_edot_orb,asc_pitch_bias,asc_blend,asc_spooling,asc_ab_thr_ratio,asc_ab_t_now,asc_ab_t_avail,asc_ab_ign_on,asc_ab_flameouts,asc_rk_t_now,asc_rk_t_avail,asc_rk_ign_on,asc_rk_flameouts,ship_thrust,ship_avail_thrust,ship_ign_on,ship_flameouts,ifc_raw_dt_s,ifc_dt_s,ifc_loop_n,ifc_hz_est,ifc_raw_dt_max_s,ifc_raw_dt_min_s,phase_el_s,status" TO LOG_FILE.
+  LOCAL seq_str IS "" + seq.
+  UNTIL seq_str:LENGTH >= 8 { SET seq_str TO "0" + seq_str. }
+  SET LOG_FILE TO log_dir + "/ifc_log_" + seq_str + ".csv".
+
+  LOG "t_s,phase,subphase,ias_ms,vapp_ms,spd_err_ms,agl_m,vs_ms,pitch_deg,aoa_deg,hdg_deg,bank_deg,thr_cmd,thr_cur,thr_intg,at_gain,at_tau_s,at_a_up,at_a_dn,at_kp_thr,at_ki_spd,at_thr_slew,aa_hdg_cmd_deg,aa_fpa_cmd_deg,aa_fbw,aa_dir,actual_fpa_deg,ftf_hdg_err_deg,ftf_fix_idx,kos_steer_pit_deg,kos_steer_hdg_deg,aa_dir_vx,aa_dir_vy,aa_dir_vz,aa_dir_pitch_deg,aa_dir_hdg_deg,ils_loc_m,ils_gs_m,ils_dist_km,loc_corr_deg,gs_corr_deg,flare_fpa_cmd,flare_tgt_vs,flare_frac,steer_hdg_deg,steer_blend,ro_loc_corr_deg,ro_hdg_err_deg,ro_yaw_tgt,ro_yaw_scale,ro_yaw_gate,yaw_cmd,roll_cmd,pitch_cmd,ro_pitch_tgt_deg,ro_pitch_err_deg,ro_pitch_ff,ro_roll_assist,flaps_cur,flaps_tgt,asc_j_ab,asc_j_rk,asc_validity,asc_q_pa,asc_q_raw_pa,asc_mach,asc_apo_m,asc_drag_n,asc_w_prop,asc_edot_aero,asc_edot_orb,asc_pitch_bias,asc_blend,asc_spooling,asc_ab_thr_ratio,asc_ab_t_now,asc_ab_t_avail,asc_ab_ign_on,asc_ab_flameouts,asc_rk_t_now,asc_rk_t_avail,asc_rk_ign_on,asc_rk_flameouts,ship_thrust,ship_avail_thrust,ship_ign_on,ship_flameouts,ifc_raw_dt_s,ifc_dt_s,ifc_loop_n,ifc_hz_est,ifc_raw_dt_max_s,ifc_raw_dt_min_s,phase_el_s,status" TO LOG_FILE.
 
   SET LOG_ACTIVE TO TRUE.
   SET LOG_LAST_WRITE_UT TO TIME:SECONDS - IFC_CSV_LOG_PERIOD.
@@ -199,6 +205,18 @@ FUNCTION LOGGER_WRITE {
     ROUND(TELEM_AT_THR_SLEW,          4),
     ROUND(TELEM_AA_HDG_CMD,           2),
     ROUND(TELEM_AA_FPA_CMD,           3),
+    ROUND(TELEM_AA_FBW_ON,            0),
+    ROUND(TELEM_AA_DIR_ON,            0),
+    ROUND(TELEM_ACTUAL_FPA_DEG,       2),
+    ROUND(TELEM_FTF_HDG_ERR,          2),
+    ROUND(TELEM_FTF_FIX_IDX,          0),
+    ROUND(TELEM_KOS_STEER_PIT,        2),
+    ROUND(TELEM_KOS_STEER_HDG,        2),
+    ROUND(TELEM_AA_DIR_VX,            4),
+    ROUND(TELEM_AA_DIR_VY,            4),
+    ROUND(TELEM_AA_DIR_VZ,            4),
+    ROUND(TELEM_AA_DIR_PITCH_DEG,     2),
+    ROUND(TELEM_AA_DIR_HDG_DEG,       2),
     ROUND(ILS_LOC_DEV,                2),
     ROUND(ILS_GS_DEV,                 2),
     ROUND(ILS_DIST_M / 1000,          3),

@@ -184,13 +184,16 @@ FUNCTION _RUN_APPROACH_THROTTLE {
 // Descend to the target altitude associated with each fix.
 // ─────────────────────────────────────────────────────────
 FUNCTION _RUN_FLY_TO_FIX {
-  // If we're already on the localizer inbound, hand off directly to ILS track
-  // without waiting for the remaining fix sequence.
+  // If we're already on the localizer inbound and heading toward the runway,
+  // hand off directly to ILS track without waiting for the remaining fix sequence.
+  // Heading alignment check prevents early capture when heading away from the runway.
   IF ACTIVE_ILS_ID <> "" {
     LOCAL ils_dev IS _COMPUTE_ILS_DEVIATIONS().
+    LOCAL early_hdg_ok IS ABS(WRAP_180(GET_COMPASS_HDG() - ACTIVE_RWY_HDG)) < 90.
     IF ils_dev:HASKEY("loc") AND ils_dev:HASKEY("dist")
         AND ils_dev["dist"] > 0
-        AND ABS(ils_dev["loc"]) <= LOC_CAPTURE_M {
+        AND ABS(ils_dev["loc"]) <= LOC_CAPTURE_M
+        AND early_hdg_ok {
       SET ILS_INTERCEPT_ALT TO SHIP:ALTITUDE.
       SET_SUBPHASE(SUBPHASE_ILS_TRACK).
       SET PREV_LOC_DEV TO 0.
@@ -208,6 +211,8 @@ FUNCTION _RUN_FLY_TO_FIX {
     RETURN.
   }
 
+  SET TELEM_FTF_FIX_IDX TO FIX_INDEX.
+
   LOCAL fix_id  IS ACTIVE_FIXES[FIX_INDEX].
   LOCAL fix     IS GET_BEACON(fix_id).
   LOCAL fix_ll  IS fix["ll"].
@@ -222,16 +227,29 @@ FUNCTION _RUN_FLY_TO_FIX {
   LOCAL brg   IS GEO_BEARING(SHIP:GEOPOSITION, fix_ll).
   LOCAL dist  IS GEO_DISTANCE(SHIP:GEOPOSITION, fix_ll).
 
+  // Skip fixes that require a reversal relative to the runway approach heading.
+  // If the bearing to this fix differs by more than 90° from the approach heading,
+  // the fix is effectively "behind" the aircraft (already overflown or wrong-direction).
+  // Advance FIX_INDEX and return immediately — no reversal command is issued.
+  IF ABS(WRAP_180(brg - ACTIVE_RWY_HDG)) > 90 {
+    SET FIX_INDEX TO FIX_INDEX + 1.
+    RETURN.
+  }
+
   // Heading error to the fix (0-180).
-  LOCAL hdg_err IS WRAP_360(brg - SHIP:HEADING).
+  // NOTE: SHIP:HEADING returns 0 in kOS; use the vector-based GET_COMPASS_HDG().
+  LOCAL hdg_err IS WRAP_360(brg - GET_COMPASS_HDG()).
   IF hdg_err > 180 { SET hdg_err TO 360 - hdg_err. }
+  SET TELEM_FTF_HDG_ERR TO hdg_err.
 
   // Proportional FPA based on altitude error.
-  // Suppress descent during large heading changes to prevent spiral dives.
-  // Climbing is still allowed (fix may be above current altitude).
+  // Suppress ALL FPA during a near-reversal (>90°) to prevent pitch oscillation
+  // while AA Director is turning the aircraft.  For moderate errors (45-90°) only
+  // suppress descent to avoid spiral dives.
   LOCAL alt_err IS SHIP:ALTITUDE - tgt_alt.
   LOCAL fpa_cmd IS CLAMP(-alt_err * KP_ALT_FPA, MAX_DESC_FPA, MAX_CLIMB_FPA).
-  IF hdg_err > 45 AND fpa_cmd < 0 { SET fpa_cmd TO 0. }
+  IF hdg_err > 90 { SET fpa_cmd TO 0. }
+  ELSE IF hdg_err > 45 AND fpa_cmd < 0 { SET fpa_cmd TO 0. }
 
   AA_SET_DIRECTOR(brg, fpa_cmd).
   SET TELEM_AA_HDG_CMD TO brg.

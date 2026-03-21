@@ -239,6 +239,7 @@ GLOBAL TAKEOFF_ROTATE_PITCH_FF    IS 0.08. // control cmd baseline back-pressure
 GLOBAL TAKEOFF_ROTATE_PITCH_MIN_CMD IS 0.12. // minimum nose-up pitch cmd while rotate target is above current pitch
 GLOBAL TAKEOFF_ROTATE_PITCH_MAX_CMD IS 0.45. // max pitch control cmd during on-ground rotate
 GLOBAL TAKEOFF_ROTATE_PITCH_SLEW_PER_S IS 1.6. // control units/s pitch cmd slew during on-ground rotate
+GLOBAL TAKEOFF_ROTATE_PITCH_MIN_DOWN_CMD IS -0.10. // max nose-down pitch cmd allowed during on-ground rotate
 GLOBAL TAKEOFF_CLIMB_FPA          IS 8.0.  // deg  FPA commanded during climb-out
 GLOBAL TAKEOFF_DONE_AGL           IS 300.  // m AGL  altitude where takeoff phase ends
 GLOBAL TAKEOFF_AIRBORNE_AGL_M     IS 3.    // m AGL  detect liftoff above this
@@ -320,11 +321,11 @@ GLOBAL IFC_DISPLAY_PERIOD   IS 0.10. // s  primary zone (10 Hz)
 GLOBAL IFC_HEADER_PERIOD    IS 0.20. // s  header + breadcrumb (5 Hz)
 GLOBAL IFC_SECONDARY_PERIOD IS 0.20. // s  debug panel (5 Hz)
 GLOBAL IFC_LOGGER_PERIOD    IS 0.50. // s  logger bar (2 Hz)
-GLOBAL IFC_CSV_LOG_PERIOD   IS 2.00. // s  CSV telemetry write period (0.5 Hz)
+GLOBAL IFC_CSV_LOG_PERIOD   IS 0.25. // s  CSV telemetry write period (4 Hz)
                                       // WARNING: kOS LOG..TO blocks the main loop for the
                                       // duration of the file I/O. On Windows with AV this
-                                      // can be 100-500 ms per call — keep this period large
-                                      // or disable logging to avoid autothrottle lag.
+                                      // can be 100-500 ms per call — reduce rate or disable
+                                      // logging if autothrottle lag is observed.
 GLOBAL IFC_ALERT_EXPIRE_S   IS 5.0.  // s  auto-clear alert after this long
 
 // ----------------------------

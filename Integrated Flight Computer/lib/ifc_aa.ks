@@ -101,11 +101,24 @@ FUNCTION AA_SET_DIRECTOR {
   SET AA_AVAILABLE TO TRUE.
 
   LOCAL dir_vec IS HEADING(hdg_deg, fpa_deg):VECTOR.
+  SET TELEM_AA_DIR_VX TO dir_vec:X.
+  SET TELEM_AA_DIR_VY TO dir_vec:Y.
+  SET TELEM_AA_DIR_VZ TO dir_vec:Z.
+  // Compute the actual heading and pitch this vector represents (same formula as
+  // TELEM_COMPASS_HDG / TELEM_PITCH_DEG in ifc_main.ks) so we can verify the
+  // vector matches what we commanded.
+  LOCAL _up   IS IFC_UP_VEC.
+  LOCAL _nrth IS IFC_NORTH_VEC.
+  LOCAL _est  IS VCRS(_up, _nrth).
+  SET TELEM_AA_DIR_PITCH_DEG TO 90 - VECTORANGLE(dir_vec, _up).
+  SET TELEM_AA_DIR_HDG_DEG   TO MOD(ARCTAN2(VDOT(dir_vec, _est), VDOT(dir_vec, _nrth)) + 360, 360).
+  // Keep kOS LOCK STEERING aligned with the commanded direction so it never
+  // fights AA Director (AA overrides SHIP:CONTROL but this is defensive).
+  SET IFC_DESIRED_STEERING TO HEADING(hdg_deg, fpa_deg).
   SET aa:DIRECTION TO dir_vec.
 
-  // Ensure Director mode is active, others off.
+  // Ensure Director mode is active; leave FBW running for inner-loop stability.
   IF aa:HASSUFFIX("CRUISE")   AND aa:CRUISE   { SET aa:CRUISE   TO FALSE. }
-  IF aa:HASSUFFIX("FBW")      AND aa:FBW      { SET aa:FBW      TO FALSE. }
   IF aa:HASSUFFIX("DIRECTOR") AND NOT aa:DIRECTOR {
     SET aa:DIRECTOR TO TRUE.
     SET AA_DIRECTOR_ON TO TRUE.
@@ -146,6 +159,17 @@ FUNCTION AA_DISABLE_ALL {
   IF aa:HASSUFFIX("FBW")      AND aa:FBW      { SET aa:FBW      TO FALSE. }
   SET AA_DIRECTOR_ON TO FALSE.
   SET AA_FBW_ON      TO FALSE.
+}
+
+// Read actual FBW and Director states from the AA object into TELEM variables.
+// Call once per loop cycle so the logger captures real mode state, not the
+// tracked flags (AA_FBW_ON / AA_DIRECTOR_ON), which are not always updated.
+FUNCTION AA_POLL_TELEM {
+  IF NOT AA_AVAILABLE { RETURN. }
+  LOCAL aa IS _AA_GET_HANDLE().
+  IF aa = 0 { RETURN. }
+  IF aa:HASSUFFIX("FBW")      { SET TELEM_AA_FBW_ON TO CHOOSE 1 IF aa:FBW      ELSE 0. }
+  IF aa:HASSUFFIX("DIRECTOR") { SET TELEM_AA_DIR_ON TO CHOOSE 1 IF aa:DIRECTOR ELSE 0. }
 }
 
 // Re-enable FBW after it was switched off (e.g. after Director was active).

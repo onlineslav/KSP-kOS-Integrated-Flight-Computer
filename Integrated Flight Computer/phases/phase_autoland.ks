@@ -501,7 +501,7 @@ FUNCTION _RUN_ROLLOUT {
   // Roll assist: keep wings level during rollout (also speed-scaled).
   // If AA FBW is active, do not inject roll input from IFC to avoid
   // controller fighting and rollout oscillation.
-  LOCAL bank IS 90 - VECTORANGLE(SHIP:FACING:STARVECTOR, SHIP:UP:VECTOR).
+  LOCAL bank IS VECTORANGLE(SHIP:FACING:STARVECTOR, SHIP:UP:VECTOR) - 90.
   LOCAL roll_cmd IS 0.
   LOCAL use_ifc_roll_assist IS NOT (AA_AVAILABLE AND AA_FBW_ON).
   SET TELEM_RO_ROLL_ASSIST TO 0.

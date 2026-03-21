@@ -211,7 +211,7 @@ FUNCTION GET_PITCH {
 // Reads the per-loop cached vectors to avoid redundant VM suffix calls.
 FUNCTION GET_COMPASS_HDG {
   LOCAL horiz  IS (IFC_FACING_FWD - IFC_UP_VEC * VDOT(IFC_FACING_FWD, IFC_UP_VEC)):NORMALIZED.
-  LOCAL east_v IS VCRS(IFC_UP_VEC, IFC_NORTH_VEC):NORMALIZED.  // up × north = east in KSP surface frame
+  LOCAL east_v IS VCRS(IFC_UP_VEC, IFC_NORTH_VEC):NORMALIZED.  // up × north = east in KSP's left-handed surface frame
   RETURN MOD(ARCTAN2(VDOT(horiz, east_v), VDOT(horiz, IFC_NORTH_VEC)) + 360, 360).
 }
 

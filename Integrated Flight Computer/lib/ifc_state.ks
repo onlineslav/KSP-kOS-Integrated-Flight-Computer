@@ -173,6 +173,20 @@ GLOBAL TELEM_AT_KP_THR     IS 0.  // adaptive throttle: scheduled KP_ACL_THR
 GLOBAL TELEM_AT_KI_SPD     IS 0.  // adaptive throttle: scheduled KI_SPD
 GLOBAL TELEM_AT_THR_SLEW   IS 0.  // adaptive throttle: scheduled throttle slew (/s)
 
+// Diagnostic telemetry for AA mode and approach guidance
+GLOBAL TELEM_AA_FBW_ON      IS 0.  // actual aa:FBW state this cycle (0=off, 1=on)
+GLOBAL TELEM_AA_DIR_ON      IS 0.  // actual aa:DIRECTOR state this cycle (0=off, 1=on)
+GLOBAL TELEM_ACTUAL_FPA_DEG IS 0.  // actual flight path angle = ARCTAN(VS/IAS) (deg)
+GLOBAL TELEM_FTF_HDG_ERR    IS 0.  // FLY_TO_FIX: heading error to current fix (0-180 deg)
+GLOBAL TELEM_FTF_FIX_IDX    IS 0.  // FLY_TO_FIX: current fix index
+GLOBAL TELEM_KOS_STEER_PIT  IS 0.  // pitch angle of IFC_DESIRED_STEERING (kOS lock target, deg)
+GLOBAL TELEM_KOS_STEER_HDG  IS 0.  // compass heading of IFC_DESIRED_STEERING (kOS lock target, deg)
+GLOBAL TELEM_AA_DIR_VX        IS 0.  // X component of direction vector passed to aa:DIRECTION (world frame)
+GLOBAL TELEM_AA_DIR_VY        IS 0.  // Y component
+GLOBAL TELEM_AA_DIR_VZ        IS 0.  // Z component
+GLOBAL TELEM_AA_DIR_PITCH_DEG IS 0.  // actual pitch of the direction vector (should match aa_fpa_cmd_deg)
+GLOBAL TELEM_AA_DIR_HDG_DEG   IS 0.  // actual heading of the direction vector (should match aa_hdg_cmd_deg)
+
 // ----------------------------
 // Flap detent state
 // ----------------------------
@@ -200,6 +214,7 @@ GLOBAL TO_HDG_PREV         IS 0.   // previous-cycle heading for yaw-rate dampin
 GLOBAL TO_CLIMB_FPA_CMD    IS 0.   // slewed climb FPA command (deg) for rotate->climb transition
 GLOBAL TO_SPOOL_PREV_AVAIL IS 0.   // previous-cycle available thrust during preflight spool gate (kN)
 GLOBAL TO_SPOOL_STABLE_UT  IS -1.  // UT when thrust first entered steady-state window
+GLOBAL TO_START_POS        IS V(0, 0, 0). // vessel position at first preflight tick (centerline reference)
 
 // ----------------------------
 // Flight plan / leg queue
@@ -504,9 +519,21 @@ FUNCTION IFC_INIT_STATE {
   SET TELEM_COMPASS_HDG  TO 0.
   SET TELEM_PITCH_DEG    TO 0.
   SET TELEM_BANK_DEG     TO 0.
-  SET TELEM_AA_HDG_CMD   TO 0.
-  SET TELEM_AA_FPA_CMD   TO 0.
-  SET TELEM_LOC_CORR     TO 0.
+  SET TELEM_AA_HDG_CMD    TO 0.
+  SET TELEM_AA_FPA_CMD    TO 0.
+  SET TELEM_AA_FBW_ON     TO 0.
+  SET TELEM_AA_DIR_ON     TO 0.
+  SET TELEM_ACTUAL_FPA_DEG TO 0.
+  SET TELEM_FTF_HDG_ERR   TO 0.
+  SET TELEM_FTF_FIX_IDX   TO 0.
+  SET TELEM_KOS_STEER_PIT TO 0.
+  SET TELEM_KOS_STEER_HDG TO 0.
+  SET TELEM_AA_DIR_VX     TO 0.
+  SET TELEM_AA_DIR_VY     TO 0.
+  SET TELEM_AA_DIR_VZ         TO 0.
+  SET TELEM_AA_DIR_PITCH_DEG  TO 0.
+  SET TELEM_AA_DIR_HDG_DEG    TO 0.
+  SET TELEM_LOC_CORR      TO 0.
   SET TELEM_GS_CORR      TO 0.
   SET TELEM_FLARE_TGT_VS TO 0.
   SET TELEM_FLARE_FRAC   TO 0.
@@ -599,6 +626,7 @@ FUNCTION IFC_INIT_STATE {
   SET TO_CLIMB_FPA_CMD    TO 0.
   SET TO_SPOOL_PREV_AVAIL TO SHIP:AVAILABLETHRUST.
   SET TO_SPOOL_STABLE_UT  TO -1.
+  SET TO_START_POS        TO SHIP:POSITION.
 
   // Ascent guidance state
   SET ASC_INITIALIZED    TO FALSE.

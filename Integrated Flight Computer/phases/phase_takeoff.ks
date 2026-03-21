@@ -38,14 +38,13 @@ FUNCTION _TO_GET_YAW_SIGN {
 }
 
 FUNCTION _TO_COMPUTE_LOC_DEV_M {
-  IF ACTIVE_ILS_ID = "" { RETURN 0. }
-  LOCAL ils IS GET_BEACON(ACTIVE_ILS_ID).
-  IF NOT ils:HASKEY("ll") OR NOT ils:HASKEY("alt_asl") { RETURN 0. }
-
-  LOCAL thr_pos   IS ils["ll"]:ALTITUDEPOSITION(ils["alt_asl"]).
-  LOCAL rwy_right IS HEADING(TO_RWY_HDG + 90, 0):FOREVECTOR.
-  LOCAL disp      IS SHIP:POSITION - thr_pos.
-  RETURN VDOT(disp, rwy_right). // + = right of centerline
+  // Fixed geographic-090 pseudo-centerline projected from the departure position.
+  // The aircraft departed on runway 09 (geographic east). Right of that runway
+  // is geographic south. HEADING(180, 0):FOREVECTOR = south in both kOS and
+  // standard compass conventions — no dependency on TO_RWY_HDG or any ILS.
+  LOCAL rwy_right IS HEADING(180, 0):FOREVECTOR.
+  LOCAL disp      IS SHIP:POSITION - TO_START_POS.
+  RETURN VDOT(disp, rwy_right). // + = right of centerline (south of track)
 }
 
 FUNCTION _TO_COMPUTE_STEER_HDG {
@@ -113,7 +112,6 @@ FUNCTION _TO_RUN_GROUND_CENTERLINE {
     SET steer_hdg TO WRAP_360(TO_RWY_HDG + steer_corr).
   }
   SET ROLLOUT_STEER_HDG TO steer_hdg.
-  LOCK WHEELSTEERING TO steer_hdg.
   SET TELEM_STEER_BLEND TO 1.
 
   LOCAL hdg_err IS WRAP_180(hdg_now - steer_hdg).
@@ -201,7 +199,6 @@ FUNCTION _RUN_TO_PREFLIGHT {
   SET FLAPS_TARGET_DETENT TO det_to.
   _CHECK_TAKEOFF_FLAPS().
 
-  BRAKES ON.
   GEAR ON.
   // One-time preflight setup. Keep this out of the per-cycle path so
   // throttle can spool up while brakes remain engaged.
@@ -219,7 +216,8 @@ FUNCTION _RUN_TO_PREFLIGHT {
     SET TO_CLIMB_FPA_CMD TO 0.
     SET TO_SPOOL_PREV_AVAIL TO SHIP:AVAILABLETHRUST.
     SET TO_SPOOL_STABLE_UT TO -1.
-    LOCK WHEELSTEERING TO TO_RWY_HDG.
+    SET TO_START_POS TO SHIP:POSITION.
+    LOCK WHEELSTEERING TO ROLLOUT_STEER_HDG.
 
     SET TELEM_AA_HDG_CMD TO TO_RWY_HDG.
     SET TELEM_AA_FPA_CMD TO 0.
@@ -236,6 +234,18 @@ FUNCTION _RUN_TO_PREFLIGHT {
 
   LOCAL to_thr IS AC_PARAM("takeoff_throttle", 1.0, 0.001).
   SET THROTTLE_CMD TO MOVE_TOWARD(THROTTLE_CMD, to_thr, THR_SLEW_PER_S * IFC_ACTUAL_DT).
+
+  // Brake override: if thrust overcomes brakes and the aircraft is already rolling,
+  // release brakes and skip straight to ground roll rather than fighting the throttle.
+  IF GET_IAS() > 10 {
+    BRAKES OFF.
+    SET THROTTLE_CMD TO to_thr.
+    SET IFC_ALERT_TEXT TO "TO: brakes not holding at " + ROUND(GET_IAS(), 1) + " m/s - releasing".
+    SET IFC_ALERT_UT   TO TIME:SECONDS.
+    SET_SUBPHASE(SUBPHASE_TO_GROUND_ROLL).
+    RETURN.
+  }
+  BRAKES ON.
 
   IF PHASE_ELAPSED() < 2.0 { RETURN. }
 
@@ -327,8 +337,14 @@ FUNCTION _RUN_TO_ROTATE {
   LOCAL airborne_agl IS AC_PARAM("takeoff_airborne_agl", TAKEOFF_AIRBORNE_AGL_M, 0).
   LOCAL airborne_min_vs IS AC_PARAM("takeoff_airborne_min_vs", TAKEOFF_AIRBORNE_MIN_VS, 0).
   LOCAL agl_now IS GET_AGL().
-  // Avoid control-mode thrash from LANDED/FLYING status flicker near liftoff.
-  LOCAL on_ground_rotate IS agl_now <= airborne_agl + 1.
+  // Hold ground-roll pitch control while LANDED, regardless of AGL.
+  // AGL alone is unreliable: radar altitude inflates immediately when departing
+  // over a cliff (e.g. KSC west end), flipping on_ground_rotate FALSE before
+  // the wheels have left the runway.  SHIP:STATUS transitions to FLYING only
+  // when weight-on-wheels is actually cleared, which is the correct trigger.
+  // The AGL term is kept as a fallback for the normal liftoff case so the
+  // transition to AA director is not held up by STATUS flicker near liftoff.
+  LOCAL on_ground_rotate IS (agl_now <= airborne_agl + 1) OR (SHIP:STATUS = "LANDED").
 
   IF on_ground_rotate {
     // Keep ground steering/yaw control active through rotation while on wheels.
@@ -348,7 +364,7 @@ FUNCTION _RUN_TO_ROTATE {
     IF pitch_err > 0 {
       SET pitch_tgt_cmd TO MAX(pitch_tgt_cmd, pitch_min_cmd).
     }
-    SET pitch_tgt_cmd TO CLAMP(pitch_tgt_cmd, -0.10, pitch_max_cmd).
+    SET pitch_tgt_cmd TO CLAMP(pitch_tgt_cmd, TAKEOFF_ROTATE_PITCH_MIN_DOWN_CMD, pitch_max_cmd).
     LOCAL pitch_cmd IS MOVE_TOWARD(
       TO_PITCH_CMD_PREV,
       pitch_tgt_cmd,
@@ -393,11 +409,12 @@ FUNCTION _RUN_TO_ROTATE {
     IF TIME:SECONDS - TO_AIRBORNE_UT >= TAKEOFF_AIRBORNE_CONFIRM_S {
       UNLOCK WHEELSTEERING.
       GEAR OFF.
-      LOCAL ias_now IS GET_IAS().
-      LOCAL climb_fpa_tgt IS _TO_COMPUTE_CLIMB_FPA_TGT(ias_now).
-      LOCAL climb_seed_max IS MAX(TO_ROTATE_PITCH_CMD, climb_fpa_tgt).
-      // Seed climb command from rotate target/pitch, not instantaneous VS/IAS.
-      SET TO_CLIMB_FPA_CMD TO CLAMP(GET_PITCH(), climb_fpa_tgt, climb_seed_max).
+      LOCAL fpa_min IS AC_PARAM("takeoff_climb_fpa_min", TAKEOFF_CLIMB_FPA_MIN, 0.001).
+      // Seed from actual pitch with no upper cap.  Clamping at climb_seed_max
+      // left a gap between seed and actual pitch that caused AA to fire a large
+      // immediate nose-down correction at liftoff, overshooting into a dive.
+      // Starting at actual pitch lets AA slew smoothly down to the FPA target.
+      SET TO_CLIMB_FPA_CMD TO MAX(GET_PITCH(), fpa_min).
       SET SHIP:CONTROL:PITCH TO 0.
       SET TO_PITCH_CMD_PREV TO 0.
       SET_SUBPHASE(SUBPHASE_TO_CLIMB).
@@ -477,7 +494,7 @@ FUNCTION _CHECK_TAKEOFF_FLAPS {
   LOCAL target_det IS det_to.
   IF IFC_SUBPHASE = SUBPHASE_TO_CLIMB {
     SET target_det TO det_clmb.
-    IF GET_IAS() > vfe_clmb {
+    IF GET_IAS() > vfe_clmb + FLAP_VFE_HYST {
       SET target_det TO det_up.
     }
   }
