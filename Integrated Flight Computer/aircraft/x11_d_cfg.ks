@@ -18,8 +18,8 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Vapp: target speed from FAF to flare.
     // Vref: threshold crossing speed (used for display/logging).
     // Reduce Vapp toward Vref during the flare by cutting throttle.
-    "v_app",        140.0,  // prev: 140,175,200  // we want ~10-15deg aoa (150 gives 10deg aoa) (140 gives 13.8deg aoa)
-    "v_ref",        120.0,  // prev: 130,130,150,170
+    "v_app",        150.0,  // prev: 140,175,200  // we want ~10-15deg aoa (150 gives 10deg aoa) (140 gives 13.8deg aoa)
+    "v_ref",        130.0,  // prev: 130,130,150,170
     // Approach speed schedule shaping:
     // Vint = Vapp + clamp((Vapp - Vref) * gain, min_add, max_add)
     "app_spd_intercept_gain",    0.45,

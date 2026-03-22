@@ -98,13 +98,16 @@ FUNCTION AA_SET_DIRECTOR {
   LOCAL aa IS _AA_GET_HANDLE().
   IF aa = 0 {
     SET AA_AVAILABLE TO FALSE.
-    // Fallback: write to the global that is locked to STEERING in _RUN_FLIGHT_PLAN.
-    // A direct LOCK STEERING here would capture hdg_deg/pitch_cmd as locals that go
-    // out of scope after this function returns, producing stale or zero steering.
+    // AA unavailable: fall back to kOS LOCK STEERING.
+    // Lock to the global so the expression evaluated each physics tick is trivial.
     SET IFC_DESIRED_STEERING TO HEADING(hdg_deg, pitch_cmd).
+    LOCK STEERING TO IFC_DESIRED_STEERING.
     RETURN.
   }
   SET AA_AVAILABLE TO TRUE.
+  // AA is handling the controls — release kOS LOCK STEERING so the two
+  // control writers do not fight each other and cancel out roll commands.
+  UNLOCK STEERING.
 
   LOCAL dir_vec IS HEADING(hdg_deg, pitch_cmd):VECTOR.
   SET TELEM_AA_DIR_VX TO dir_vec:X.
@@ -118,8 +121,8 @@ FUNCTION AA_SET_DIRECTOR {
   LOCAL _est  IS VCRS(_up, _nrth).
   SET TELEM_AA_DIR_PITCH_DEG TO 90 - VECTORANGLE(dir_vec, _up).
   SET TELEM_AA_DIR_HDG_DEG   TO MOD(ARCTAN2(VDOT(dir_vec, _est), VDOT(dir_vec, _nrth)) + 360, 360).
-  // Keep kOS LOCK STEERING aligned with the commanded direction so it never
-  // fights AA Director (AA overrides SHIP:CONTROL but this is defensive).
+  // Mirror the command into IFC_DESIRED_STEERING for telemetry display only;
+  // this variable is NOT locked to STEERING while AA is active.
   SET IFC_DESIRED_STEERING TO HEADING(hdg_deg, pitch_cmd).
   SET aa:DIRECTION TO dir_vec.
 

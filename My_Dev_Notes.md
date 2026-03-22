@@ -27,7 +27,12 @@ Closing thoughts:
 
 ---
 
-have maximum manuevering speed as a parameter
+- have maximum manuevering speed as a parameter
+
+- have spoilers modulate their deflection according to both current aerodynamic pressure (don't want to break apart the ac), and also difference between current and desired speed maybe?
+- have autobrakes that modulate their braking percentage according to something?
 
 ## Bugs to Fix
 
+aircraft doesn't bank during approach?
+autothrottle rate still weirdly slow? ~1hz
