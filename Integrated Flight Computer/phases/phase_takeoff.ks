@@ -43,7 +43,7 @@ FUNCTION _TO_COMPUTE_LOC_DEV_M {
   // is geographic south. HEADING(180, 0):FOREVECTOR = south in both kOS and
   // standard compass conventions — no dependency on TO_RWY_HDG or any ILS.
   LOCAL rwy_right IS HEADING(180, 0):FOREVECTOR.
-  LOCAL disp      IS SHIP:POSITION - TO_START_POS.
+  LOCAL disp      IS -SHIP:BODY:POSITION - TO_START_POS.
   RETURN VDOT(disp, rwy_right). // + = right of centerline (south of track)
 }
 
@@ -216,7 +216,7 @@ FUNCTION _RUN_TO_PREFLIGHT {
     SET TO_CLIMB_FPA_CMD TO 0.
     SET TO_SPOOL_PREV_AVAIL TO SHIP:AVAILABLETHRUST.
     SET TO_SPOOL_STABLE_UT TO -1.
-    SET TO_START_POS TO SHIP:POSITION.
+    SET TO_START_POS TO -SHIP:BODY:POSITION.
     LOCK WHEELSTEERING TO ROLLOUT_STEER_HDG.
 
     SET TELEM_AA_HDG_CMD TO TO_RWY_HDG.

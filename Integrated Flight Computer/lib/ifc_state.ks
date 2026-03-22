@@ -21,6 +21,9 @@ GLOBAL IFC_MISSION_START_UT IS 0.
 // ACTIVE_AIRCRAFT is the aircraft config lexicon from an aircraft/*.ks file.
 GLOBAL ACTIVE_PLATE    IS 0.  // set before run
 GLOBAL ACTIVE_AIRCRAFT IS 0.  // set before run
+// Source string for the active aircraft config (path or descriptor).
+// Written by ifc_main config-load flow; consumed by ifc_logger metadata fields.
+GLOBAL IFC_ACTIVE_CFG_PATH IS "".
 
 // Derived from ACTIVE_PLATE at approach start (cached for speed):
 GLOBAL ACTIVE_ILS_ID   IS "".
@@ -424,6 +427,7 @@ FUNCTION IFC_INIT_STATE {
   SET IFC_SUBPHASE       TO SUBPHASE_FLY_TO_FIX.
   SET IFC_PHASE_START_UT TO TIME:SECONDS.
   SET IFC_MISSION_START_UT TO TIME:SECONDS.
+  SET IFC_ACTIVE_CFG_PATH TO "".
 
   SET ACTIVE_ILS_ID   TO "".
   SET ACTIVE_RWY_HDG  TO 90.
@@ -626,7 +630,7 @@ FUNCTION IFC_INIT_STATE {
   SET TO_CLIMB_FPA_CMD    TO 0.
   SET TO_SPOOL_PREV_AVAIL TO SHIP:AVAILABLETHRUST.
   SET TO_SPOOL_STABLE_UT  TO -1.
-  SET TO_START_POS        TO SHIP:POSITION.
+  SET TO_START_POS        TO -SHIP:BODY:POSITION.
 
   // Ascent guidance state
   SET ASC_INITIALIZED    TO FALSE.

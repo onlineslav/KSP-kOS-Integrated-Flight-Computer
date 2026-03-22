@@ -102,11 +102,15 @@
 // MISC
 //   phase_el_s     time elapsed in current phase (s)
 //   status         SHIP:STATUS string
+//   craft_name     SHIP:NAME captured at logger init
+//   cfg_file       cfg source/path resolved by ifc_main
 // ============================================================
 
 GLOBAL LOG_ACTIVE IS FALSE.
 GLOBAL LOG_FILE   IS "".
 GLOBAL LOG_LAST_WRITE_UT IS -1.
+GLOBAL LOG_CRAFT_NAME IS "".
+GLOBAL LOG_CFG_FILE   IS "".
 
 FUNCTION LOGGER_INIT {
   LOCAL log_dir IS "0:/Integrated Flight Computer/logs".
@@ -130,8 +134,11 @@ FUNCTION LOGGER_INIT {
   LOCAL seq_str IS "" + seq.
   UNTIL seq_str:LENGTH >= 8 { SET seq_str TO "0" + seq_str. }
   SET LOG_FILE TO log_dir + "/ifc_log_" + seq_str + ".csv".
+  SET LOG_CRAFT_NAME TO SHIP:NAME:REPLACE(",", "_").
+  SET LOG_CFG_FILE   TO IFC_ACTIVE_CFG_PATH:REPLACE(",", "_").
+  IF LOG_CFG_FILE = "" { SET LOG_CFG_FILE TO "UNKNOWN". }
 
-  LOG "t_s,phase,subphase,ias_ms,vapp_ms,spd_err_ms,agl_m,vs_ms,pitch_deg,aoa_deg,hdg_deg,bank_deg,thr_cmd,thr_cur,thr_intg,at_gain,at_tau_s,at_a_up,at_a_dn,at_kp_thr,at_ki_spd,at_thr_slew,aa_hdg_cmd_deg,aa_fpa_cmd_deg,aa_fbw,aa_dir,actual_fpa_deg,ftf_hdg_err_deg,ftf_fix_idx,kos_steer_pit_deg,kos_steer_hdg_deg,aa_dir_vx,aa_dir_vy,aa_dir_vz,aa_dir_pitch_deg,aa_dir_hdg_deg,ils_loc_m,ils_gs_m,ils_dist_km,loc_corr_deg,gs_corr_deg,flare_fpa_cmd,flare_tgt_vs,flare_frac,steer_hdg_deg,steer_blend,ro_loc_corr_deg,ro_hdg_err_deg,ro_yaw_tgt,ro_yaw_scale,ro_yaw_gate,yaw_cmd,roll_cmd,pitch_cmd,ro_pitch_tgt_deg,ro_pitch_err_deg,ro_pitch_ff,ro_roll_assist,flaps_cur,flaps_tgt,asc_j_ab,asc_j_rk,asc_validity,asc_q_pa,asc_q_raw_pa,asc_mach,asc_apo_m,asc_drag_n,asc_w_prop,asc_edot_aero,asc_edot_orb,asc_pitch_bias,asc_blend,asc_spooling,asc_ab_thr_ratio,asc_ab_t_now,asc_ab_t_avail,asc_ab_ign_on,asc_ab_flameouts,asc_rk_t_now,asc_rk_t_avail,asc_rk_ign_on,asc_rk_flameouts,ship_thrust,ship_avail_thrust,ship_ign_on,ship_flameouts,ifc_raw_dt_s,ifc_dt_s,ifc_loop_n,ifc_hz_est,ifc_raw_dt_max_s,ifc_raw_dt_min_s,phase_el_s,status" TO LOG_FILE.
+  LOG "t_s,phase,subphase,ias_ms,vapp_ms,spd_err_ms,agl_m,vs_ms,pitch_deg,aoa_deg,hdg_deg,bank_deg,thr_cmd,thr_cur,thr_intg,at_gain,at_tau_s,at_a_up,at_a_dn,at_kp_thr,at_ki_spd,at_thr_slew,aa_hdg_cmd_deg,aa_fpa_cmd_deg,aa_fbw,aa_dir,actual_fpa_deg,ftf_hdg_err_deg,ftf_fix_idx,kos_steer_pit_deg,kos_steer_hdg_deg,aa_dir_vx,aa_dir_vy,aa_dir_vz,aa_dir_pitch_deg,aa_dir_hdg_deg,ils_loc_m,ils_gs_m,ils_dist_km,loc_corr_deg,gs_corr_deg,flare_fpa_cmd,flare_tgt_vs,flare_frac,steer_hdg_deg,steer_blend,ro_loc_corr_deg,ro_hdg_err_deg,ro_yaw_tgt,ro_yaw_scale,ro_yaw_gate,yaw_cmd,roll_cmd,pitch_cmd,ro_pitch_tgt_deg,ro_pitch_err_deg,ro_pitch_ff,ro_roll_assist,flaps_cur,flaps_tgt,asc_j_ab,asc_j_rk,asc_validity,asc_q_pa,asc_q_raw_pa,asc_mach,asc_apo_m,asc_drag_n,asc_w_prop,asc_edot_aero,asc_edot_orb,asc_pitch_bias,asc_blend,asc_spooling,asc_ab_thr_ratio,asc_ab_t_now,asc_ab_t_avail,asc_ab_ign_on,asc_ab_flameouts,asc_rk_t_now,asc_rk_t_avail,asc_rk_ign_on,asc_rk_flameouts,ship_thrust,ship_avail_thrust,ship_ign_on,ship_flameouts,ifc_raw_dt_s,ifc_dt_s,ifc_loop_n,ifc_hz_est,ifc_raw_dt_max_s,ifc_raw_dt_min_s,phase_el_s,status,craft_name,cfg_file" TO LOG_FILE.
 
   SET LOG_ACTIVE TO TRUE.
   SET LOG_LAST_WRITE_UT TO TIME:SECONDS - IFC_CSV_LOG_PERIOD.
@@ -275,7 +282,9 @@ FUNCTION LOGGER_WRITE {
     ROUND(raw_dt_max,                 3),
     ROUND(raw_dt_min,                 3),
     ROUND(PHASE_ELAPSED(),            2),
-    SHIP:STATUS
+    SHIP:STATUS,
+    LOG_CRAFT_NAME,
+    LOG_CFG_FILE
   ).
 
   LOG row_parts:JOIN(",") TO LOG_FILE.

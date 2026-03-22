@@ -177,20 +177,43 @@ LOCAL _DEFAULT_AIRCRAFT IS LEXICON(
 // Normalises SHIP:NAME to a filename, then looks for a matching
 // config in aircraft/.  Returns TRUE if a config was loaded.
 // Mapping example: "XF1-A" → "xf1_a_cfg.ks"
-FUNCTION _TRY_LOAD_AIRCRAFT_CONFIG {
+FUNCTION _CFG_PATH_FOR_SHIP_NAME {
   LOCAL vessel_name_key IS SHIP:NAME:TOLOWER
     :REPLACE(" ", "_")
     :REPLACE("-", "_")
     :REPLACE(".", "_").
-  LOCAL cfg IS ifc_root + "aircraft/" + vessel_name_key + "_cfg.ks".
+  RETURN ifc_root + "aircraft/" + vessel_name_key + "_cfg.ks".
+}
+
+// Resolve IFC_ACTIVE_CFG_PATH when ACTIVE_AIRCRAFT was preloaded externally.
+// If we cannot prove the source path, keep an explicit unknown descriptor.
+FUNCTION _RESOLVE_CFG_SOURCE_FOR_LOGGER {
+  IF ACTIVE_AIRCRAFT = 0 OR ACTIVE_AIRCRAFT = _DEFAULT_AIRCRAFT {
+    SET IFC_ACTIVE_CFG_PATH TO "INTERNAL_DEFAULT".
+    RETURN.
+  }
+
+  LOCAL inferred_cfg IS _CFG_PATH_FOR_SHIP_NAME().
+  IF EXISTS(inferred_cfg) {
+    SET IFC_ACTIVE_CFG_PATH TO inferred_cfg + " (inferred preloaded)".
+    RETURN.
+  }
+
+  SET IFC_ACTIVE_CFG_PATH TO "PRELOADED_ACTIVE_AIRCRAFT (cfg path unknown)".
+}
+
+FUNCTION _TRY_LOAD_AIRCRAFT_CONFIG {
+  LOCAL cfg IS _CFG_PATH_FOR_SHIP_NAME().
 
   IF EXISTS(cfg) {
     RUNPATH(cfg).
     SET ACTIVE_AIRCRAFT TO BUILD_AIRCRAFT_CONFIG().
+    SET IFC_ACTIVE_CFG_PATH TO cfg.
     IFC_SET_ALERT("Loaded config: " + SHIP:NAME).
     RETURN TRUE.
   }
 
+  SET IFC_ACTIVE_CFG_PATH TO "INTERNAL_DEFAULT".
   IFC_SET_ALERT("No config for '" + SHIP:NAME + "' - defaults", "WARN").
   RETURN FALSE.
 }
@@ -443,6 +466,9 @@ FUNCTION _RUN_FLIGHT_PLAN {
     VR_PROBE_INIT("IFC_FLIGHT_PLAN").
     VR_PROBE_TICK().
   }
+  IF IFC_ACTIVE_CFG_PATH = "" {
+    _RESOLVE_CFG_SOURCE_FOR_LOGGER().
+  }
   AA_INIT().
   LOGGER_INIT().
 
@@ -566,6 +592,7 @@ FUNCTION _RUN_FLIGHT_PLAN {
 // On ARM, converts DRAFT_PLAN to an execution plan and runs it.
 FUNCTION _IFC_INTERACTIVE_START {
   IFC_INIT_STATE().
+  SET IFC_ACTIVE_CFG_PATH TO "".
   SET IFC_MISSION_START_UT TO TIME:SECONDS.
   SET IFC_PHASE    TO PHASE_PREARM.
   SET IFC_SUBPHASE TO "".
@@ -612,10 +639,14 @@ IF NOT (DEFINED IFC_SKIP_INTERACTIVE AND IFC_SKIP_INTERACTIVE) {
 
 FUNCTION RUN_IFC {
   PARAMETER rwy_id, short_approach.
+  SET IFC_ACTIVE_CFG_PATH TO "".
   IF ACTIVE_AIRCRAFT = 0 {
     IF NOT _TRY_LOAD_AIRCRAFT_CONFIG() {
       SET ACTIVE_AIRCRAFT TO _DEFAULT_AIRCRAFT.
     }
+  }
+  IF IFC_ACTIVE_CFG_PATH = "" {
+    _RESOLVE_CFG_SOURCE_FOR_LOGGER().
   }
   LOCAL plan IS LIST(LEXICON(
     "type",   LEG_APPROACH,
@@ -628,10 +659,14 @@ FUNCTION RUN_IFC {
 FUNCTION RUN_TAKEOFF_IFC {
   PARAMETER rwy_id.
   PARAMETER route IS 0.
+  SET IFC_ACTIVE_CFG_PATH TO "".
   IF ACTIVE_AIRCRAFT = 0 {
     IF NOT _TRY_LOAD_AIRCRAFT_CONFIG() {
       SET ACTIVE_AIRCRAFT TO _DEFAULT_AIRCRAFT.
     }
+  }
+  IF IFC_ACTIVE_CFG_PATH = "" {
+    _RESOLVE_CFG_SOURCE_FOR_LOGGER().
   }
   LOCAL plan IS LIST(LEXICON(
     "type",   LEG_TAKEOFF,
