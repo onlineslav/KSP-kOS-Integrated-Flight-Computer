@@ -128,8 +128,11 @@ GLOBAL APP_SHORT_FINAL_CAP_WHEN_NOT_FINAL IS TRUE. // if TRUE, short-final Vapp-
 // ----------------------------
 // Enroute descent to fix
 // ----------------------------
-// Proportional FPA from altitude error during FLY_TO_FIX legs
+// Altitude hold for cruise and FLY_TO_FIX legs.
+// fpa_cmd = -(alt_err * KP + vs * KD), clamped to [MAX_DESC, MAX_CLIMB].
+// KD damps the phugoid: 10 m/s VS contributes 0.5 deg of opposing FPA.
 GLOBAL KP_ALT_FPA  IS 0.005.  // deg FPA / m altitude error
+GLOBAL KD_ALT_FPA  IS 0.05.   // deg FPA / (m/s) vertical speed  (damping)
 GLOBAL MAX_DESC_FPA IS -6.0.  // deg  steepest descent allowed enroute
 GLOBAL MAX_CLIMB_FPA IS 5.0.  // deg  steepest climb allowed enroute
 
