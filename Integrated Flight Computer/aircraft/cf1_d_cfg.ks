@@ -65,6 +65,9 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Set to 0 to manage gear manually.
     "gear_down_agl", 300,
 
+    // ── Takeoff ───────────────────────────────────────────
+    "has_nws",            TRUE,  // TRUE = aircraft has nose wheel steering
+
     // ── Rollout ────────────────────────────────────────────
     // Max IAS to allow wheel brakes during rollout.
     // Lower values reduce high-speed tip-over / swerve risk.

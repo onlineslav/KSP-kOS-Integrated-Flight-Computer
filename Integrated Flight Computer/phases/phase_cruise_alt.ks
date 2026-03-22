@@ -1,0 +1,178 @@
+@LAZYGLOBAL OFF.
+
+// ============================================================
+// phase_cruise_alt.ks  -  Integrated Flight Computer
+// Enroute cruise navigation phase (alternate implementation).
+//
+// Drop-in replacement contract for phase_cruise.ks:
+// - Exports RUN_CRUISE
+// - Reads/writes the same CRUISE_* and TELEM_* globals
+// - Advances waypoints and sets PHASE_DONE identically
+//
+// Primary mode:
+// - Uses native kOS-AA CRUISE + SPEEDCONTROL when available.
+//
+// Fallback mode:
+// - Uses existing AA Director + IFC autothrottle behavior.
+// ============================================================
+
+// Legacy throttle path kept for drop-in compatibility and fallback.
+FUNCTION _RUN_CRUISE_THROTTLE {
+  AT_RUN_SPEED_HOLD(CRUISE_SPD_MPS, 0, 1).
+}
+
+FUNCTION _CRUISE_AA_GET_HANDLE {
+  IF NOT ADDONS:AVAILABLE("AA") { RETURN 0. }
+  IF NOT ADDONS:HASSUFFIX("AA") { RETURN 0. }
+  LOCAL aa_handle IS ADDONS:AA.
+  IF aa_handle = 0 { RETURN 0. }
+  RETURN aa_handle.
+}
+
+// Ensure AA speed control cannot leak into other phases when cruise exits
+// or when we fall back to IFC autothrottle.
+FUNCTION _CRUISE_AA_RELEASE {
+  LOCAL aa IS _CRUISE_AA_GET_HANDLE().
+  IF aa = 0 { RETURN. }
+  IF aa:HASSUFFIX("SPEEDCONTROL") AND aa:SPEEDCONTROL { SET aa:SPEEDCONTROL TO FALSE. }
+  IF aa:HASSUFFIX("CRUISE") AND aa:CRUISE { SET aa:CRUISE TO FALSE. }
+}
+
+// Native AA speed control must own throttle, otherwise IFC's global
+// LOCK THROTTLE writer overrides AA and can drive thrust to idle.
+FUNCTION _CRUISE_HANDOFF_TO_AA_THROTTLE {
+  UNLOCK THROTTLE.
+}
+
+FUNCTION _CRUISE_HANDOFF_TO_IFC_THROTTLE {
+  // Preserve current thrust when taking lock ownership back.
+  SET THROTTLE_CMD TO GET_CURRENT_THROTTLE().
+  LOCK THROTTLE TO THROTTLE_CMD.
+}
+
+FUNCTION _CRUISE_AA_HAS_NATIVE_SPEED_MODE {
+  PARAMETER aa.
+  IF NOT aa:HASSUFFIX("CRUISE") { RETURN FALSE. }
+  IF NOT aa:HASSUFFIX("HEADING") { RETURN FALSE. }
+  IF NOT aa:HASSUFFIX("ALTITUDE") { RETURN FALSE. }
+  IF NOT aa:HASSUFFIX("SPEEDCONTROL") { RETURN FALSE. }
+  IF NOT aa:HASSUFFIX("SPEED") { RETURN FALSE. }
+  RETURN TRUE.
+}
+
+// Try to run AA native CRUISE + SPEEDCONTROL.
+// Returns TRUE when active, FALSE when caller should use fallback.
+FUNCTION _RUN_CRUISE_AA_NATIVE {
+  PARAMETER hdg_cmd_deg, tgt_alt_m, tgt_spd_mps.
+
+  LOCAL aa IS _CRUISE_AA_GET_HANDLE().
+  IF aa = 0 { RETURN FALSE. }
+  IF NOT _CRUISE_AA_HAS_NATIVE_SPEED_MODE(aa) { RETURN FALSE. }
+
+  // The README defines FBW, DIRECTOR, CRUISE as mutually exclusive.
+  // Explicitly disable non-cruise modes before enabling CRUISE.
+  IF aa:HASSUFFIX("DIRECTOR") AND aa:DIRECTOR { SET aa:DIRECTOR TO FALSE. }
+  IF aa:HASSUFFIX("FBW") AND aa:FBW { SET aa:FBW TO FALSE. }
+  IF NOT aa:CRUISE { SET aa:CRUISE TO TRUE. }
+
+  SET aa:HEADING      TO WRAP_360(hdg_cmd_deg).
+  SET aa:ALTITUDE     TO MAX(tgt_alt_m, 0).
+  SET aa:SPEEDCONTROL TO TRUE.
+  SET aa:SPEED        TO MAX(tgt_spd_mps, 1).
+
+  // Hand throttle authority to AA native speed control.
+  _CRUISE_HANDOFF_TO_AA_THROTTLE().
+  // Mirror current throttle for UI/log visibility only while throttle is unlocked.
+  SET THROTTLE_CMD TO GET_CURRENT_THROTTLE().
+
+  RETURN TRUE.
+}
+
+FUNCTION _CRUISE_COMPLETE {
+  _CRUISE_AA_RELEASE().
+  _CRUISE_HANDOFF_TO_IFC_THROTTLE().
+  SET IFC_ALERT_TEXT TO "CRUISE complete".
+  SET IFC_ALERT_UT   TO TIME:SECONDS.
+  SET_PHASE(PHASE_DONE).
+}
+
+FUNCTION RUN_CRUISE {
+  // Course + time mode: fly fixed heading until timer expires.
+  IF CRUISE_NAV_TYPE = "course_time" {
+    IF TIME:SECONDS >= CRUISE_END_UT {
+      _CRUISE_COMPLETE().
+      RETURN.
+    }
+
+    LOCAL tgt_alt IS CRUISE_ALT_M.
+    LOCAL alt_err IS SHIP:ALTITUDE - tgt_alt.
+    LOCAL fpa_cmd IS CLAMP(-alt_err * KP_ALT_FPA, MAX_DESC_FPA, MAX_CLIMB_FPA).
+
+    LOCAL using_native IS _RUN_CRUISE_AA_NATIVE(CRUISE_COURSE_DEG, tgt_alt, CRUISE_SPD_MPS).
+    IF NOT using_native {
+      _CRUISE_AA_RELEASE().
+      _CRUISE_HANDOFF_TO_IFC_THROTTLE().
+      AA_SET_DIRECTOR(CRUISE_COURSE_DEG, fpa_cmd).
+      _RUN_CRUISE_THROTTLE().
+    }
+
+    SET TELEM_AA_HDG_CMD TO CRUISE_COURSE_DEG.
+    SET TELEM_AA_FPA_CMD TO fpa_cmd.
+    SET TELEM_LOC_CORR   TO 0.
+    SET TELEM_GS_CORR    TO 0.
+    RETURN.
+  }
+
+  // Waypoint mode (also handles course_dist via synthetic "_CRUISE_TGT" beacon).
+  IF CRUISE_WP_INDEX >= CRUISE_WAYPOINTS:LENGTH {
+    _CRUISE_COMPLETE().
+    RETURN.
+  }
+
+  LOCAL wp_id IS CRUISE_WAYPOINTS[CRUISE_WP_INDEX].
+  LOCAL wp    IS GET_BEACON(wp_id).
+  LOCAL wp_ll IS wp["ll"].
+  LOCAL brg   IS GEO_BEARING(SHIP:GEOPOSITION, wp_ll).
+  LOCAL dist  IS GEO_DISTANCE(SHIP:GEOPOSITION, wp_ll).
+
+  // Altitude target: hold cruise altitude while far out; blend down
+  // to waypoint's published altitude within CRUISE_DESCENT_START_M.
+  LOCAL tgt_alt IS CRUISE_ALT_M.
+  IF dist < CRUISE_DESCENT_START_M {
+    LOCAL wp_alt IS wp["alt_asl"].
+    LOCAL blend  IS CLAMP(1 - dist / CRUISE_DESCENT_START_M, 0, 1).
+    SET tgt_alt  TO CRUISE_ALT_M + (wp_alt - CRUISE_ALT_M) * blend.
+  }
+
+  LOCAL alt_err IS SHIP:ALTITUDE - tgt_alt.
+  LOCAL fpa_cmd IS CLAMP(
+    -(alt_err * KP_ALT_FPA + SHIP:VERTICALSPEED * KD_ALT_FPA),
+    MAX_DESC_FPA, MAX_CLIMB_FPA
+  ).
+
+  // Keep telemetry/fallback behavior aligned with phase_cruise.ks:
+  // suppress descent during large heading changes.
+  LOCAL hdg_err IS WRAP_360(brg - GET_COMPASS_HDG()).
+  IF hdg_err > 180 { SET hdg_err TO 360 - hdg_err. }
+  IF hdg_err > 45 AND fpa_cmd < 0 { SET fpa_cmd TO 0. }
+
+  LOCAL using_native IS _RUN_CRUISE_AA_NATIVE(brg, tgt_alt, CRUISE_SPD_MPS).
+  IF NOT using_native {
+    _CRUISE_AA_RELEASE().
+    _CRUISE_HANDOFF_TO_IFC_THROTTLE().
+    AA_SET_DIRECTOR(brg, fpa_cmd).
+    _RUN_CRUISE_THROTTLE().
+  }
+
+  SET TELEM_AA_HDG_CMD TO brg.
+  SET TELEM_AA_FPA_CMD TO fpa_cmd.
+  SET TELEM_LOC_CORR   TO 0.
+  SET TELEM_GS_CORR    TO 0.
+
+  // Waypoint capture.
+  IF dist < FIX_CAPTURE_RADIUS {
+    SET IFC_ALERT_TEXT TO "CRUISE WPT: " + wp_id + "  (" + ROUND(dist) + " m)".
+    SET IFC_ALERT_UT   TO TIME:SECONDS.
+    SET CRUISE_WP_INDEX TO CRUISE_WP_INDEX + 1.
+  }
+}

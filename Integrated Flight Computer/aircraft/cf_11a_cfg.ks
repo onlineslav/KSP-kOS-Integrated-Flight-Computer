@@ -75,6 +75,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "app_spoiler_arm_km", 0,  // km from threshold to arm (0 = disabled)
 
     // ── Takeoff ───────────────────────────────────────────
+    "has_nws",            TRUE,  // TRUE = aircraft has nose wheel steering
     "v_r",                70.0,  // m/s  rotate speed
     "v2",                 80.0,  // m/s  V2 climb speed
     "takeoff_pitch_tgt",  10.0,  // deg  pitch target at rotation
