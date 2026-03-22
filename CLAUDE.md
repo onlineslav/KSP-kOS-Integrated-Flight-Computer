@@ -411,3 +411,130 @@ inside the tight guidance loop.
 New globals for ascent go in `ifc_state.ks` under a clearly labelled section
 `// --- Ascent phase state ---`. They must be reset in `IFC_INIT_STATE()`.
 Ascent telemetry exports follow the `TELEM_` prefix convention.
+
+---
+
+## Module Contracts
+
+This section documents the public interface and ownership rules for each module.
+"Owns" means sole writer. Phase modules read from state and write commands back
+to state — they never call `LOCK THROTTLE` or `LOCK STEERING` directly.
+
+### ifc_constants.ks
+- **Exports:** None (constants only — never functions)
+- **Owns:** All tuning constants and phase/subphase/leg-type name strings
+- **Reads:** Nothing
+- **Rule:** Never add mutable state here. If a value changes at runtime, it belongs in `ifc_state.ks`.
+
+### ifc_state.ks
+- **Exports:** `IFC_INIT_STATE()` (reset all runtime globals to defaults)
+- **Owns:** Every mutable runtime global in the system
+- **Reads:** Phase/subphase name constants (from `ifc_constants.ks`) for init defaults
+- **Rule:** All new globals go here with a reset in `IFC_INIT_STATE()`. No logic — only declarations and the reset function.
+
+### ifc_helpers.ks
+- **Exports:** `CLAMP()`, `MOVE_TOWARD()`, `WRAP_180()`, `WRAP_360()`, `SET_PHASE()`, `SET_SUBPHASE()`, `PHASE_ELAPSED()`, `AC_PARAM()`, `GET_IAS()`, `GET_AGL()`, `GET_AOA()`, `GET_COMPASS_HDG()`, `GET_CURRENT_THROTTLE()`, `GET_PITCH()`, `GET_RUNWAY_REL_HEIGHT()`, `TRIGGER_AG()`, `PULSE_AG()`, `IFC_SET_ALERT()`, `IFC_PUSH_EVENT()`, `IFC_SET_UI_MODE()`
+- **Owns:** Nothing (pure functions; reads/writes state globals it doesn't own)
+- **Reads:** Phase state, alert state, facing vectors, `ACTIVE_AIRCRAFT`, `FAR_AVAILABLE`, `THROTTLE_CMD`
+- **Rule:** No flight control output. Must never write to `THROTTLE_CMD` or `IFC_DESIRED_STEERING`.
+
+### ifc_aa.ks
+- **Exports:** `AA_INIT()`, `AA_SET_DIRECTOR()`, `AA_SET_CRUISE()`, `AA_DISABLE_ALL()`, `AA_POLL_TELEM()`, `AA_RESTORE_FBW()`
+- **Owns:** Nothing declared; sets AA addon properties and writes `TELEM_AA_*` fields
+- **Reads:** `AA_AVAILABLE`, `AA_FBW_ON`, `AA_DIRECTOR_ON`, `AA_MAX_*` limits, `ACTIVE_AIRCRAFT`, `IFC_UP_VEC`, `IFC_NORTH_VEC`
+- **Rule:** Always guard every call with `IF AA_AVAILABLE`. Never touch `THROTTLE_CMD`.
+
+### ifc_autothrottle.ks
+- **Exports:** `AT_RESET()`, `AT_RUN_SPEED_HOLD()`
+- **Owns:** Sole writer of `THROTTLE_CMD`. Also writes all `AT_*` estimator state and `TELEM_AT_*` fields.
+- **Reads:** `IFC_ACTUAL_DT`, `PREV_IAS`, `A_ACTUAL_FILT`, `THR_INTEGRAL`, AT tuning constants, `GET_IAS()`, `GET_CURRENT_THROTTLE()`
+- **Rule:** `THROTTLE_CMD` is written **only** here. Phase modules must not touch it directly. Call `AT_RUN_SPEED_HOLD()` from the phase loop; never call it more than once per cycle.
+
+### ifc_ui.ks
+- **Exports:** String formatters (`STR_PAD()`, `STR_RJUST()`, `UI_FMT()`, `UI_FORMAT_TIME()`, `UI_FORMAT_FLP()`), screen primitives (`UI_P()`, `UI_SEP()`, `UI_THICK_SEP()`, `UI_CLR()`, `UI_BAR_FILL()`, `UI_BAR_DEV()`), `UI_INIT()`
+- **Owns:** `_UI_SPACES` lookup table; sets `UI_W` during `UI_INIT()`
+- **Reads:** `UI_W`
+- **Rule:** No flight state reads or writes. Pure presentation layer.
+
+### ifc_display.ks
+- **Exports:** `DISPLAY_TICK()`, per-phase display functions (`DISPLAY_CRUISE()`, `DISPLAY_ILS_TRACK()`, `DISPLAY_FLARE()`, `DISPLAY_ROLLOUT()`, `DISPLAY_TAKEOFF()`, `DISPLAY_ASCENT()`, etc.), `DISPLAY_HEADER()`, `DISPLAY_ALERT()`, `DISPLAY_SECONDARY_DEBUG()`
+- **Owns:** Nothing — read-only view of state
+- **Reads:** All major state and telemetry variables for rendering
+- **Rule:** Must never write to flight state. If a display function appears to need to set something, that write belongs in a phase module or helper instead.
+
+### ifc_logger.ks
+- **Exports:** `LOGGER_INIT()`, `LOGGER_WRITE()`, `LOGGER_CLOSE()`
+- **Owns:** `LOG_ACTIVE`, `LOG_FILE`, `LOG_LAST_WRITE_UT`
+- **Reads:** All `TELEM_*` globals, phase state, control commands
+- **Rule:** Rate-limited to `IFC_CSV_LOG_PERIOD` (2 s default). Never call `LOG x TO file.` outside this module — it blocks for 100–500 ms on Windows.
+
+### ifc_menu.ks
+- **Exports:** `MENU_BUILD_ITEMS()`, `MENU_RENDER()`, `MENU_DISPATCH()`, flap/gear/spoiler/reverser action functions
+- **Owns:** `IFC_MENU_OPT_*`, `IFC_MENU_STG_*`, `IFC_MENU_SLOT`, `IFC_MENU_CURSOR`, `IFC_MENU_SCROLL`, `IFC_MENU_PAGE`, `IFC_MENU_ITEMS`
+- **Reads:** `DRAFT_PLAN`, `ACTIVE_AIRCRAFT`, `IFC_PHASE`, `AA_AVAILABLE`, `FAR_AVAILABLE`, `LOG_ACTIVE`, `IFC_MANUAL_MODE`
+- **Rule:** Menu actions (flaps, gear, etc.) are the only place AG triggers are called outside of phase code. Keep action handlers thin — set a flag or call `TRIGGER_AG()`, nothing more.
+
+### ifc_fms.ks
+- **Exports:** `FMS_SAVE_PLAN()`, `FMS_LOAD_PLAN()`, `FMS_SLOT_EXISTS()`
+- **Owns:** `FMS_SLOT_MIN`, `FMS_SLOT_MAX`, `FMS_SLOT_PREFIX`, `FMS_SLOT_SUFFIX`
+- **Reads:** `DRAFT_PLAN`, `FMS_LEG_CURSOR`, leg type constants, `PLATE_IDS`, `CUSTOM_WPT_IDS`
+- **Rule:** File I/O only. No flight logic. Slot files are JSON; leg type strings are the canonical serialization format.
+
+### ifc_gui.ks
+- **Exports:** `_GUI_BUILD()`, `_GUI_CLOSE()`, `_GUI_TICK()`
+- **Owns:** Nothing (writes to GUI handle globals declared in `ifc_state.ks`)
+- **Reads:** `DRAFT_PLAN`, `FMS_LEG_CURSOR`, `FMS_EDITING_LEG`, `FMS_EDIT_FIELD`, all `GUI_*` handle state
+- **Rule:** Pre-arm editor only. Must not be called after flight starts. Never touches flight control state.
+
+### nav_math.ks
+- **Exports:** `GEO_DISTANCE()`, `GEO_BEARING()`, `GEO_DESTINATION()`, `CROSS_TRACK_ERROR()`, `ALONG_TRACK_DIST()`
+- **Owns:** Nothing (pure functions)
+- **Reads:** `SHIP:BODY:RADIUS` only
+- **Rule:** Stateless geodesic math. No side effects. Safe to call from any context.
+
+### nav_beacons.ks
+- **Exports:** `MAKE_BEACON()`, `MAKE_PLATE()`, `REGISTER_BEACON()`, `GET_BEACON()`
+- **Owns:** `NAV_BEACON_DB`, all `PLATE_*` lexicons, `PLATE_IDS`
+- **Reads:** `GEO_DESTINATION()` (for threshold point computation)
+- **Rule:** Static database — never modified at runtime. Add new plates here only; do not create beacon globals elsewhere.
+
+### Phase modules (phase_takeoff.ks, phase_cruise.ks, phase_approach.ks, phase_autoland.ks)
+- **Exports:** One top-level `RUN_*()` function each, called from the main loop dispatcher
+- **Owns:** Nothing — all state written through `ifc_state.ks` globals
+- **Reads:** Their respective `TO_*` / `CRUISE_*` / `APP_*` / `FLARE_*` / `ROLLOUT_*` state variables, AA and autothrottle functions, nav functions
+- **Write targets (per phase):**
+  - All phases: `IFC_DESIRED_STEERING`, `TELEM_*` export vars
+  - Takeoff/cruise/approach: call `AT_RUN_SPEED_HOLD()` (which writes `THROTTLE_CMD`)
+  - Autoland: writes `THROTTLE_CMD` directly during flare/rollout (idle/manual thrust — autothrottle bypassed)
+- **Rule:** Phase functions must call `SET_PHASE()` / `SET_SUBPHASE()` for all transitions — never write `IFC_PHASE` directly. Never call `LOCK THROTTLE` or `LOCK STEERING`.
+
+---
+
+## Claude Working Guidelines
+
+These rules govern how Claude should approach changes in this codebase.
+
+### Before making any edit
+1. Read the full file being changed, not just the function in question.
+2. Identify which module contract(s) are affected and check the ownership rules above.
+3. If the change touches a variable owned by a different module, flag it explicitly before proceeding.
+
+### Scope discipline
+- Only edit files that are necessary for the specific fix or feature requested.
+- If a file was not mentioned in the request, do not edit it unless asked or unless the cross-module dependency makes it unavoidable — and in that case, say so.
+
+### After making edits
+- State exactly which lines changed and in which file(s).
+- Call out any side-effects on other modules: e.g. "this changes the type of `CRUISE_WP_INDEX`, which `ifc_display.ks` also reads."
+- If a variable's ownership was ambiguous or a contract was violated to make the fix work, flag it so the contracts section above can be updated.
+
+### Commit message
+After any session that modifies code, always produce a suggested git commit message following this format:
+- Subject line: imperative mood, ≤72 chars, no period (e.g. `Fix FPA command sign error in ifc_aa.ks`)
+- Body (if needed): what changed and why, one bullet per file or logical change
+- Do not include Co-Authored-By or other metadata unless the user asks to commit
+
+### Regression hygiene
+- Before starting non-trivial work, note the current git state (which files are modified).
+- Prefer small, targeted changes over refactors that touch multiple modules at once.
+- When diagnosing a bug, compare against the CSV telemetry logs — identify *which channel* diverged and *when* before touching code.
