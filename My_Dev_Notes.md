@@ -42,3 +42,29 @@ aircraft doesn't bank during approach?
 autothrottle rate still weirdly slow? ~1hz
 
 ## 23-03-2026
+Okay. Just did another test flight of the pattern - log 54.csv
+
+- Do not use AA native speed control ever, for any phase of flight. Use native autothrottle module always.
+
+- At T10:32 - why is it using FPA 0 to hold altitude - it should just keep using altitude hold mode
+
+- when the localizer is intercepted the aircraft is 130m to the right - why is this, given that the waypoint it is following should be the 30km rwy 27 beacon, which should be on the localizer
+
+- why when the localizer is intercepted, the aircraft is in waypoint mode aiming for the ils beacon? that will not get the aircraft onto the localizer fast enough - honestly, just put the aircraft into kOS director mode once the localizer becomes alive 
+
+- while tracking glideslope and localizer, the following is flashing on screen, meaning that these are getting triggered in a loop somewhere:
+kOS director enabled
+Standard Fly-By-Wire Enabled
+Standard Fly-By-Wire Disabled
+kOS Director Enabled
+
+This keeps getting spammed in the KSP debug log
+![alt text](image.png)
+
+
+---
+
+Desired behaviour: every aircraft should have a default cruise speed that it defaults to for cruise phases.
+
+
+I want the FMS terminal or GUI to show the current target (heading,alt, etc.) and the current actual value - that way I know what it's trying to do and if it's succeeding

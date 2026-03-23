@@ -39,6 +39,8 @@ FUNCTION AA_INIT {
     // Enable Fly-By-Wire for stability augmentation.
     SET aa:FBW TO TRUE.
     SET AA_FBW_ON TO TRUE.
+    // IFC policy: native AA speed control must remain disabled.
+    IF aa:HASSUFFIX("SPEEDCONTROL") AND aa:SPEEDCONTROL { SET aa:SPEEDCONTROL TO FALSE. }
 
     // Resolve moderator limits: aircraft config overrides global constants.
     LOCAL lim_aoa      IS AA_MAX_AOA.
@@ -129,6 +131,7 @@ FUNCTION AA_SET_DIRECTOR {
   SET aa:DIRECTION TO dir_vec.
 
   // Ensure Director mode is active; leave FBW running for inner-loop stability.
+  IF aa:HASSUFFIX("SPEEDCONTROL") AND aa:SPEEDCONTROL { SET aa:SPEEDCONTROL TO FALSE. }
   IF aa:HASSUFFIX("CRUISE")   AND aa:CRUISE   { SET aa:CRUISE   TO FALSE. }
   IF aa:HASSUFFIX("DIRECTOR") AND NOT aa:DIRECTOR {
     SET aa:DIRECTOR TO TRUE.
@@ -149,6 +152,7 @@ FUNCTION AA_SET_CRUISE {
 
   SET aa:HEADING  TO hdg_deg.
   SET aa:FPANGLE  TO fpa_deg.
+  IF aa:HASSUFFIX("SPEEDCONTROL") AND aa:SPEEDCONTROL { SET aa:SPEEDCONTROL TO FALSE. }
 
   IF aa:HASSUFFIX("DIRECTOR") AND aa:DIRECTOR { SET aa:DIRECTOR TO FALSE. }
   IF aa:HASSUFFIX("FBW")      AND aa:FBW      { SET aa:FBW      TO FALSE. }

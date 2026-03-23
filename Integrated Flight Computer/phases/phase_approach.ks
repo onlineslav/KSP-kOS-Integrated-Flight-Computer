@@ -225,6 +225,9 @@ FUNCTION _RUN_FLY_TO_FIX {
         AND ils_dev["dist"] > 0
         AND ABS(ils_dev["loc"]) <= LOC_CAPTURE_M
         AND early_hdg_ok {
+      SET ILS_LOC_DEV TO ils_dev["loc"].
+      IF ils_dev:HASKEY("gs") { SET ILS_GS_DEV TO ils_dev["gs"]. }
+      SET ILS_DIST_M TO ils_dev["dist"].
       SET ILS_INTERCEPT_ALT TO SHIP:ALTITUDE.
       SET_SUBPHASE(SUBPHASE_ILS_TRACK).
       SET PREV_LOC_DEV TO 0.
@@ -235,6 +238,10 @@ FUNCTION _RUN_FLY_TO_FIX {
 
   // If all fixes have been passed, begin ILS tracking.
   IF FIX_INDEX >= ACTIVE_FIXES:LENGTH {
+    LOCAL dev_now IS _COMPUTE_ILS_DEVIATIONS().
+    IF dev_now:HASKEY("loc")  { SET ILS_LOC_DEV TO dev_now["loc"]. }
+    IF dev_now:HASKEY("gs")   { SET ILS_GS_DEV  TO dev_now["gs"]. }
+    IF dev_now:HASKEY("dist") { SET ILS_DIST_M  TO dev_now["dist"]. }
     SET ILS_INTERCEPT_ALT TO SHIP:ALTITUDE.
     SET_SUBPHASE(SUBPHASE_ILS_TRACK).
     SET PREV_LOC_DEV TO 0.
@@ -279,14 +286,17 @@ FUNCTION _RUN_FLY_TO_FIX {
   // approach speed (rising AOA drives pitch_cmd upward without damping).
   //
   // Suppression logic during heading changes:
-  //   hdg_err > 90°: zero all FPA (avoid pitching during near-reversals).
+  //   hdg_err > 90°: keep pure altitude-hold (no VS damping) instead of
+  //                  forcing FPA=0, so vertical guidance remains active.
   //   45–90°:  suppress altitude-error descent (avoid spiral dives) but keep
   //            VS damping active so phugoid doesn't build up during the turn.
   //   < 45°:   full KP + KD command.
   LOCAL alt_err IS SHIP:ALTITUDE - tgt_alt.
   LOCAL vs_now  IS SHIP:VERTICALSPEED.
   LOCAL fpa_cmd IS CLAMP(-(alt_err * KP_ALT_FPA + vs_now * KD_FTF_ALT_FPA), MAX_DESC_FPA, MAX_CLIMB_FPA).
-  IF hdg_err > 90 { SET fpa_cmd TO 0. }
+  IF hdg_err > 90 {
+    SET fpa_cmd TO CLAMP(-alt_err * KP_ALT_FPA, MAX_DESC_FPA, MAX_CLIMB_FPA).
+  }
   ELSE IF hdg_err > 45 AND -alt_err * KP_ALT_FPA < 0 {
     // Altitude correction would descend — suppress it during moderate turns.
     // Retain anti-phugoid VS damping so climbs are still corrected.
@@ -436,48 +446,19 @@ FUNCTION _RUN_ILS_TRACK {
     }
   }
 
-  // Pre-GS-capture: use AA Cruise mode with WAYPOINT pointing at the ILS
-  // threshold so AA navigates the localizer track natively (same as FLY_TO_FIX).
-  // Using aa:WAYPOINT instead of aa:HEADING gives AA a proper nav-track target
-  // rather than a fixed bearing, which is more robust on intercept geometry.
-  // Avoids positive AOA feedback in Director's pitch formula (pitch = FPA + AOA).
-  // Post-GS-capture: switch to AA Director for precise nose-vector GS tracking.
-  IF NOT gs_captured AND AA_AVAILABLE {
-    LOCAL aa IS _APP_AA_GET_HANDLE().
-    IF aa <> 0 {
-      IF aa:HASSUFFIX("DIRECTOR") AND aa:DIRECTOR { SET aa:DIRECTOR TO FALSE. }
-      IF aa:HASSUFFIX("FBW")      AND aa:FBW      { SET aa:FBW      TO FALSE. }
-      IF aa:HASSUFFIX("CRUISE") AND NOT aa:CRUISE { SET aa:CRUISE TO TRUE. }
-      IF aa:HASSUFFIX("WAYPOINT") { SET aa:WAYPOINT TO ILS_THR_GEO_LL. }
-      ELSE IF aa:HASSUFFIX("HEADING") { SET aa:HEADING TO hdg_cmd. }
-      IF aa:HASSUFFIX("FPANGLE") { SET aa:FPANGLE TO fpa_cmd. }
-      SET IFC_DESIRED_STEERING TO HEADING(hdg_cmd, fpa_cmd).
-    } ELSE {
-      AA_SET_DIRECTOR(hdg_cmd, fpa_cmd).
+  // Use Director for all ILS tracking (including pre-GS intercept) so
+  // localizer correction is immediate once ILS is active.
+  // Keep pre-clamp telemetry for diagnosis.
+  SET TELEM_FPA_PRECLAMPED TO fpa_cmd.
+  IF FAR_AVAILABLE {
+    LOCAL aoa_now IS GET_AOA().
+    LOCAL max_fpa_for_pitch IS MAX_APP_PITCH_CMD.
+    IF AA_DIR_ADD_AOA_COMP {
+      SET max_fpa_for_pitch TO MAX_APP_PITCH_CMD - aoa_now.
     }
-  } ELSE {
-    // Capture handoff guard: ensure Director is not fighting lingering Cruise
-    // state and FBW is restored before setting AA:DIRECTION.
-    LOCAL aa_dir_handle IS _APP_AA_GET_HANDLE().
-    IF aa_dir_handle <> 0 {
-      IF aa_dir_handle:HASSUFFIX("CRUISE") AND aa_dir_handle:CRUISE {
-        SET aa_dir_handle:CRUISE TO FALSE.
-      }
-      IF aa_dir_handle:HASSUFFIX("FBW") AND NOT aa_dir_handle:FBW {
-        SET aa_dir_handle:FBW TO TRUE.
-      }
-    }
-    SET TELEM_FPA_PRECLAMPED TO fpa_cmd.
-    IF FAR_AVAILABLE {
-      LOCAL aoa_now IS GET_AOA().
-      LOCAL max_fpa_for_pitch IS MAX_APP_PITCH_CMD.
-      IF AA_DIR_ADD_AOA_COMP {
-        SET max_fpa_for_pitch TO MAX_APP_PITCH_CMD - aoa_now.
-      }
-      SET fpa_cmd TO MAX(MIN(fpa_cmd, max_fpa_for_pitch), APP_FPA_PITCH_FLOOR).
-    }
-    AA_SET_DIRECTOR(hdg_cmd, fpa_cmd).
+    SET fpa_cmd TO MAX(MIN(fpa_cmd, max_fpa_for_pitch), APP_FPA_PITCH_FLOOR).
   }
+  AA_SET_DIRECTOR(hdg_cmd, fpa_cmd).
   SET TELEM_AA_HDG_CMD TO hdg_cmd.
   SET TELEM_AA_FPA_CMD TO fpa_cmd.
   SET TELEM_LOC_CORR   TO loc_corr.

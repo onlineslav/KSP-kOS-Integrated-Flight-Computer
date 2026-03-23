@@ -9,11 +9,11 @@
 // - Reads/writes the same CRUISE_* and TELEM_* globals
 // - Advances waypoints and sets PHASE_DONE identically
 //
-// Primary mode:
-// - Uses native kOS-AA CRUISE + SPEEDCONTROL when available.
-//
-// Fallback mode:
-// - Uses existing AA Director + IFC autothrottle behavior.
+// Cruise policy:
+// - IFC autothrottle always owns throttle.
+// - AA native SPEEDCONTROL is never used.
+// - Lateral guidance uses AA CRUISE heading.
+// - Vertical guidance uses AA CRUISE native ALTITUDE hold.
 // ============================================================
 
 // Legacy throttle path kept for drop-in compatibility and fallback.
@@ -41,8 +41,7 @@ FUNCTION _CRUISE_AA_RELEASE {
   IF aa:HASSUFFIX("FBW") AND NOT aa:FBW { SET aa:FBW TO TRUE. }
 }
 
-// Native AA speed control must own throttle, otherwise IFC's global
-// LOCK THROTTLE writer overrides AA and can drive thrust to idle.
+// Legacy helper retained for compatibility; unused when AA native speed mode is disabled.
 FUNCTION _CRUISE_HANDOFF_TO_AA_THROTTLE {
   UNLOCK THROTTLE.
 }
@@ -53,41 +52,25 @@ FUNCTION _CRUISE_HANDOFF_TO_IFC_THROTTLE {
   LOCK THROTTLE TO THROTTLE_CMD.
 }
 
-FUNCTION _CRUISE_AA_HAS_NATIVE_SPEED_MODE {
-  PARAMETER aa.
+// Run AA CRUISE heading + ALTITUDE hold while IFC autothrottle owns speed.
+// Returns TRUE when AA cruise guidance is active.
+FUNCTION _RUN_CRUISE_AA_CRUISE {
+  PARAMETER hdg_cmd_deg, tgt_alt_m.
+  LOCAL aa IS _CRUISE_AA_GET_HANDLE().
+  IF aa = 0 { RETURN FALSE. }
   IF NOT aa:HASSUFFIX("CRUISE") { RETURN FALSE. }
   IF NOT aa:HASSUFFIX("HEADING") { RETURN FALSE. }
   IF NOT aa:HASSUFFIX("ALTITUDE") { RETURN FALSE. }
-  IF NOT aa:HASSUFFIX("SPEEDCONTROL") { RETURN FALSE. }
-  IF NOT aa:HASSUFFIX("SPEED") { RETURN FALSE. }
-  RETURN TRUE.
-}
 
-// Try to run AA native CRUISE + SPEEDCONTROL.
-// Returns TRUE when active, FALSE when caller should use fallback.
-FUNCTION _RUN_CRUISE_AA_NATIVE {
-  PARAMETER hdg_cmd_deg, tgt_alt_m, tgt_spd_mps.
+  // IFC owns throttle in all phases.
+  IF aa:HASSUFFIX("SPEEDCONTROL") AND aa:SPEEDCONTROL { SET aa:SPEEDCONTROL TO FALSE. }
 
-  LOCAL aa IS _CRUISE_AA_GET_HANDLE().
-  IF aa = 0 { RETURN FALSE. }
-  IF NOT _CRUISE_AA_HAS_NATIVE_SPEED_MODE(aa) { RETURN FALSE. }
-
-  // The README defines FBW, DIRECTOR, CRUISE as mutually exclusive.
-  // Explicitly disable non-cruise modes before enabling CRUISE.
+  // CRUISE mode is mutually exclusive with DIRECTOR/FBW.
   IF aa:HASSUFFIX("DIRECTOR") AND aa:DIRECTOR { SET aa:DIRECTOR TO FALSE. }
   IF aa:HASSUFFIX("FBW") AND aa:FBW { SET aa:FBW TO FALSE. }
   IF NOT aa:CRUISE { SET aa:CRUISE TO TRUE. }
-
-  SET aa:HEADING      TO WRAP_360(hdg_cmd_deg).
-  SET aa:ALTITUDE     TO MAX(tgt_alt_m, 0).
-  SET aa:SPEEDCONTROL TO TRUE.
-  SET aa:SPEED        TO MAX(tgt_spd_mps, 1).
-
-  // Hand throttle authority to AA native speed control.
-  _CRUISE_HANDOFF_TO_AA_THROTTLE().
-  // Mirror current throttle for UI/log visibility only while throttle is unlocked.
-  SET THROTTLE_CMD TO GET_CURRENT_THROTTLE().
-
+  SET aa:HEADING TO WRAP_360(hdg_cmd_deg).
+  SET aa:ALTITUDE TO MAX(tgt_alt_m, 0).
   RETURN TRUE.
 }
 
@@ -143,16 +126,12 @@ FUNCTION RUN_CRUISE {
     LOCAL alt_err IS SHIP:ALTITUDE - tgt_alt.
     LOCAL fpa_cmd IS CLAMP(-alt_err * KP_ALT_FPA, MAX_DESC_FPA, MAX_CLIMB_FPA).
 
-    LOCAL using_native IS _RUN_CRUISE_AA_NATIVE(CRUISE_COURSE_DEG, tgt_alt, CRUISE_SPD_MPS).
-    IF NOT using_native {
-      _CRUISE_AA_RELEASE().
-      _CRUISE_HANDOFF_TO_IFC_THROTTLE().
-      AA_SET_DIRECTOR(CRUISE_COURSE_DEG, fpa_cmd).
-      _RUN_CRUISE_THROTTLE().
-    }
+    LOCAL using_native IS _RUN_CRUISE_AA_CRUISE(CRUISE_COURSE_DEG, tgt_alt).
+    IF NOT using_native { AA_SET_DIRECTOR(CRUISE_COURSE_DEG, fpa_cmd). }
+    _RUN_CRUISE_THROTTLE().
 
     SET TELEM_AA_HDG_CMD TO CRUISE_COURSE_DEG.
-    SET TELEM_AA_FPA_CMD TO fpa_cmd.
+    SET TELEM_AA_FPA_CMD TO CHOOSE 0 IF using_native ELSE fpa_cmd.
     SET TELEM_LOC_CORR   TO 0.
     SET TELEM_GS_CORR    TO 0.
     RETURN.
@@ -191,16 +170,12 @@ FUNCTION RUN_CRUISE {
   IF hdg_err > 180 { SET hdg_err TO 360 - hdg_err. }
   IF hdg_err > 45 AND fpa_cmd < 0 { SET fpa_cmd TO 0. }
 
-  LOCAL using_native IS _RUN_CRUISE_AA_NATIVE(brg, tgt_alt, CRUISE_SPD_MPS).
-  IF NOT using_native {
-    _CRUISE_AA_RELEASE().
-    _CRUISE_HANDOFF_TO_IFC_THROTTLE().
-    AA_SET_DIRECTOR(brg, fpa_cmd).
-    _RUN_CRUISE_THROTTLE().
-  }
+  LOCAL using_native IS _RUN_CRUISE_AA_CRUISE(brg, tgt_alt).
+  IF NOT using_native { AA_SET_DIRECTOR(brg, fpa_cmd). }
+  _RUN_CRUISE_THROTTLE().
 
   SET TELEM_AA_HDG_CMD TO brg.
-  SET TELEM_AA_FPA_CMD TO fpa_cmd.
+  SET TELEM_AA_FPA_CMD TO CHOOSE 0 IF using_native ELSE fpa_cmd.
   SET TELEM_LOC_CORR   TO 0.
   SET TELEM_GS_CORR    TO 0.
 
