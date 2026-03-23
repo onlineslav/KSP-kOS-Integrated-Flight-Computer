@@ -55,7 +55,7 @@ RUNPATH(ifc_root + "lib/ifc_ascent_state.ks").
 RUNPATH(ifc_root + "phases/phase_ascent.ks").
 RUNPATH(ifc_root + "phases/phase_reentry.ks").
 RUNPATH(ifc_root + "nav/nav_routes.ks").
-RUNPATH(ifc_root + "phases/phase_cruise.ks").
+RUNPATH(ifc_root + "phases/phase_cruise_alt.ks").
 
 // ── Default aircraft config (if not set externally) ───────
 // Matches aircraft_template.ks structure; safe defaults only.
@@ -440,6 +440,7 @@ FUNCTION _INIT_LEG {
       SET APP_BASE_V_TGT TO IFC_MENU_OPT_VAPP.
     }
     SET_PHASE(PHASE_APPROACH).
+    SET IFC_SUBPHASE TO SUBPHASE_FLY_TO_FIX.
 
   } ELSE IF leg_type = LEG_ASCENT {
     SET_PHASE(PHASE_ASCENT).

@@ -203,6 +203,7 @@ FUNCTION _RUN_TO_PREFLIGHT {
   // One-time preflight setup. Keep this out of the per-cycle path so
   // throttle can spool up while brakes remain engaged.
   IF first_tick {
+    AA_REAPPLY_MODERATORS().
     IF DEFINED CAMERA {
       SET CAMERA:MODE TO "LOCKED".
     }

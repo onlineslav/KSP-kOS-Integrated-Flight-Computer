@@ -31,11 +31,14 @@ FUNCTION _CRUISE_AA_GET_HANDLE {
 
 // Ensure AA speed control cannot leak into other phases when cruise exits
 // or when we fall back to IFC autothrottle.
+// Also restores FBW in case native CRUISE mode disabled it — the approach
+// phase's Director mode relies on FBW for inner-loop stability.
 FUNCTION _CRUISE_AA_RELEASE {
   LOCAL aa IS _CRUISE_AA_GET_HANDLE().
   IF aa = 0 { RETURN. }
   IF aa:HASSUFFIX("SPEEDCONTROL") AND aa:SPEEDCONTROL { SET aa:SPEEDCONTROL TO FALSE. }
   IF aa:HASSUFFIX("CRUISE") AND aa:CRUISE { SET aa:CRUISE TO FALSE. }
+  IF aa:HASSUFFIX("FBW") AND NOT aa:FBW { SET aa:FBW TO TRUE. }
 }
 
 // Native AA speed control must own throttle, otherwise IFC's global
@@ -88,6 +91,36 @@ FUNCTION _RUN_CRUISE_AA_NATIVE {
   RETURN TRUE.
 }
 
+// Retract flaps to the "up" detent for cruise.
+// Mirrors _CHECK_TAKEOFF_FLAPS: steps one detent per FLAP_STEP_INTERVAL
+// using the aircraft's configured flap action groups.
+FUNCTION _CRUISE_CHECK_FLAPS {
+  LOCAL ac IS ACTIVE_AIRCRAFT.
+  IF ac = 0 { RETURN. }
+  IF NOT ac:HASKEY("ag_flaps_step_up") OR NOT ac:HASKEY("ag_flaps_step_down") { RETURN. }
+  LOCAL ag_up IS ac["ag_flaps_step_up"].
+  LOCAL ag_dn IS ac["ag_flaps_step_down"].
+  IF ag_up <= 0 OR ag_dn <= 0 { RETURN. }
+
+  LOCAL max_det IS ROUND(AC_PARAM("flaps_max_detent",  3, 0)).
+  LOCAL det_up  IS ROUND(AC_PARAM("flaps_detent_up",   0, 0)).
+  SET FLAPS_TARGET_DETENT TO CLAMP(det_up, 0, max_det).
+
+  IF FLAPS_CURRENT_DETENT = FLAPS_TARGET_DETENT { RETURN. }
+  IF TIME:SECONDS - FLAPS_LAST_STEP_UT < FLAP_STEP_INTERVAL { RETURN. }
+
+  IF FLAPS_CURRENT_DETENT < FLAPS_TARGET_DETENT {
+    PULSE_AG(ag_up).
+    SET FLAPS_CURRENT_DETENT TO CLAMP(FLAPS_CURRENT_DETENT + 1, 0, max_det).
+  } ELSE {
+    PULSE_AG(ag_dn).
+    SET FLAPS_CURRENT_DETENT TO CLAMP(FLAPS_CURRENT_DETENT - 1, 0, max_det).
+  }
+  SET IFC_ALERT_TEXT TO "CRUISE FLAPS -> detent " + FLAPS_CURRENT_DETENT.
+  SET IFC_ALERT_UT   TO TIME:SECONDS.
+  SET FLAPS_LAST_STEP_UT TO TIME:SECONDS.
+}
+
 FUNCTION _CRUISE_COMPLETE {
   _CRUISE_AA_RELEASE().
   _CRUISE_HANDOFF_TO_IFC_THROTTLE().
@@ -97,6 +130,8 @@ FUNCTION _CRUISE_COMPLETE {
 }
 
 FUNCTION RUN_CRUISE {
+  _CRUISE_CHECK_FLAPS().
+
   // Course + time mode: fly fixed heading until timer expires.
   IF CRUISE_NAV_TYPE = "course_time" {
     IF TIME:SECONDS >= CRUISE_END_UT {

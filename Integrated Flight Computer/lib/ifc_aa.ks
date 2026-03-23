@@ -181,6 +181,18 @@ FUNCTION AA_POLL_TELEM {
   IF aa:HASSUFFIX("DIRECTOR") { SET TELEM_AA_DIR_ON TO CHOOSE 1 IF aa:DIRECTOR ELSE 0. }
 }
 
+// Re-assert all safety moderator flags.
+// Called during preflight to guard against AA resetting its own state
+// between AA_INIT and brake release (e.g. due to mode switches).
+FUNCTION AA_REAPPLY_MODERATORS {
+  LOCAL aa IS _AA_GET_HANDLE().
+  IF aa = 0 { RETURN. }
+  IF aa:HASSUFFIX("MODERATEAOA")     { SET aa:MODERATEAOA     TO TRUE. }
+  IF aa:HASSUFFIX("MODERATEG")       { SET aa:MODERATEG       TO TRUE. }
+  IF aa:HASSUFFIX("MODERATESIDESLIP"){ SET aa:MODERATESIDESLIP TO TRUE. }
+  IF aa:HASSUFFIX("MODERATESIDEG")   { SET aa:MODERATESIDEG   TO TRUE. }
+}
+
 // Re-enable FBW after it was switched off (e.g. after Director was active).
 FUNCTION AA_RESTORE_FBW {
   LOCAL aa IS _AA_GET_HANDLE().

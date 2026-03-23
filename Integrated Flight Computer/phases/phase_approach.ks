@@ -251,8 +251,17 @@ FUNCTION _RUN_FLY_TO_FIX {
   IF hdg_err > 90 { SET fpa_cmd TO 0. }
   ELSE IF hdg_err > 45 AND fpa_cmd < 0 { SET fpa_cmd TO 0. }
 
-  AA_SET_DIRECTOR(brg, fpa_cmd).
-  SET TELEM_AA_HDG_CMD TO brg.
+  // Cap the heading command to within 90° of current heading.
+  // AA Director receives a nearly anti-parallel vector (hdg_err > ~90°) and
+  // responds by pitching rather than rolling into a turn, causing a diverging
+  // AoA feedback: pitch_cmd = fpa + GET_AOA() rises as the aircraft pitches up.
+  // Capping at 90° always gives AA a reachable target; the command converges
+  // to brg naturally as the aircraft turns.
+  LOCAL hdg_now IS GET_COMPASS_HDG().
+  LOCAL signed_err IS WRAP_180(brg - hdg_now).
+  LOCAL hdg_cmd IS WRAP_360(hdg_now + CLAMP(signed_err, -90, 90)).
+  AA_SET_DIRECTOR(hdg_cmd, fpa_cmd).
+  SET TELEM_AA_HDG_CMD TO hdg_cmd.
   SET TELEM_AA_FPA_CMD TO fpa_cmd.
   SET TELEM_LOC_CORR   TO 0.
   SET TELEM_GS_CORR    TO 0.
@@ -328,10 +337,7 @@ FUNCTION _RUN_ILS_TRACK {
   LOCAL hdg_cmd  IS WRAP_360(ACTIVE_RWY_HDG + CLAMP(loc_corr, -MAX_LOC_CORR, MAX_LOC_CORR)).
 
   // ── Vertical (glideslope) ──
-  // Before GS capture: hold current altitude and let the glideslope descend
-  // to intercept the aircraft from above (always intercept from below).
-  // This prevents an aggressive pitch-down if the aircraft arrives slightly
-  // above the GS on LOC capture.
+  // Before GS capture: steer toward the glideslope (see ELSE branch below).
   // After GS capture: track the glideslope with PD feedback.
   LOCAL fpa_cmd IS 0.
   LOCAL gs_corr IS 0.
@@ -339,11 +345,25 @@ FUNCTION _RUN_ILS_TRACK {
     SET gs_corr TO -(KP_GS * gs_m + KD_GS * d_gs).
     SET fpa_cmd TO -ACTIVE_GS_ANGLE + CLAMP(gs_corr, -MAX_GS_CORR_DN, MAX_GS_CORR_UP).
   } ELSE {
-    // Pre-capture: hold the altitude at which LOC was captured.
-    // Let the glideslope descend to the aircraft (always intercept from below).
-    // Prevents aggressive pitch-down if aircraft is slightly above the GS on LOC capture.
-    LOCAL alt_err IS SHIP:ALTITUDE - ILS_INTERCEPT_ALT.
-    SET fpa_cmd TO CLAMP(-alt_err * KP_ALT_FPA, MAX_DESC_FPA, MAX_CLIMB_FPA).
+    // Pre-capture vertical guidance — two cases depending on GS position:
+    //
+    // Above GS (gs_m > 0):
+    //   The GS beam descends away from the aircraft as it approaches, so
+    //   altitude-hold cannot achieve intercept.  Command descent at least as
+    //   steep as the GS slope, plus a proportional term for how far above the
+    //   beam the aircraft is.  Upper clamp at -ACTIVE_GS_ANGLE ensures the
+    //   aircraft always descends at least as fast as the beam.
+    //
+    // Below GS (gs_m < 0):
+    //   Hold the ILS intercept altitude captured at LOC capture.  The GS beam
+    //   descends to the aircraft as it approaches (standard intercept from
+    //   below).  Never command a climb pre-capture.
+    IF gs_m > 0 {
+      SET fpa_cmd TO CLAMP(-ACTIVE_GS_ANGLE - KP_ALT_FPA * gs_m, MAX_DESC_FPA, -ACTIVE_GS_ANGLE).
+    } ELSE {
+      LOCAL alt_err IS SHIP:ALTITUDE - ILS_INTERCEPT_ALT.
+      SET fpa_cmd TO CLAMP(-alt_err * KP_ALT_FPA, MAX_DESC_FPA, 0).
+    }
   }
 
   AA_SET_DIRECTOR(hdg_cmd, fpa_cmd).

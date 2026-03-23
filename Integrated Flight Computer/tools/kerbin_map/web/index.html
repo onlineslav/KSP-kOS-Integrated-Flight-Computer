@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Kerbin Map Viewer</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <h1>Kerbin Map</h1>
+
+    <section>
+      <h2>Data Paths</h2>
+      <label>Basemap PNG
+        <input id="mapPath" type="text" value="./data/kerbin_map.png">
+      </label>
+      <label>Beacons CSV
+        <input id="beaconsPath" type="text" value="./data/ifc_beacons.csv">
+      </label>
+      <label>Plates CSV
+        <input id="platesPath" type="text" value="./data/ifc_plates.csv">
+      </label>
+      <button id="reloadBtn" type="button">Reload</button>
+    </section>
+
+    <section>
+      <h2>Overlay</h2>
+      <label><input id="showBeacons" type="checkbox" checked> Show beacons</label>
+      <label><input id="showLabels" type="checkbox" checked> Show labels</label>
+      <label>Marker size
+        <input id="markerSize" type="range" min="2" max="16" value="6">
+      </label>
+      <label>Plate route
+        <select id="plateSelect">
+          <option value="">(none)</option>
+        </select>
+      </label>
+    </section>
+
+    <section>
+      <h2>Readout</h2>
+      <div id="cursorReadout">lat ---, lon ---</div>
+      <div id="status">Not loaded.</div>
+      <p class="hint">
+        Mouse wheel: zoom<br>
+        Drag: pan<br>
+        Double-click: fit
+      </p>
+    </section>
+  </aside>
+
+  <main class="viewport">
+    <canvas id="mapCanvas"></canvas>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>
