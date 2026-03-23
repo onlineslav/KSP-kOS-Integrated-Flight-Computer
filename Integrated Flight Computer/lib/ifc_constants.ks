@@ -113,6 +113,28 @@ GLOBAL AT_THR_SLEW_MIN    IS 0.12.  // /s min scheduled throttle slew
 GLOBAL AT_THR_SLEW_MAX    IS 0.80.  // /s max scheduled throttle slew
 GLOBAL AT_INT_BLEED       IS 0.995. // integral bleed factor while blocked by anti-windup
 
+// ----------------------------
+// Autospoiler (tagged control-surface deploy-angle writer)
+// ----------------------------
+GLOBAL AS_ENABLED_DEFAULT    IS TRUE.          // master enable when aircraft cfg does not override
+GLOBAL AS_SPOILER_TAG_DEFAULT IS "ifc_spoiler". // required part tag for spoiler discovery
+GLOBAL AS_THR_IDLE_GATE      IS 0.08.          // only deploy spoilers when THROTTLE_CMD <= gate
+GLOBAL AS_ERR_DEADBAND_MPS   IS 1.5.           // m/s overspeed deadband before spoiler response
+GLOBAL AS_ERR_FULL_MPS       IS 20.0.          // m/s overspeed that maps to full capped deflection
+GLOBAL AS_ANGLE_SLEW_DPS     IS 25.0.          // deg/s max spoiler deploy-angle command slew
+
+// Cruise cap: max spoiler deploy angle as a function of IAS.
+GLOBAL AS_CRZ_SPEED_LO    IS 120.0. // m/s
+GLOBAL AS_CRZ_SPEED_HI    IS 320.0. // m/s
+GLOBAL AS_CRZ_CAP_DEG_LO  IS 35.0.  // deg cap at/below AS_CRZ_SPEED_LO
+GLOBAL AS_CRZ_CAP_DEG_HI  IS 6.0.   // deg cap at/above AS_CRZ_SPEED_HI
+
+// Approach cap: max spoiler deploy angle as a function of IAS.
+GLOBAL AS_APP_SPEED_LO    IS 70.0.  // m/s
+GLOBAL AS_APP_SPEED_HI    IS 180.0. // m/s
+GLOBAL AS_APP_CAP_DEG_LO  IS 45.0.  // deg cap at/below AS_APP_SPEED_LO
+GLOBAL AS_APP_CAP_DEG_HI  IS 14.0.  // deg cap at/above AS_APP_SPEED_HI
+
 // Derived approach speed schedule (minimal tuning):
 // - Pre-capture/intercept: target Vint = Vapp + derived additive.
 // - Final: target Vapp.

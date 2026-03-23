@@ -38,6 +38,7 @@ RUNPATH(ifc_root + "lib/ifc_constants.ks").
 RUNPATH(ifc_root + "lib/ifc_state.ks").
 RUNPATH(ifc_root + "lib/ifc_helpers.ks").
 RUNPATH(ifc_root + "lib/ifc_autothrottle.ks").
+RUNPATH(ifc_root + "lib/ifc_autospoiler.ks").
 RUNPATH(ifc_root + "lib/ifc_ui.ks").
 RUNPATH(ifc_root + "lib/ifc_menu.ks").
 RUNPATH(ifc_root + "lib/ifc_display.ks").
@@ -76,6 +77,20 @@ LOCAL _DEFAULT_AIRCRAFT IS LEXICON(
   "ag_spoilers",        0,
   "ag_spoilers_arm",    0,
   "app_spoiler_arm_km", 0,
+  "spoiler_tag",        "",
+  "as_enabled",         -1,
+  "as_thr_idle_gate",   -1,
+  "as_err_deadband_mps",-1,
+  "as_err_full_mps",    -1,
+  "as_angle_slew_dps",  -1,
+  "as_crz_speed_lo",    -1,
+  "as_crz_speed_hi",    -1,
+  "as_crz_cap_deg_lo",  -1,
+  "as_crz_cap_deg_hi",  -1,
+  "as_app_speed_lo",    -1,
+  "as_app_speed_hi",    -1,
+  "as_app_cap_deg_lo",  -1,
+  "as_app_cap_deg_hi",  -1,
   "ag_thrust_rev",      0,
   "ag_drogue",          0,
   "flaps_initial_detent", 0,
@@ -406,6 +421,7 @@ FUNCTION _INIT_LEG {
     SET PREV_IAS          TO GET_IAS().
     SET A_ACTUAL_FILT     TO 0.
     AT_RESET().
+    AS_RELEASE().
     SET_PHASE(PHASE_CRUISE).
 
   } ELSE IF leg_type = LEG_APPROACH {
@@ -431,6 +447,7 @@ FUNCTION _INIT_LEG {
     SET PREV_IAS      TO GET_IAS().
     SET A_ACTUAL_FILT TO 0.
     AT_RESET().
+    AS_RELEASE().
     // Apply Vapp override after plate load
     IF IFC_MENU_OPT_VAPP > 0 {
       SET ACTIVE_V_APP   TO IFC_MENU_OPT_VAPP.
@@ -471,6 +488,8 @@ FUNCTION _RUN_FLIGHT_PLAN {
     _RESOLVE_CFG_SOURCE_FOR_LOGGER().
   }
   AA_INIT().
+  AS_RESET().
+  AS_DISCOVER_PARTS().
   LOGGER_INIT().
 
   SAS OFF.
@@ -570,6 +589,7 @@ FUNCTION _RUN_FLIGHT_PLAN {
   }
 
   // ── Shutdown ──────────────────────────────────────────
+  AS_RELEASE().
   UNLOCK THROTTLE.
   UNLOCK STEERING.
   UNLOCK WHEELSTEERING.

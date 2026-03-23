@@ -178,6 +178,11 @@ GLOBAL TELEM_AT_A_DN_LIM   IS 0.  // adaptive throttle: -accel clamp magnitude (
 GLOBAL TELEM_AT_KP_THR     IS 0.  // adaptive throttle: scheduled KP_ACL_THR
 GLOBAL TELEM_AT_KI_SPD     IS 0.  // adaptive throttle: scheduled KI_SPD
 GLOBAL TELEM_AT_THR_SLEW   IS 0.  // adaptive throttle: scheduled throttle slew (/s)
+GLOBAL TELEM_AS_CMD_DEG    IS 0.  // autospoiler: slewed deploy-angle command (deg)
+GLOBAL TELEM_AS_CAP_DEG    IS 0.  // autospoiler: speed-derived deploy-angle cap (deg)
+GLOBAL TELEM_AS_RAW_DEG    IS 0.  // autospoiler: pre-slew command (deg)
+GLOBAL TELEM_AS_ERR_MPS    IS 0.  // autospoiler: overspeed error = IAS - Vtgt (m/s)
+GLOBAL TELEM_AS_ACTIVE     IS 0.  // autospoiler: 1 when command > small threshold
 
 // Diagnostic telemetry for AA mode and approach guidance
 GLOBAL TELEM_AA_FBW_ON      IS 0.  // actual aa:FBW state this cycle (0=off, 1=on)
@@ -205,6 +210,16 @@ GLOBAL FLAPS_LAST_TARGET_LOGGED IS -1.
 // Approach spoiler arming
 // ----------------------------
 GLOBAL APP_SPOILERS_ARMED IS FALSE. // TRUE once ag_spoilers_arm has been triggered in-flight
+
+// ----------------------------
+// Autospoiler module state
+// ----------------------------
+GLOBAL AS_DISCOVERED IS FALSE.         // TRUE once spoiler discovery has run
+GLOBAL AS_AVAILABLE IS FALSE.          // TRUE when at least one valid spoiler field binding exists
+GLOBAL AS_WARNED_NO_PARTS IS FALSE.    // one-shot warning latch if no tagged spoilers are found
+GLOBAL AS_SPOILER_BINDINGS IS LIST().  // LIST of LEXICON("part","mod","field","module_name")
+GLOBAL AS_CMD_DEG IS 0.                // current commanded spoiler deploy angle (deg)
+GLOBAL AS_LAST_CAP_DEG IS 0.           // current speed-scheduled cap (deg)
 
 // ----------------------------
 // Takeoff phase state
@@ -567,6 +582,11 @@ FUNCTION IFC_INIT_STATE {
   SET TELEM_AT_KP_THR   TO 0.
   SET TELEM_AT_KI_SPD   TO 0.
   SET TELEM_AT_THR_SLEW TO 0.
+  SET TELEM_AS_CMD_DEG  TO 0.
+  SET TELEM_AS_CAP_DEG  TO 0.
+  SET TELEM_AS_RAW_DEG  TO 0.
+  SET TELEM_AS_ERR_MPS  TO 0.
+  SET TELEM_AS_ACTIVE   TO 0.
 
   LOCAL initial_det IS 0.
   LOCAL max_det     IS 3.
@@ -625,6 +645,12 @@ FUNCTION IFC_INIT_STATE {
   SET CRUISE_END_UT     TO -1.
 
   SET APP_SPOILERS_ARMED  TO FALSE.
+  SET AS_DISCOVERED       TO FALSE.
+  SET AS_AVAILABLE        TO FALSE.
+  SET AS_WARNED_NO_PARTS  TO FALSE.
+  AS_SPOILER_BINDINGS:CLEAR().
+  SET AS_CMD_DEG          TO 0.
+  SET AS_LAST_CAP_DEG     TO 0.
   SET TO_RWY_HDG          TO 90.
   SET TO_ROTATE_PITCH_CMD TO 0.
   SET TO_AIRBORNE_UT      TO -1.

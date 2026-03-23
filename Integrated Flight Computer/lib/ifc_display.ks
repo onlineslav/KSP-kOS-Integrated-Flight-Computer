@@ -176,7 +176,7 @@ FUNCTION DISPLAY_CRUISE {
     UI_CLR(UI_PRI_TOP + 4).
   }
 
-  UI_P("  CMD HDG " + ROUND(TELEM_AA_HDG_CMD, 1) + " deg   CMD FPA " + ROUND(TELEM_AA_FPA_CMD, 2) + " deg", UI_PRI_TOP + 5).
+  UI_P("  CMD HDG " + ROUND(TELEM_AA_HDG_CMD, 1) + " deg   FPA " + ROUND(TELEM_AA_FPA_CMD, 2) + "  SP " + ROUND(TELEM_AS_CMD_DEG, 1), UI_PRI_TOP + 5).
 }
 
 FUNCTION DISPLAY_FLY_TO_FIX {
@@ -215,7 +215,7 @@ FUNCTION DISPLAY_ILS_TRACK {
   IF GEAR { SET gear_str TO "DOWN". }
   LOCAL sp_str IS "DISARMED".
   IF APP_SPOILERS_ARMED { SET sp_str TO "ARMED". }
-  UI_P("  GEAR " + gear_str + "  SPOILERS " + sp_str, UI_PRI_TOP + 5).
+  UI_P("  GEAR " + gear_str + "  SPOILERS " + sp_str + "  AUTO " + ROUND(TELEM_AS_CMD_DEG, 1) + " deg", UI_PRI_TOP + 5).
 }
 
 FUNCTION DISPLAY_FLARE {
