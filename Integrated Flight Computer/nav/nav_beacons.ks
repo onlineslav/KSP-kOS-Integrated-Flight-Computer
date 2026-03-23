@@ -20,6 +20,14 @@
 //   RWY 27 threshold = eastern end  (landing heading 270.4°)
 //   The two ends have slightly different latitudes.
 //   Runway elevation = 70 m MSL.
+//
+// Van's KSC notes:
+//   The long parallel runway is exposed here as 09R/27R approach options.
+//   Threshold coordinates were derived from Van's KSC static configs:
+//     - VansKSC/Statics/VansKSC_center.cfg
+//     - VansKSC/Statics/KK_2500m_RL_runway.cfg
+//   using Kerbal Konstructs group/instance transform math.
+//   These values may need minor local tuning if the pack updates.
 // ============================================================
 
 // ----------------------------
@@ -114,6 +122,23 @@ REGISTER_BEACON(MAKE_BEACON(
   "KSC_ILS_27", BTYPE_ILS,
   ksc_rwy27_thr, ksc_elev,
   LEXICON("hdg", 270.4, "gs_angle", 3.0, "rwy", "27")
+)).
+
+// Van's KSC long-runway thresholds (09R/27R), derived from local KK statics.
+LOCAL ksc_rwy09r_thr IS LATLNG(0.04285637, -75.31379059).
+LOCAL ksc_rwy27r_thr IS LATLNG(0.04283534, -74.83633283).
+LOCAL ksc_rwy_r_elev IS 93.
+
+REGISTER_BEACON(MAKE_BEACON(
+  "KSC_ILS_09R", BTYPE_ILS,
+  ksc_rwy09r_thr, ksc_rwy_r_elev,
+  LEXICON("hdg", 90.0, "gs_angle", 3.0, "rwy", "09R")
+)).
+
+REGISTER_BEACON(MAKE_BEACON(
+  "KSC_ILS_27R", BTYPE_ILS,
+  ksc_rwy27r_thr, ksc_rwy_r_elev,
+  LEXICON("hdg", 270.0, "gs_angle", 3.0, "rwy", "27R")
 )).
 
 // ----------------------------
@@ -332,6 +357,56 @@ REGISTER_BEACON(MAKE_BEACON(
 )).
 
 // ----------------------------
+// KSC RWY 09R / 27R approach fixes (Van's KSC long runway)
+// ----------------------------
+LOCAL ksc09r_iaf60_ll IS GEO_DESTINATION(ksc_rwy09r_thr, 270, 60000).
+LOCAL ksc09r_iaf30_ll IS GEO_DESTINATION(ksc_rwy09r_thr, 270, 30000).
+LOCAL ksc09r_faf_ll   IS GEO_DESTINATION(ksc_rwy09r_thr, 270, 15000).
+LOCAL ksc27r_iaf60_ll IS GEO_DESTINATION(ksc_rwy27r_thr,  90, 60000).
+LOCAL ksc27r_iaf30_ll IS GEO_DESTINATION(ksc_rwy27r_thr,  90, 30000).
+LOCAL ksc27r_faf_ll   IS GEO_DESTINATION(ksc_rwy27r_thr,  90, 15000).
+
+LOCAL ksc_r_faf_alt   IS ksc_rwy_r_elev + GS_HGT_15KM.
+LOCAL ksc_r_iaf30_alt IS ksc_rwy_r_elev + GS_HGT_30KM - BELOW_GS_M.
+LOCAL ksc_r_iaf60_alt IS ksc_rwy_r_elev + GS_HGT_60KM - BELOW_GS_M.
+
+REGISTER_BEACON(MAKE_BEACON(
+  "KSC_IAF_09R_60", BTYPE_IAF,
+  ksc09r_iaf60_ll, ksc_r_iaf60_alt,
+  LEXICON("name", "KSC RWY09R IAF 60km", "runway", "09R")
+)).
+
+REGISTER_BEACON(MAKE_BEACON(
+  "KSC_IAF_09R_30", BTYPE_IAF,
+  ksc09r_iaf30_ll, ksc_r_iaf30_alt,
+  LEXICON("name", "KSC RWY09R IAF 30km", "runway", "09R")
+)).
+
+REGISTER_BEACON(MAKE_BEACON(
+  "KSC_FAF_09R", BTYPE_FAF,
+  ksc09r_faf_ll, ksc_r_faf_alt,
+  LEXICON("name", "KSC RWY09R FAF 15km", "runway", "09R")
+)).
+
+REGISTER_BEACON(MAKE_BEACON(
+  "KSC_IAF_27R_60", BTYPE_IAF,
+  ksc27r_iaf60_ll, ksc_r_iaf60_alt,
+  LEXICON("name", "KSC RWY27R IAF 60km", "runway", "27R")
+)).
+
+REGISTER_BEACON(MAKE_BEACON(
+  "KSC_IAF_27R_30", BTYPE_IAF,
+  ksc27r_iaf30_ll, ksc_r_iaf30_alt,
+  LEXICON("name", "KSC RWY27R IAF 30km", "runway", "27R")
+)).
+
+REGISTER_BEACON(MAKE_BEACON(
+  "KSC_FAF_27R", BTYPE_FAF,
+  ksc27r_faf_ll, ksc_r_faf_alt,
+  LEXICON("name", "KSC RWY27R FAF 15km", "runway", "27R")
+)).
+
+// ----------------------------
 // Approach plates
 // ----------------------------
 // Full ILS approach: fly IAF-60, IAF-30, FAF, then ILS tracking.
@@ -379,6 +454,52 @@ GLOBAL PLATE_KSC_ILS27_SHORT IS MAKE_PLATE(
   LEXICON(
     "KSC_IAF_27_30", ksc_iaf30_alt,
     "KSC_FAF_27",    ksc_faf_alt
+  )
+).
+
+GLOBAL PLATE_KSC_ILS09R IS MAKE_PLATE(
+  "KSC ILS RWY 09R",
+  "KSC_ILS_09R",
+  LIST("KSC_IAF_09R_60", "KSC_IAF_09R_30", "KSC_FAF_09R"),
+  75,
+  LEXICON(
+    "KSC_IAF_09R_60", ksc_r_iaf60_alt,
+    "KSC_IAF_09R_30", ksc_r_iaf30_alt,
+    "KSC_FAF_09R",    ksc_r_faf_alt
+  )
+).
+
+GLOBAL PLATE_KSC_ILS27R IS MAKE_PLATE(
+  "KSC ILS RWY 27R",
+  "KSC_ILS_27R",
+  LIST("KSC_IAF_27R_60", "KSC_IAF_27R_30", "KSC_FAF_27R"),
+  75,
+  LEXICON(
+    "KSC_IAF_27R_60", ksc_r_iaf60_alt,
+    "KSC_IAF_27R_30", ksc_r_iaf30_alt,
+    "KSC_FAF_27R",    ksc_r_faf_alt
+  )
+).
+
+GLOBAL PLATE_KSC_ILS09R_SHORT IS MAKE_PLATE(
+  "KSC ILS RWY 09R (short)",
+  "KSC_ILS_09R",
+  LIST("KSC_IAF_09R_30", "KSC_FAF_09R"),
+  75,
+  LEXICON(
+    "KSC_IAF_09R_30", ksc_r_iaf30_alt,
+    "KSC_FAF_09R",    ksc_r_faf_alt
+  )
+).
+
+GLOBAL PLATE_KSC_ILS27R_SHORT IS MAKE_PLATE(
+  "KSC ILS RWY 27R (short)",
+  "KSC_ILS_27R",
+  LIST("KSC_IAF_27R_30", "KSC_FAF_27R"),
+  75,
+  LEXICON(
+    "KSC_IAF_27R_30", ksc_r_iaf30_alt,
+    "KSC_FAF_27R",    ksc_r_faf_alt
   )
 ).
 
@@ -437,6 +558,10 @@ PLATE_REGISTRY:ADD("PLATE_KSC_ILS09",       PLATE_KSC_ILS09).
 PLATE_REGISTRY:ADD("PLATE_KSC_ILS27",       PLATE_KSC_ILS27).
 PLATE_REGISTRY:ADD("PLATE_KSC_ILS09_SHORT", PLATE_KSC_ILS09_SHORT).
 PLATE_REGISTRY:ADD("PLATE_KSC_ILS27_SHORT", PLATE_KSC_ILS27_SHORT).
+PLATE_REGISTRY:ADD("PLATE_KSC_ILS09R",       PLATE_KSC_ILS09R).
+PLATE_REGISTRY:ADD("PLATE_KSC_ILS27R",       PLATE_KSC_ILS27R).
+PLATE_REGISTRY:ADD("PLATE_KSC_ILS09R_SHORT", PLATE_KSC_ILS09R_SHORT).
+PLATE_REGISTRY:ADD("PLATE_KSC_ILS27R_SHORT", PLATE_KSC_ILS27R_SHORT).
 PLATE_REGISTRY:ADD("PLATE_ISL_ILS09",       PLATE_ISL_ILS09).
 PLATE_REGISTRY:ADD("PLATE_ISL_ILS27",       PLATE_ISL_ILS27).
 PLATE_REGISTRY:ADD("PLATE_DAF_ILS36",       PLATE_DAF_ILS36).
@@ -461,8 +586,12 @@ FUNCTION GET_PLATE {
 GLOBAL PLATE_IDS IS LIST(
   "PLATE_KSC_ILS09",
   "PLATE_KSC_ILS09_SHORT",
+  "PLATE_KSC_ILS09R",
+  "PLATE_KSC_ILS09R_SHORT",
   "PLATE_KSC_ILS27",
   "PLATE_KSC_ILS27_SHORT",
+  "PLATE_KSC_ILS27R",
+  "PLATE_KSC_ILS27R_SHORT",
   "PLATE_ISL_ILS09",
   "PLATE_ISL_ILS27",
   "PLATE_DAF_ILS36",
@@ -476,9 +605,15 @@ FUNCTION GET_PLATE_FOR_RUNWAY {
   IF rwy_id = "09" {
     IF short_approach { RETURN PLATE_KSC_ILS09_SHORT. }
     RETURN PLATE_KSC_ILS09.
+  } ELSE IF rwy_id = "09R" {
+    IF short_approach { RETURN PLATE_KSC_ILS09R_SHORT. }
+    RETURN PLATE_KSC_ILS09R.
   } ELSE IF rwy_id = "27" {
     IF short_approach { RETURN PLATE_KSC_ILS27_SHORT. }
     RETURN PLATE_KSC_ILS27.
+  } ELSE IF rwy_id = "27R" {
+    IF short_approach { RETURN PLATE_KSC_ILS27R_SHORT. }
+    RETURN PLATE_KSC_ILS27R.
   } ELSE IF rwy_id = "36" {
     IF short_approach { RETURN PLATE_DAF_ILS36_SHORT. }
     RETURN PLATE_DAF_ILS36.

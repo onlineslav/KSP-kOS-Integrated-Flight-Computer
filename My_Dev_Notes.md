@@ -64,6 +64,8 @@ This keeps getting spammed in the KSP debug log
 
 ---
 
+- find all parts that have "Disable Containment" and disable containment during preflight.
+
 - only skip fix if it is directly behind you in a 10 degree cone (implying it's actually behind you)
 
 - add max gear ext speed (COMPLETE)
