@@ -64,7 +64,9 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // ── Gear ──────────────────────────────────────────────
     // AGL (m) at which to extend landing gear on approach.
     // Set to 0 to manage gear manually.
+    
     "gear_down_agl", 300,
+    "gear_max_extend_ias", 120, // m/s max IAS to auto-extend gear
 
     // ── Stall / AoA limits ────────────────────────────────
     "vs0",      55.0,   // m/s  stall speed in landing configuration
@@ -126,7 +128,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Per-aircraft overrides for AtmosphereAutopilot FBW limits.
     // Set to -1 to use the global default from ifc_constants.ks.
     "aa_max_aoa",      15,   // deg max AoA  (global: 12)
-    "aa_max_g",        5,   // G   max G    (global: 3.5)
+    "aa_max_g",        3.5,   // G   max G    (global: 3.5)
     "aa_max_sideslip", -1,   // deg max sideslip (global: 5)
     "aa_max_side_g",   -1,   // G   max lateral G (global: 1.5)
     "aa_max_bank",     -1,   // deg max bank (global: 35; -1 = use default)
@@ -203,3 +205,4 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "notes",        "CF1-J Kerbmaster"
   ).
 }
+

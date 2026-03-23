@@ -106,6 +106,7 @@ LOCAL _DEFAULT_AIRCRAFT IS LEXICON(
   "flaps_approach_km",   30,
   "flaps_landing_km",     8,
   "gear_down_agl",      300,
+  "gear_max_extend_ias", -1,
   "rollout_brake_max_ias", 70,
   "rollout_yaw_assist_ias", 95,
   "rollout_roll_assist_ias", 95,

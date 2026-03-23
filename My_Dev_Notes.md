@@ -66,10 +66,12 @@ This keeps getting spammed in the KSP debug log
 
 - only skip fix if it is directly behind you in a 10 degree cone (implying it's actually behind you)
 
-- add max gear ext speed
+- add max gear ext speed (COMPLETE)
+
+- add all of Van's runways to nav beacons. Make sensible approaches for all of them.
+
 
 Desired behaviour: every aircraft should have a default cruise speed that it defaults to for cruise phases.
 
 
 I want the FMS terminal or GUI to show the current target (heading,alt, etc.) and the current actual value - that way I know what it's trying to do and if it's succeeding
-

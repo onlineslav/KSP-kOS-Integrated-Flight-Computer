@@ -64,7 +64,9 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // ── Gear ──────────────────────────────────────────────
     // AGL (m) at which to extend landing gear on approach.
     // Set to 0 to manage gear manually.
+    
     "gear_down_agl", 300,
+    "gear_max_extend_ias", 120, // m/s max IAS to auto-extend gear
 
     // ── Stall / AoA limits ────────────────────────────────
     "vs0",      55.0,   // m/s  stall speed in landing configuration
@@ -203,3 +205,4 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "notes",        "CF1-G Kerbmaster"
   ).
 }
+

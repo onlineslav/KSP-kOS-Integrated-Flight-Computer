@@ -61,7 +61,9 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // ── Gear ──────────────────────────────────────────────
     // AGL (m) at which to extend landing gear on approach.
     // Set to 0 to manage gear manually.
+    
     "gear_down_agl", 300,
+    "gear_max_extend_ias", 110, // m/s max IAS to auto-extend gear
 
     // ── Rollout ───────────────────────────────────────────
     // Controls ground roll behaviour after touchdown.
@@ -147,3 +149,4 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "notes",        "Note for XT-1"
   ).
 }
+

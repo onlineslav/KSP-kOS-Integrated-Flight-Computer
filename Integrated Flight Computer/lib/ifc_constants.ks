@@ -177,6 +177,11 @@ GLOBAL FLAP_STEP_INTERVAL IS 0.35. // s minimum time between flap detent steps
 GLOBAL FLAP_VFE_HYST      IS 2.0.  // m/s hold margin before forced retract
 
 // ----------------------------
+// Gear deployment safety
+// ----------------------------
+GLOBAL GEAR_MAX_EXTEND_IAS IS 120. // m/s max IAS allowed for automatic gear extension
+
+// ----------------------------
 // Flare
 // ----------------------------
 GLOBAL FLARE_AGL_M      IS 25.   // m radar AGL to trigger flare

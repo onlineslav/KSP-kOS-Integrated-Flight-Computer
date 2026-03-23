@@ -211,6 +211,22 @@ FUNCTION _RUN_APPROACH_THROTTLE {
   AS_RUN(v_tgt, "APPROACH").
 }
 
+FUNCTION _APP_GEAR_MAX_EXTEND_IAS {
+  RETURN AC_PARAM("gear_max_extend_ias", GEAR_MAX_EXTEND_IAS, 0.001).
+}
+
+FUNCTION _APP_GEAR_CAN_EXTEND {
+  LOCAL vmax IS _APP_GEAR_MAX_EXTEND_IAS().
+  IF vmax <= 0 { RETURN TRUE. }
+  RETURN GET_IAS() <= vmax.
+}
+
+FUNCTION _APP_TRY_EXTEND_GEAR {
+  IF _APP_GEAR_CAN_EXTEND() {
+    GEAR ON.
+  }
+}
+
 // ─────────────────────────────────────────────────────────
 // SUB-PHASE: FLY_TO_FIX
 // Navigate toward each fix in the approach sequence.
@@ -346,7 +362,7 @@ FUNCTION _RUN_FLY_TO_FIX {
   // Extend gear if aircraft config specifies a gear-down AGL.
   LOCAL gear_agl IS AC_PARAM("gear_down_agl", 0, 0.001).
   IF gear_agl > 0 AND GET_AGL() < gear_agl {
-    GEAR ON.
+    _APP_TRY_EXTEND_GEAR().
   }
 
   // Capture: move to the next fix when within capture radius.
@@ -388,7 +404,7 @@ FUNCTION _RUN_ILS_TRACK {
   // Before GS capture, keep gear-up unless explicit AGL rule asks for gear.
   LOCAL gear_agl IS AC_PARAM("gear_down_agl", 0, 0.001).
   IF gs_captured OR (gear_agl > 0 AND GET_RUNWAY_REL_HEIGHT() < gear_agl) {
-    GEAR ON.
+    _APP_TRY_EXTEND_GEAR().
   }
 
   // Derivative (rate of change over one loop cycle).

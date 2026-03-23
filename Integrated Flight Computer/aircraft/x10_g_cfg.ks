@@ -67,7 +67,9 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // ── Gear ──────────────────────────────────────────────
     // AGL (m) at which to extend landing gear on approach.
     // Set to 0 to manage gear manually.
+    
     "gear_down_agl", 300,
+    "gear_max_extend_ias", 220, // m/s max IAS to auto-extend gear
 
     // ── Rollout ────────────────────────────────────────────
     // Max IAS to allow wheel brakes during rollout.
@@ -194,3 +196,4 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "notes",        "X10-G Spaceplane"
   ).
 }
+
