@@ -70,6 +70,8 @@ This keeps getting spammed in the KSP debug log
 
 - add all of Van's runways to nav beacons. Make sensible approaches for all of them.
 
+- organize the cfgs in a more intuitive way. group all vfe/max extension speeds, and have parameters grouped in the order of: preflight, takeoff, cruise, approach, landing.
+
 
 Desired behaviour: every aircraft should have a default cruise speed that it defaults to for cruise phases.
 

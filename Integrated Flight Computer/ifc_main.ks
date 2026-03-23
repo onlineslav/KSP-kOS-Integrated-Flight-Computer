@@ -83,6 +83,7 @@ LOCAL _DEFAULT_AIRCRAFT IS LEXICON(
   "as_err_deadband_mps",-1,
   "as_err_full_mps",    -1,
   "as_angle_slew_dps",  -1,
+  "as_max_deflection_deg",-1,
   "as_crz_speed_lo",    -1,
   "as_crz_speed_hi",    -1,
   "as_crz_cap_deg_lo",  -1,

@@ -122,6 +122,7 @@ GLOBAL AS_THR_IDLE_GATE      IS 0.08.          // only deploy spoilers when THRO
 GLOBAL AS_ERR_DEADBAND_MPS   IS 1.5.           // m/s overspeed deadband before spoiler response
 GLOBAL AS_ERR_FULL_MPS       IS 20.0.          // m/s overspeed that maps to full capped deflection
 GLOBAL AS_ANGLE_SLEW_DPS     IS 25.0.          // deg/s max spoiler deploy-angle command slew
+GLOBAL AS_MAX_DEFLECTION_DEG IS 70.0.          // deg deploy-angle value written while spoilers are not deployed
 
 // Cruise cap: max spoiler deploy angle as a function of IAS.
 GLOBAL AS_CRZ_SPEED_LO    IS 120.0. // m/s

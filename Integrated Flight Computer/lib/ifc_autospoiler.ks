@@ -155,6 +155,48 @@ FUNCTION _AS_RESOLVE_DEPLOY_FIELD {
   RETURN "".
 }
 
+FUNCTION _AS_RESOLVE_DEPLOY_STATE_FIELD {
+  PARAMETER module_obj.
+  IF module_obj = 0 { RETURN "". }
+  IF NOT module_obj:HASSUFFIX("HASFIELD") { RETURN "". }
+
+  LOCAL candidates IS LIST(
+    "deploy",
+    "Deploy",
+    "deployed",
+    "Deployed",
+    "isDeployed",
+    "isdeployed"
+  ).
+
+  LOCAL idx IS 0.
+  UNTIL idx >= candidates:LENGTH {
+    LOCAL state_field IS candidates[idx].
+    IF module_obj:HASFIELD(state_field) { RETURN state_field. }
+    SET idx TO idx + 1.
+  }
+  RETURN "".
+}
+
+FUNCTION _AS_RESOLVE_READY_DEFLECTION_FIELD {
+  PARAMETER module_obj.
+  IF module_obj = 0 { RETURN "". }
+  IF NOT module_obj:HASSUFFIX("HASFIELD") { RETURN "". }
+
+  LOCAL candidates IS LIST(
+    "maxDeployAngle",
+    "maxdeployangle"
+  ).
+
+  LOCAL idx IS 0.
+  UNTIL idx >= candidates:LENGTH {
+    LOCAL ready_field IS candidates[idx].
+    IF module_obj:HASFIELD(ready_field) { RETURN ready_field. }
+    SET idx TO idx + 1.
+  }
+  RETURN "".
+}
+
 FUNCTION _AS_SET_MODULE_FIELD {
   PARAMETER module_obj, field_name, value_num.
   IF module_obj = 0 { RETURN FALSE. }
@@ -162,6 +204,21 @@ FUNCTION _AS_SET_MODULE_FIELD {
   IF module_obj:HASSUFFIX("HASFIELD") AND NOT module_obj:HASFIELD(field_name) { RETURN FALSE. }
 
   module_obj:SETFIELD(field_name, ROUND(value_num, 3)).
+  RETURN TRUE.
+}
+
+FUNCTION _AS_SET_MODULE_STATE_FIELD {
+  PARAMETER module_obj, field_name, deploy_now.
+  IF module_obj = 0 { RETURN FALSE. }
+  IF field_name = "" { RETURN FALSE. }
+  IF NOT module_obj:HASSUFFIX("SETFIELD") { RETURN FALSE. }
+  IF module_obj:HASSUFFIX("HASFIELD") AND NOT module_obj:HASFIELD(field_name) { RETURN FALSE. }
+
+  IF deploy_now {
+    module_obj:SETFIELD(field_name, "True").
+  } ELSE {
+    module_obj:SETFIELD(field_name, "False").
+  }
   RETURN TRUE.
 }
 
@@ -240,11 +297,27 @@ FUNCTION _AS_APPLY_CMD {
   PARAMETER cmd_deg.
   IF NOT AS_AVAILABLE { RETURN. }
   IF AS_SPOILER_BINDINGS:LENGTH = 0 { RETURN. }
+  LOCAL deploy_now IS cmd_deg > 0.05.
+  LOCAL ready_deflection_deg IS AC_PARAM("as_max_deflection_deg", AS_MAX_DEFLECTION_DEG, 0).
+  IF ready_deflection_deg < 0 { SET ready_deflection_deg TO 0. }
 
   LOCAL i IS 0.
   UNTIL i >= AS_SPOILER_BINDINGS:LENGTH {
     LOCAL b IS AS_SPOILER_BINDINGS[i].
-    _AS_SET_MODULE_FIELD(b["mod"], b["field"], cmd_deg).
+    IF b:HASKEY("state_field") AND b["state_field"] <> "" {
+      _AS_SET_MODULE_STATE_FIELD(b["mod"], b["state_field"], deploy_now).
+    }
+    IF deploy_now {
+      _AS_SET_MODULE_FIELD(b["mod"], b["field"], cmd_deg).
+    } ELSE {
+      _AS_SET_MODULE_FIELD(b["mod"], b["field"], 0).
+    }
+
+    IF b:HASKEY("ready_field") AND b["ready_field"] <> "" {
+      IF NOT deploy_now OR b["ready_field"] <> b["field"] {
+        _AS_SET_MODULE_FIELD(b["mod"], b["ready_field"], ready_deflection_deg).
+      }
+    }
     SET i TO i + 1.
   }
 }
@@ -300,15 +373,23 @@ FUNCTION AS_DISCOVER_PARTS {
               LOCAL probe_mod IS p:GETMODULE(nm).
               LOCAL probe_field IS _AS_RESOLVE_DEPLOY_FIELD(probe_mod).
               IF probe_field <> "" {
+                LOCAL probe_state_field IS _AS_RESOLVE_DEPLOY_STATE_FIELD(probe_mod).
+                LOCAL probe_ready_field IS _AS_RESOLVE_READY_DEFLECTION_FIELD(probe_mod).
+                LOCAL probe_deploy_label IS "<none>".
+                LOCAL probe_ready_label IS "<none>".
+                IF probe_state_field <> "" { SET probe_deploy_label TO probe_state_field. }
+                IF probe_ready_field <> "" { SET probe_ready_label TO probe_ready_field. }
                 AS_SPOILER_BINDINGS:ADD(LEXICON(
                   "part", p,
                   "mod", probe_mod,
                   "module_name", nm,
-                  "field", probe_field
+                  "field", probe_field,
+                  "state_field", probe_state_field,
+                  "ready_field", probe_ready_field
                 )).
                 SET bound_count TO bound_count + 1.
                 SET bound TO TRUE.
-                PRINT "AS bind: " + _AS_PART_LABEL(p) + " -> " + nm + ":" + probe_field.
+                PRINT "AS bind: " + _AS_PART_LABEL(p) + " -> " + nm + ":" + probe_field + " deploy=" + probe_deploy_label + " ready=" + probe_ready_label.
                 BREAK.
               }
             }
@@ -327,16 +408,24 @@ FUNCTION AS_DISCOVER_PARTS {
             IF _AS_IS_SPOILER_MODULE(mod_name) {
               LOCAL field_name IS _AS_RESOLVE_DEPLOY_FIELD(module_obj).
               IF field_name <> "" {
+                LOCAL state_field IS _AS_RESOLVE_DEPLOY_STATE_FIELD(module_obj).
+                LOCAL ready_field IS _AS_RESOLVE_READY_DEFLECTION_FIELD(module_obj).
+                LOCAL deploy_label IS "<none>".
+                LOCAL ready_label IS "<none>".
+                IF state_field <> "" { SET deploy_label TO state_field. }
+                IF ready_field <> "" { SET ready_label TO ready_field. }
                 AS_SPOILER_BINDINGS:ADD(LEXICON(
                   "part", p,
                   "mod", module_obj,
                   "module_name", mod_name,
-                  "field", field_name
+                  "field", field_name,
+                  "state_field", state_field,
+                  "ready_field", ready_field
                 )).
 
                 SET bound_count TO bound_count + 1.
                 SET bound TO TRUE.
-                PRINT "AS bind: " + _AS_PART_LABEL(p) + " -> " + mod_name + ":" + field_name.
+                PRINT "AS bind: " + _AS_PART_LABEL(p) + " -> " + mod_name + ":" + field_name + " deploy=" + deploy_label + " ready=" + ready_label.
                 BREAK.
               }
             }
@@ -435,7 +524,11 @@ FUNCTION AS_RUN {
   SET TELEM_AS_CAP_DEG TO cap_deg.
   SET TELEM_AS_RAW_DEG TO raw_deg.
   SET TELEM_AS_ERR_MPS TO overspeed.
-  SET TELEM_AS_ACTIVE TO CHOOSE 1 IF cmd_deg > 0.05 ELSE 0.
+  IF cmd_deg > 0.05 {
+    SET TELEM_AS_ACTIVE TO 1.
+  } ELSE {
+    SET TELEM_AS_ACTIVE TO 0.
+  }
 }
 
 FUNCTION AS_RELEASE {

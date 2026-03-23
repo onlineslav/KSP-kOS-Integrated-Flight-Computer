@@ -73,13 +73,28 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "a_crit",    0.0,   // deg  critical AoA from FAR data (0 = protection disabled)
 
     // ── Spoiler arming (approach) ─────────────────────────
-    "ag_spoilers_arm",    0,  // AG to arm spoilers in-flight (0 = not used)
-    "app_spoiler_arm_km", 0,  // km from threshold to arm (0 = disabled)
+    "spoiler_tag",         "ifc_spoiler", // part tag used by autospoiler discovery
+    "as_enabled",          1,    // 1 enable autospoiler, 0 disable
+    "as_thr_idle_gate",    0.08, // deploy assist only when THROTTLE_CMD <= gate
+    "as_err_deadband_mps", 1.5,  // m/s overspeed before spoiler response starts
+    "as_err_full_mps",     18.0, // m/s overspeed that commands full capped deflection
+    "as_angle_slew_dps",   25.0, // deg/s deploy-angle slew limit
+    "as_max_deflection_deg", 70, // deg written when autospoiler is not actively deploying
+    "as_crz_speed_lo",     120,  // m/s low speed point for cruise cap schedule
+    "as_crz_speed_hi",     260,  // m/s high speed point for cruise cap schedule
+    "as_crz_cap_deg_lo",   45,   // deg cap at/below as_crz_speed_lo
+    "as_crz_cap_deg_hi",   25,   // deg cap at/above as_crz_speed_hi
+    "as_app_speed_lo",     70,   // m/s low speed point for approach cap schedule
+    "as_app_speed_hi",     160,  // m/s high speed point for approach cap schedule
+    "as_app_cap_deg_lo",   55,   // deg cap at/below as_app_speed_lo
+    "as_app_cap_deg_hi",   28,   // deg cap at/above as_app_speed_hi
+    "ag_spoilers_arm",     0,    // AG to arm spoilers in-flight (0 = not used)
+    "app_spoiler_arm_km",  0,    // km from threshold to arm (0 = disabled)
 
     // ── Takeoff ───────────────────────────────────────────
     "has_nws",            TRUE,  // TRUE = aircraft has nose wheel steering
-    "v_r",                70.0,  // m/s  rotate speed
-    "v2",                 80.0,  // m/s  V2 climb speed
+    "v_r",                68.0,  // m/s  rotate speed
+    "v2",                 75.0,  // m/s  V2 climb speed
     "takeoff_pitch_tgt",  10.0,  // deg  pitch target at rotation
     "takeoff_pitch_slew_dps",     -1, // deg/s rotate-target pitch slew (-1 = global)
     "takeoff_rotate_pitch_kp",    -1, // pitch cmd per deg pitch error while on wheels (-1 = global)
@@ -89,7 +104,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "takeoff_rotate_pitch_slew_per_s",-1, // pitch cmd slew while on wheels (-1 = global)
     "takeoff_climb_fpa",   8.0,  // deg  climb FPA for climb-out
     "takeoff_throttle",    1.0,  // 0..1 takeoff throttle setting
-    "takeoff_done_agl",  300.0,  // m AGL to end takeoff phase
+    "takeoff_done_agl",  250.0,  // m AGL to end takeoff phase
     "takeoff_airborne_agl",   -1, // m AGL threshold for airborne detect (-1 = global)
     "takeoff_airborne_min_vs",-1, // m/s min VS for airborne detect (-1 = global)
     "takeoff_autostage",      -1, // 1=auto STAGE attempts if no thrust (-1 = global)

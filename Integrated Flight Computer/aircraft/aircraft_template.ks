@@ -78,6 +78,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "as_err_deadband_mps",-1, // m/s overspeed deadband before spoiler command starts, -1 = global
     "as_err_full_mps",    -1, // m/s overspeed that reaches full capped command, -1 = global
     "as_angle_slew_dps",  -1, // deg/s deploy-angle slew rate limit, -1 = global
+    "as_max_deflection_deg",-1, // deg written when autospoiler is not deployed (-1 = global)
     "as_crz_speed_lo",    -1, // m/s low speed point for cruise cap schedule, -1 = global
     "as_crz_speed_hi",    -1, // m/s high speed point for cruise cap schedule, -1 = global
     "as_crz_cap_deg_lo",  -1, // deg cap at/below as_crz_speed_lo, -1 = global
