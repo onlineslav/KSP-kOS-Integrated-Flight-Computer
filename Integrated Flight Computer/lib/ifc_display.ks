@@ -153,7 +153,17 @@ FUNCTION DISPLAY_CRUISE {
   _DISPLAY_AIR_DATA().
   UI_CLR(UI_PRI_TOP + 2).
 
-  IF CRUISE_WP_INDEX < CRUISE_WAYPOINTS:LENGTH {
+  IF CRUISE_NAV_TYPE = "course_time" {
+    LOCAL sec_left IS MAX(CRUISE_END_UT - TIME:SECONDS, 0).
+    LOCAL min_left IS FLOOR(sec_left / 60).
+    LOCAL sec_part IS FLOOR(sec_left - min_left * 60).
+    LOCAL sec_str IS "" + sec_part.
+    IF sec_part < 10 { SET sec_str TO "0" + sec_part. }
+
+    UI_P("  MODE COURSE_TIME  HDG " + ROUND(CRUISE_COURSE_DEG, 1)
+      + " deg  TIME LEFT " + min_left + ":" + sec_str, UI_PRI_TOP + 3).
+    UI_P("  ALT TGT " + ROUND(CRUISE_ALT_M, 0) + " m   SPD TGT " + ROUND(CRUISE_SPD_MPS, 0) + " m/s", UI_PRI_TOP + 4).
+  } ELSE IF CRUISE_WP_INDEX < CRUISE_WAYPOINTS:LENGTH {
     LOCAL wp_id IS CRUISE_WAYPOINTS[CRUISE_WP_INDEX].
     LOCAL wp IS GET_BEACON(wp_id).
     LOCAL dist_km IS ROUND(GEO_DISTANCE(SHIP:GEOPOSITION, wp["ll"]) / 1000, 1).

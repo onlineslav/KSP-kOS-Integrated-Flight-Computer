@@ -64,7 +64,12 @@ This keeps getting spammed in the KSP debug log
 
 ---
 
+- only skip fix if it is directly behind you in a 10 degree cone (implying it's actually behind you)
+
+- add max gear ext speed
+
 Desired behaviour: every aircraft should have a default cruise speed that it defaults to for cruise phases.
 
 
 I want the FMS terminal or GUI to show the current target (heading,alt, etc.) and the current actual value - that way I know what it's trying to do and if it's succeeding
+

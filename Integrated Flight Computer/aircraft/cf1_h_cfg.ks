@@ -23,7 +23,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Vapp: target speed from FAF to flare.
     // Vref: threshold crossing speed (used for display/logging).
     // Reduce Vapp toward Vref during the flare by cutting throttle.
-    "v_app",        79.0,
+    "v_app",        76.0,
     "v_ref",        68.0,
     // Optional approach-speed schedule shaping (set to -1 to use globals):
     // Intercept target is derived as:
