@@ -62,6 +62,7 @@ GLOBAL APP_BASE_V_TGT IS 0. // current unslewed phase target speed (m/s)
 GLOBAL APP_SHORT_FINAL_FRAC IS 0. // 0..1 short-final blend fraction (Vapp->Vref)
 GLOBAL APP_LOC_CAP_OK IS 0. // 1 when |LOC| is inside capture band, else 0
 GLOBAL APP_GS_CAP_OK IS 0.  // 1 when |GS| is inside capture band, else 0
+GLOBAL APP_GS_LATCHED IS FALSE. // TRUE once GS captured; releases only at GS_LATCH_RELEASE_FACTOR * GS_CAPTURE_M
 
 // ----------------------------
 // ILS deviation state  (updated each cycle in ILS_TRACK)
@@ -153,6 +154,8 @@ GLOBAL TELEM_AA_HDG_CMD    IS 0.  // heading sent to AA Director (deg)
 GLOBAL TELEM_AA_FPA_CMD    IS 0.  // FPA sent to AA Director (deg)
 GLOBAL TELEM_LOC_CORR      IS 0.  // ILS localizer heading correction (deg)
 GLOBAL TELEM_GS_CORR       IS 0.  // ILS glideslope FPA correction (deg)
+GLOBAL TELEM_D_GS          IS 0.  // raw d(GS_dev)/dt before combining into gs_corr (m/s)
+GLOBAL TELEM_FPA_PRECLAMPED IS 0. // fpa_cmd before AOA/pitch-cap clamp (deg)
 GLOBAL TELEM_FLARE_TGT_VS  IS 0.  // target sink rate from flare schedule (m/s)
 GLOBAL TELEM_FLARE_FRAC    IS 0.  // flare progress: 0 = entry AGL, 1 = ground
 GLOBAL TELEM_STEER_BLEND   IS 0.  // rollout wheelsteering blend factor (0-1)
@@ -462,6 +465,7 @@ FUNCTION IFC_INIT_STATE {
   SET APP_SHORT_FINAL_FRAC TO 0.
   SET APP_LOC_CAP_OK TO 0.
   SET APP_GS_CAP_OK TO 0.
+  SET APP_GS_LATCHED TO FALSE.
 
   SET ILS_LOC_DEV       TO 0.
   SET ILS_GS_DEV        TO 0.
@@ -538,7 +542,9 @@ FUNCTION IFC_INIT_STATE {
   SET TELEM_AA_DIR_PITCH_DEG  TO 0.
   SET TELEM_AA_DIR_HDG_DEG    TO 0.
   SET TELEM_LOC_CORR      TO 0.
-  SET TELEM_GS_CORR      TO 0.
+  SET TELEM_GS_CORR       TO 0.
+  SET TELEM_D_GS          TO 0.
+  SET TELEM_FPA_PRECLAMPED TO 0.
   SET TELEM_FLARE_TGT_VS TO 0.
   SET TELEM_FLARE_FRAC   TO 0.
   SET TELEM_STEER_BLEND  TO 0.
@@ -737,6 +743,7 @@ FUNCTION IFC_LOAD_PLATE {
   SET APP_SHORT_FINAL_FRAC TO 0.
   SET APP_LOC_CAP_OK TO 0.
   SET APP_GS_CAP_OK TO 0.
+  SET APP_GS_LATCHED TO FALSE.
   SET ACTIVE_FIXES    TO ACTIVE_PLATE["fixes"].
   SET ACTIVE_ALT_AT   TO ACTIVE_PLATE["alt_at"].
   SET FIX_INDEX TO 0.

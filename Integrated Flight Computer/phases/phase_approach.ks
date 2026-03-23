@@ -167,14 +167,45 @@ FUNCTION _UPDATE_APPROACH_SPEED_TARGET {
 }
 
 // ─────────────────────────────────────────────────────────
-// CASCADE AUTOTHROTTLE  (shared by FLY_TO_FIX and ILS_TRACK)
+// APPROACH THROTTLE  (shared by FLY_TO_FIX and ILS_TRACK)
 //
-// Outer loop: speed error (m/s) → a_cmd (m/s²)
-// Inner loop: (a_cmd - a_actual) → throttle delta
-// Integral on speed error provides steady-state trim for drag / slope.
+// IFC autothrottle (AT_RUN_SPEED_HOLD) always owns the throttle.
+// AA Cruise / Director manage pitch and heading only.
+// AA SPEEDCONTROL is explicitly disabled so it cannot fight AT.
+//
+// Speed target comes from _UPDATE_APPROACH_SPEED_TARGET().
 // ─────────────────────────────────────────────────────────
+FUNCTION _APP_AA_GET_HANDLE {
+  IF NOT ADDONS:AVAILABLE("AA") { RETURN 0. }
+  IF NOT ADDONS:HASSUFFIX("AA") { RETURN 0. }
+  LOCAL aa IS ADDONS:AA.
+  IF aa = 0 { RETURN 0. }
+  RETURN aa.
+}
+
+// Disable AA speed control + cruise; hand throttle authority back to IFC.
+// Must be called before transitioning to flare/autoland.
+FUNCTION _APP_AA_RELEASE {
+  LOCAL aa IS _APP_AA_GET_HANDLE().
+  IF aa <> 0 {
+    IF aa:HASSUFFIX("SPEEDCONTROL") AND aa:SPEEDCONTROL { SET aa:SPEEDCONTROL TO FALSE. }
+    IF aa:HASSUFFIX("CRUISE")       AND aa:CRUISE       { SET aa:CRUISE       TO FALSE. }
+  }
+  SET THROTTLE_CMD TO GET_CURRENT_THROTTLE().
+  LOCK THROTTLE TO THROTTLE_CMD.
+}
+
 FUNCTION _RUN_APPROACH_THROTTLE {
   LOCAL v_tgt IS _UPDATE_APPROACH_SPEED_TARGET().
+  // AA SPEEDCONTROL is not used during approach: its aa:SPEED target is not
+  // reliably writable and may retain the previous cruise speed.  IFC AT
+  // owns the throttle; disable SPEEDCONTROL so AA Cruise does not fight it.
+  LOCAL aa IS _APP_AA_GET_HANDLE().
+  IF aa <> 0 AND aa:HASSUFFIX("SPEEDCONTROL") AND aa:SPEEDCONTROL {
+    SET aa:SPEEDCONTROL TO FALSE.
+    SET THROTTLE_CMD TO GET_CURRENT_THROTTLE().
+    LOCK THROTTLE TO THROTTLE_CMD.
+  }
   AT_RUN_SPEED_HOLD(v_tgt, MIN_APPROACH_THR, 1).
 }
 
@@ -242,25 +273,57 @@ FUNCTION _RUN_FLY_TO_FIX {
   IF hdg_err > 180 { SET hdg_err TO 360 - hdg_err. }
   SET TELEM_FTF_HDG_ERR TO hdg_err.
 
-  // Proportional FPA based on altitude error.
-  // Suppress ALL FPA during a near-reversal (>90°) to prevent pitch oscillation
-  // while AA Director is turning the aircraft.  For moderate errors (45-90°) only
-  // suppress descent to avoid spiral dives.
+  // FPA command = proportional altitude error + VS damping.
+  // KD_FTF_ALT_FPA (0.3) is much larger than the global KD_ALT_FPA (0.05) to
+  // suppress the phugoid that develops when decelerating from cruise to
+  // approach speed (rising AOA drives pitch_cmd upward without damping).
+  //
+  // Suppression logic during heading changes:
+  //   hdg_err > 90°: zero all FPA (avoid pitching during near-reversals).
+  //   45–90°:  suppress altitude-error descent (avoid spiral dives) but keep
+  //            VS damping active so phugoid doesn't build up during the turn.
+  //   < 45°:   full KP + KD command.
   LOCAL alt_err IS SHIP:ALTITUDE - tgt_alt.
-  LOCAL fpa_cmd IS CLAMP(-alt_err * KP_ALT_FPA, MAX_DESC_FPA, MAX_CLIMB_FPA).
+  LOCAL vs_now  IS SHIP:VERTICALSPEED.
+  LOCAL fpa_cmd IS CLAMP(-(alt_err * KP_ALT_FPA + vs_now * KD_FTF_ALT_FPA), MAX_DESC_FPA, MAX_CLIMB_FPA).
   IF hdg_err > 90 { SET fpa_cmd TO 0. }
-  ELSE IF hdg_err > 45 AND fpa_cmd < 0 { SET fpa_cmd TO 0. }
+  ELSE IF hdg_err > 45 AND -alt_err * KP_ALT_FPA < 0 {
+    // Altitude correction would descend — suppress it during moderate turns.
+    // Retain anti-phugoid VS damping so climbs are still corrected.
+    SET fpa_cmd TO CLAMP(-(vs_now * KD_FTF_ALT_FPA), MAX_DESC_FPA, 0).
+  }
 
-  // Cap the heading command to within 90° of current heading.
-  // AA Director receives a nearly anti-parallel vector (hdg_err > ~90°) and
-  // responds by pitching rather than rolling into a turn, causing a diverging
-  // AoA feedback: pitch_cmd = fpa + GET_AOA() rises as the aircraft pitches up.
-  // Capping at 90° always gives AA a reachable target; the command converges
-  // to brg naturally as the aircraft turns.
+  // AA Cruise with WAYPOINT mode: feed fix_ll directly to aa:WAYPOINT so AA
+  // navigates to the fix natively (no per-cycle bearing computation needed).
+  // WAYPOINT and HEADING are mutually exclusive in AA — setting WAYPOINT
+  // deactivates HEADING automatically.
+  //
+  // AA Cruise is used instead of AA Director to avoid the positive AOA
+  // feedback in Director's pitch formula (pitch_cmd = fpa_cmd + GET_AOA())
+  // which diverges at AOA > ~12°.  AA Cruise measures actual FPA and adjusts
+  // pitch internally — no AOA term, no positive feedback.
+  //
+  // Compute hdg_cmd for the fallback Director path and for TELEM only.
   LOCAL hdg_now IS GET_COMPASS_HDG().
   LOCAL signed_err IS WRAP_180(brg - hdg_now).
   LOCAL hdg_cmd IS WRAP_360(hdg_now + CLAMP(signed_err, -90, 90)).
-  AA_SET_DIRECTOR(hdg_cmd, fpa_cmd).
+  LOCAL aa IS _APP_AA_GET_HANDLE().
+  IF aa <> 0 {
+    IF aa:HASSUFFIX("DIRECTOR") AND aa:DIRECTOR { SET aa:DIRECTOR TO FALSE. }
+    IF aa:HASSUFFIX("FBW")      AND aa:FBW      { SET aa:FBW      TO FALSE. }
+    IF aa:HASSUFFIX("CRUISE")   AND NOT aa:CRUISE { SET aa:CRUISE TO TRUE. }
+    IF aa:HASSUFFIX("WAYPOINT") { SET aa:WAYPOINT TO fix_ll. }
+    ELSE IF aa:HASSUFFIX("HEADING") { SET aa:HEADING TO hdg_cmd. }
+    // Use FPANGLE (not ALTITUDE) so AA Cruise only manages pitch for the FPA
+    // command.  Setting aa:ALTITUDE would give AA Cruise throttle authority for
+    // altitude hold, which conflicts with SPEEDCONTROL's throttle authority and
+    // causes the two controllers to fight, stabilising speed far above Vint.
+    // This mirrors AA_SET_CRUISE() in ifc_aa.ks which also uses FPANGLE.
+    IF aa:HASSUFFIX("FPANGLE") { SET aa:FPANGLE TO fpa_cmd. }
+    SET IFC_DESIRED_STEERING TO HEADING(hdg_cmd, fpa_cmd).
+  } ELSE {
+    AA_SET_DIRECTOR(hdg_cmd, fpa_cmd).
+  }
   SET TELEM_AA_HDG_CMD TO hdg_cmd.
   SET TELEM_AA_FPA_CMD TO fpa_cmd.
   SET TELEM_LOC_CORR   TO 0.
@@ -301,7 +364,13 @@ FUNCTION _RUN_ILS_TRACK {
   SET ILS_LOC_DEV TO loc_m.
   SET ILS_GS_DEV  TO gs_m.
   SET ILS_DIST_M  TO dev["dist"].
-  LOCAL gs_captured IS ABS(gs_m) <= GS_CAPTURE_M.
+  // GS capture latch with hysteresis: hold capture once acquired, but allow
+  // release if we diverge well outside the capture band.
+  IF ABS(gs_m) <= GS_CAPTURE_M { SET APP_GS_LATCHED TO TRUE. }
+  ELSE IF APP_GS_LATCHED AND ABS(gs_m) > GS_CAPTURE_M * GS_LATCH_RELEASE_FACTOR {
+    SET APP_GS_LATCHED TO FALSE.
+  }
+  LOCAL gs_captured IS APP_GS_LATCHED.
 
   // Enter full approach configuration on GS capture.
   // Before GS capture, keep gear-up unless explicit AGL rule asks for gear.
@@ -315,6 +384,7 @@ FUNCTION _RUN_ILS_TRACK {
   LOCAL d_gs  IS (gs_m  - PREV_GS_DEV)  / IFC_ACTUAL_DT.
   SET PREV_LOC_DEV TO loc_m.
   SET PREV_GS_DEV  TO gs_m.
+  SET TELEM_D_GS   TO d_gs.
 
   // ── Lateral (localizer) ──
   // Positive loc_m = right of centerline → turn left (reduce heading).
@@ -366,7 +436,48 @@ FUNCTION _RUN_ILS_TRACK {
     }
   }
 
-  AA_SET_DIRECTOR(hdg_cmd, fpa_cmd).
+  // Pre-GS-capture: use AA Cruise mode with WAYPOINT pointing at the ILS
+  // threshold so AA navigates the localizer track natively (same as FLY_TO_FIX).
+  // Using aa:WAYPOINT instead of aa:HEADING gives AA a proper nav-track target
+  // rather than a fixed bearing, which is more robust on intercept geometry.
+  // Avoids positive AOA feedback in Director's pitch formula (pitch = FPA + AOA).
+  // Post-GS-capture: switch to AA Director for precise nose-vector GS tracking.
+  IF NOT gs_captured AND AA_AVAILABLE {
+    LOCAL aa IS _APP_AA_GET_HANDLE().
+    IF aa <> 0 {
+      IF aa:HASSUFFIX("DIRECTOR") AND aa:DIRECTOR { SET aa:DIRECTOR TO FALSE. }
+      IF aa:HASSUFFIX("FBW")      AND aa:FBW      { SET aa:FBW      TO FALSE. }
+      IF aa:HASSUFFIX("CRUISE") AND NOT aa:CRUISE { SET aa:CRUISE TO TRUE. }
+      IF aa:HASSUFFIX("WAYPOINT") { SET aa:WAYPOINT TO ILS_THR_GEO_LL. }
+      ELSE IF aa:HASSUFFIX("HEADING") { SET aa:HEADING TO hdg_cmd. }
+      IF aa:HASSUFFIX("FPANGLE") { SET aa:FPANGLE TO fpa_cmd. }
+      SET IFC_DESIRED_STEERING TO HEADING(hdg_cmd, fpa_cmd).
+    } ELSE {
+      AA_SET_DIRECTOR(hdg_cmd, fpa_cmd).
+    }
+  } ELSE {
+    // Capture handoff guard: ensure Director is not fighting lingering Cruise
+    // state and FBW is restored before setting AA:DIRECTION.
+    LOCAL aa_dir_handle IS _APP_AA_GET_HANDLE().
+    IF aa_dir_handle <> 0 {
+      IF aa_dir_handle:HASSUFFIX("CRUISE") AND aa_dir_handle:CRUISE {
+        SET aa_dir_handle:CRUISE TO FALSE.
+      }
+      IF aa_dir_handle:HASSUFFIX("FBW") AND NOT aa_dir_handle:FBW {
+        SET aa_dir_handle:FBW TO TRUE.
+      }
+    }
+    SET TELEM_FPA_PRECLAMPED TO fpa_cmd.
+    IF FAR_AVAILABLE {
+      LOCAL aoa_now IS GET_AOA().
+      LOCAL max_fpa_for_pitch IS MAX_APP_PITCH_CMD.
+      IF AA_DIR_ADD_AOA_COMP {
+        SET max_fpa_for_pitch TO MAX_APP_PITCH_CMD - aoa_now.
+      }
+      SET fpa_cmd TO MAX(MIN(fpa_cmd, max_fpa_for_pitch), APP_FPA_PITCH_FLOOR).
+    }
+    AA_SET_DIRECTOR(hdg_cmd, fpa_cmd).
+  }
   SET TELEM_AA_HDG_CMD TO hdg_cmd.
   SET TELEM_AA_FPA_CMD TO fpa_cmd.
   SET TELEM_LOC_CORR   TO loc_corr.
@@ -394,6 +505,7 @@ FUNCTION _RUN_ILS_TRACK {
         SET FLARE_ENTRY_AGL TO MAX(flare_h_now, 1).
         SET FLARE_TRIGGER_START_UT TO -1.
         SET TOUCHDOWN_CANDIDATE_UT TO -1.
+        _APP_AA_RELEASE().  // hand throttle authority back to IFC before flare
         SET_PHASE(PHASE_FLARE).
       }
     } ELSE {

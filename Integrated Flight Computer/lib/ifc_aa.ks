@@ -89,11 +89,13 @@ FUNCTION AA_INIT {
 FUNCTION AA_SET_DIRECTOR {
   PARAMETER hdg_deg, fpa_deg.
 
-  // AA Director controls nose attitude, not flight path angle.
-  // To achieve the desired FPA, command pitch = FPA + AoA so that
-  // the nose is pointed high enough for the velocity vector to match fpa_deg.
-  // GET_AOA() returns 0 when FAR is unavailable (graceful fallback).
-  LOCAL pitch_cmd IS fpa_deg + GET_AOA().
+  // AA Director consumes a direction vector (nose attitude), not FPA directly.
+  // Default mapping is pitch_cmd = fpa_deg. Optional AoA compensation can be
+  // re-enabled via AA_DIR_ADD_AOA_COMP for specific aircraft if needed.
+  LOCAL pitch_cmd IS fpa_deg.
+  IF AA_DIR_ADD_AOA_COMP {
+    SET pitch_cmd TO pitch_cmd + GET_AOA().
+  }
 
   LOCAL aa IS _AA_GET_HANDLE().
   IF aa = 0 {

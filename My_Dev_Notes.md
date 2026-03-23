@@ -34,5 +34,11 @@ Closing thoughts:
 
 ## Bugs to Fix
 
+- Honestly.. I think we need to revert to before the performance improvements commit - that broke a lot and we never really recovered. I do not understand how the program functions. 
+
+- moderate g seems to get deactivated randomly? possibly when switching from kOS director to cruise flight controller
+
 aircraft doesn't bank during approach?
 autothrottle rate still weirdly slow? ~1hz
+
+## 23-03-2026

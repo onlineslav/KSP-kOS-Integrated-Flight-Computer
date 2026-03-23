@@ -45,6 +45,7 @@ GLOBAL SUBPHASE_TO_CLIMB       IS "TO_CLIMB".
 GLOBAL FIX_CAPTURE_RADIUS  IS 1500.   // m  distance to consider a fix "passed"
 GLOBAL LOC_CAPTURE_M       IS 200.    // m  lateral deviation to arm ILS_TRACK
 GLOBAL GS_CAPTURE_M        IS 80.     // m  vertical deviation to arm ILS_TRACK
+GLOBAL GS_LATCH_RELEASE_FACTOR IS 3.0. // GS capture releases only when |dev| > factor * GS_CAPTURE_M
 
 // ----------------------------
 // ILS control gains  (PD outer loop → AA Director)
@@ -131,10 +132,21 @@ GLOBAL APP_SHORT_FINAL_CAP_WHEN_NOT_FINAL IS TRUE. // if TRUE, short-final Vapp-
 // Altitude hold for cruise and FLY_TO_FIX legs.
 // fpa_cmd = -(alt_err * KP + vs * KD), clamped to [MAX_DESC, MAX_CLIMB].
 // KD damps the phugoid: 10 m/s VS contributes 0.5 deg of opposing FPA.
-GLOBAL KP_ALT_FPA  IS 0.005.  // deg FPA / m altitude error
-GLOBAL KD_ALT_FPA  IS 0.05.   // deg FPA / (m/s) vertical speed  (damping)
+GLOBAL KP_ALT_FPA     IS 0.005.  // deg FPA / m altitude error
+GLOBAL KD_ALT_FPA     IS 0.05.   // deg FPA / (m/s) vertical speed  (damping)
+GLOBAL KD_FTF_ALT_FPA IS 0.3.    // FLY_TO_FIX VS damping — larger than KD_ALT_FPA to suppress phugoid during speed transitions
 GLOBAL MAX_DESC_FPA IS -6.0.  // deg  steepest descent allowed enroute
 GLOBAL MAX_CLIMB_FPA IS 5.0.  // deg  steepest climb allowed enroute
+// AA Director command mapping:
+// FALSE (default): AA_SET_DIRECTOR treats fpa_cmd as a direct pitch command.
+// TRUE:            AA_SET_DIRECTOR adds current AoA (pitch_cmd = fpa_cmd + AoA).
+// Keep FALSE unless flight-test evidence shows a specific aircraft needs AoA add.
+GLOBAL AA_DIR_ADD_AOA_COMP IS FALSE.
+// Approach phase pitch cap.
+// With AA_DIR_ADD_AOA_COMP = FALSE, cap fpa_cmd <= MAX_APP_PITCH_CMD.
+// With AA_DIR_ADD_AOA_COMP = TRUE, cap fpa_cmd <= MAX_APP_PITCH_CMD - AOA.
+GLOBAL MAX_APP_PITCH_CMD   IS  6.0.  // deg  max pitch AA Director may be commanded during approach
+GLOBAL APP_FPA_PITCH_FLOOR IS -15.0. // deg  absolute fpa_cmd floor inside pitch cap (allows fpa_cmd < MAX_DESC_FPA when AOA is high)
 
 // ----------------------------
 // Flap detent stepping
