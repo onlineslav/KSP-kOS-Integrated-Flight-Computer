@@ -1,83 +1,61 @@
-## Ideas
+# To-Do
 
-Okay, here is my idea for what the FMS/IFC would look like. I want this to be a decent central control for both terrestrial flights and spaceplane flights into LEO. Some of my ideas:
+- Add maximum maneuvering speed as an aircraft parameter.
+- Add all of Van's runways to nav beacons with sensible approaches.
+- Reorganize aircraft cfg files by phase order:
+  - Preflight
+  - Takeoff
+  - Cruise
+  - Approach
+  - Landing
+- Group VFE / extension-speed limits clearly in cfg files.
+- Ensure every aircraft has a default cruise speed for cruise phases.
+- Show target vs actual values in FMS terminal/GUI (heading, altitude, speed, etc.).
+- During preflight, find parts with "Disable Containment" and set containment off.
+- Fix fix-skipping logic: only skip a fix when it is truly behind (10 deg cone).
 
-I could create my own flight plans, i.e.:
-It would have an add leg button? (idk, leg or phase or something), but I would be able to choose from:
-- Takeoff
-- Navigate to (either to nav markers, waypoints, or to arbitrary coordinates) (for terrestrial flight - no orbital stuff necessary)
-- Spaceplane suborbital trajectory insertion program
-    - say we're starting at 15000 ft and engage this program, we would specify a desired apoapsis and perhaps some other parameters, and it would most efficiently use the spaceplane to get us out of the atmosphere
-- Spaceplane re-entry program
-    - say we're starting at a 75000 ft orbit, given some desired waypoint, or nav marker, I want it to fire engines retrograde, then begin a re-entry program that keeps the spaceplane in a stable attitude, and uses its pitch to control its lift and drag (like the shuttle did)
-- Approach (we've made this)
-- Land (we also have this)
+# Ideas
 
-I want to be able to save flight plans, load flight plans, and edit them, delete, or swap them.
+- Modulate spoiler deflection using both speed error and aerodynamic pressure (q).
+- Add autobrakes that modulate braking percentage dynamically.
+- Add a manual-control button that keeps IFC running without fully exiting.
+- Decide whether climb/descent should be explicit phases or transitional states.
+- Add a per-aircraft max landing weight, and automatically dump fuel to get below that weight.
+- Display current AoA in the terminal
+- stall protection? if aircraft approaching Vs, disregard commanded speed and increase to safe minimum speed
+- also add minimum flap speeds? like below a certain speed, the aircraft must have a certain degree of flaps (for AoA margin)
+- add what the default values actually are to aircraft cfg template (and all other ones)
 
-Now, there's a few things I'm not sure about, like:
-- whether climb and descent are phases, or if that's just a transitional state that is entered when say you're going from Takeoff to Cruise. I'm open to your thoughts here.
+# Planned
 
-Other thoughts:
-- It would be good to be able to edit things like V-speeds (Vr, V2, speed during climb, etc.)
-- Ability to take manual control of the aircraft with a button without exiting the full program.
+- Build FMS/IFC as a central control system for both:
+  - Terrestrial flights
+  - Spaceplane flights to LEO
+- Expand flight plan leg types:
+  - Takeoff
+  - Navigate to marker/waypoint/coordinates
+  - Spaceplane suborbital insertion (user-defined apoapsis and tunables)
+  - Spaceplane re-entry program (guidance to waypoint/marker with controlled lift/drag)
+  - Approach
+  - Land
+- Support full plan lifecycle:
+  - Save
+  - Load
+  - Edit
+  - Delete
+  - Reorder
 
-Closing thoughts:
-- I've ideated a lot. I'm not sure what would be the most robust and intuitive way to integrate all of this. I'd like you to reflect on my ideas, as well as give me ideas, suggestions, criticisms, etc.
+# Bugs
 
----
-
-- have maximum manuevering speed as a parameter
-
-- have spoilers modulate their deflection according to both current aerodynamic pressure (don't want to break apart the ac), and also difference between current and desired speed maybe?
-- have autobrakes that modulate their braking percentage according to something?
-
-## Bugs to Fix
-
-- Honestly.. I think we need to revert to before the performance improvements commit - that broke a lot and we never really recovered. I do not understand how the program functions. 
-
-- moderate g seems to get deactivated randomly? possibly when switching from kOS director to cruise flight controller
-
-aircraft doesn't bank during approach?
-autothrottle rate still weirdly slow? ~1hz
-
-## 23-03-2026
-Okay. Just did another test flight of the pattern - log 54.csv
-
-- Do not use AA native speed control ever, for any phase of flight. Use native autothrottle module always.
-
-- At T10:32 - why is it using FPA 0 to hold altitude - it should just keep using altitude hold mode
-
-- when the localizer is intercepted the aircraft is 130m to the right - why is this, given that the waypoint it is following should be the 30km rwy 27 beacon, which should be on the localizer
-
-- why when the localizer is intercepted, the aircraft is in waypoint mode aiming for the ils beacon? that will not get the aircraft onto the localizer fast enough - honestly, just put the aircraft into kOS director mode once the localizer becomes alive 
-
-- while tracking glideslope and localizer, the following is flashing on screen, meaning that these are getting triggered in a loop somewhere:
-kOS director enabled
-Standard Fly-By-Wire Enabled
-Standard Fly-By-Wire Disabled
-kOS Director Enabled
-
-This keeps getting spammed in the KSP debug log
-![alt text](image.png)
-
-
----
-
-- cruise used during approach still using FPA as o
-
-- find all parts that have "Disable Containment" and disable containment during preflight.
-
-- only skip fix if it is directly behind you in a 10 degree cone (implying it's actually behind you)
-
-- add max gear ext speed (COMPLETE)
-
-- add all of Van's runways to nav beacons. Make sensible approaches for all of them.
-
-- organize the cfgs in a more intuitive way. group all vfe/max extension speeds, and have parameters grouped in the order of: preflight, takeoff, cruise, approach, landing.
-
-
-Desired behaviour: every aircraft should have a default cruise speed that it defaults to for cruise phases.
-
-
-I want the FMS terminal or GUI to show the current target (heading,alt, etc.) and the current actual value - that way I know what it's trying to do and if it's succeeding
+- Performance-improvements commit appears to have introduced broad regressions.
+- Moderate-G mode may deactivate unexpectedly (possibly during kOS director <-> cruise controller handoff).
+- Aircraft does not bank correctly during approach.
+- Autothrottle response appears too slow (roughly 1 Hz behavior).
+- Localizer intercept offset: aircraft is about 130 m right of centerline at intercept.
+- On localizer capture/alive, guidance can remain in waypoint mode too long before proper ILS capture.
+- Guidance mode toggling loop/spam observed:
+  - kOS Director Enabled
+  - Standard Fly-By-Wire Enabled
+  - Standard Fly-By-Wire Disabled
+  - kOS Director Enabled
+- During approach/cruise transitions, altitude control sometimes uses FPA hold when altitude-hold behavior is expected.

@@ -190,9 +190,9 @@ GLOBAL GEAR_MAX_EXTEND_IAS IS 120. // m/s max IAS allowed for automatic gear ext
 // ----------------------------
 // Flare
 // ----------------------------
-GLOBAL FLARE_AGL_M      IS 25.   // m radar AGL to trigger flare
+GLOBAL FLARE_AGL_M      IS 25.   // m runway-relative height to trigger flare
 GLOBAL FLARE_TRIGGER_HYST_M IS 1.0. // m hysteresis for flare trigger re-arm
-GLOBAL FLARE_TRIGGER_CONFIRM_S IS 0.12. // s AGL must remain below trigger to enter flare
+GLOBAL FLARE_TRIGGER_CONFIRM_S IS 0.12. // s runway-relative height must remain below trigger to enter flare
 GLOBAL FLARE_PITCH_RATE IS 0.8.  // deg/s max rate of FPA change during flare
 GLOBAL FLARE_PITCH_RATE_MIN IS 0.6. // deg/s flare response at low IAS
 GLOBAL FLARE_PITCH_RATE_MAX IS 1.8. // deg/s flare response at high IAS
@@ -214,7 +214,7 @@ GLOBAL FLARE_BALLOON_FPA_PUSH IS 1.0. // deg additional nose-down when balloonin
 GLOBAL TOUCHDOWN_AGL_M  IS 2.    // m AGL considered touchdown (radar alt)
 GLOBAL TOUCHDOWN_CONFIRM_S IS 0.12. // s touchdown conditions must persist before switching phases
 GLOBAL TOUCHDOWN_CONFIRM_MAX_ABS_VS IS 2.5. // m/s max |VS| allowed when committing FLARE->TOUCHDOWN
-GLOBAL TOUCHDOWN_FALLBACK_AGL_M IS 0.8. // m AGL fallback detector if LANDED status lags
+GLOBAL TOUCHDOWN_FALLBACK_AGL_M IS 0.8. // m runway-relative fallback detector if LANDED status lags
 GLOBAL TOUCHDOWN_FALLBACK_MAX_VS IS 0.2. // m/s max VS for fallback detector (descending/near-zero)
 GLOBAL TOUCHDOWN_SETTLE_S IS 0.20. // s hold TOUCHDOWN phase to let gear loads settle
 GLOBAL BOUNCE_RECOVERY_AGL_M IS 2.5. // m if airborne above this in touchdown/rollout, consider bounce recovery

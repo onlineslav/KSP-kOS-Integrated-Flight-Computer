@@ -26,7 +26,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Vapp: target speed from FAF to flare.
     // Vref: threshold crossing speed (used for display/logging).
     // Reduce Vapp toward Vref during the flare by cutting throttle.
-    "v_app",        140.0,  // prev: 140,175,200  // we want ~10-15deg aoa (150 gives 10deg aoa) (140 gives 13.8deg aoa)
+    "v_app",        146.0,  // prev: 140,175,200  // we want ~10-15deg aoa (150 gives 10deg aoa) (140 gives 13.8deg aoa)
     "v_ref",        120.0,  // prev: 130,130,150,170
     // Approach speed schedule shaping:
     // Vint = Vapp + clamp((Vapp - Vref) * gain, min_add, max_add)
@@ -60,9 +60,9 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "vfe_climb",          250, // m/s max IAS for climb detent
     "vfe_approach",      220, // m/s max IAS to extend approach flaps
     "vfe_landing",        210, // m/s max IAS to extend landing flaps
-    "flaps_climb_km",      45, // km from threshold to allow climb detent
-    "flaps_approach_km",  30, // km from threshold to deploy approach flaps
-    "flaps_landing_km",    8, // km from threshold to deploy landing flaps
+    "flaps_climb_km",      60, // km from threshold to allow climb detent
+    "flaps_approach_km",  50, // km from threshold to deploy approach flaps
+    "flaps_landing_km",    30, // km from threshold to deploy landing flaps
 
     // ── Gear ──────────────────────────────────────────────
     // AGL (m) at which to extend landing gear on approach.
@@ -83,10 +83,10 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "rollout_steer_min_blend", 0.15,  // was 0.04; low value left aircraft with ~zero steering at high speed
     "rollout_yaw_sign",        -1,
     "rollout_touchdown_settle_s", 0.55,
-    "bounce_recovery_agl_m",   3.5,
-    "bounce_recovery_min_vs",  0.8,
-    "bounce_recovery_confirm_s", 0.35,
-    "bounce_recovery_max_s",   4.0,
+    "bounce_recovery_agl_m",   2.2,
+    "bounce_recovery_min_vs",  1.2,
+    "bounce_recovery_confirm_s", 0.45,
+    "bounce_recovery_max_s",   1.8,
     "rollout_nose_hold_cmd",   0.14,
     "rollout_nose_release_ias", 60,
     "rollout_nose_hold_min_s", 2.4,
@@ -157,7 +157,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // ── AA Moderators ─────────────────────────────────────
     // Per-aircraft overrides for AtmosphereAutopilot FBW limits.
     // Set to -1 to use the global default from ifc_constants.ks.
-    "aa_max_aoa",      20,   // deg max AoA  (global: 12)
+    "aa_max_aoa",      25,   // deg max AoA  (global: 12)
     "aa_max_g",        -1,   // G   max G    (global: 3.5)
     "aa_max_sideslip", -1,   // deg max sideslip (global: 5)
     "aa_max_side_g",   -1,   // G   max lateral G (global: 1.5)
@@ -166,17 +166,17 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // ── Flare ─────────────────────────────────────────────
     // Override the global constants for this specific aircraft.
     // Set to -1 to use the global default from ifc_constants.ks.
-    "flare_agl",               130,  // m AGL to begin flare; was 85 but terrain rise near KSC causes ~60m effective trigger
-    "flare_touchdown_vs",     -0.05, // m/s target sink rate at wheel contact
-    "flare_ias_to_vs_gain",    0.010,// extra sink per m/s above Vref during flare
-    "flare_roundout_agl",      8.0,  // m AGL final sink blend zone
+    "flare_agl",               50,   // m runway-relative height to begin flare (conservative while retuning)
+    "flare_touchdown_vs",      -0.25,// m/s target sink rate at wheel contact
+    "flare_ias_to_vs_gain",    0.001,// extra sink per m/s above Vref during flare (kept very small)
+    "flare_roundout_agl",      24.0, // m AGL final sink blend zone (earlier sink arrest)
     "flare_roundout_strength", 1.0,  // full roundout blend
-    "flare_balloon_vs_trigger",0.08, // m/s VS threshold for anti-balloon push
-    "flare_balloon_fpa_push",  1.4,  // deg nose-down bias when ballooning
-    "flare_pitch_rate_min",    1.0,  // deg/s low-speed flare response
-    "flare_pitch_rate_max",    3.0,  // deg/s high-speed flare response
-    "touchdown_confirm_s",      0.16,
-    "touchdown_confirm_max_abs_vs", 2.0,
+    "flare_balloon_vs_trigger",0.25, // m/s VS threshold for anti-balloon push
+    "flare_balloon_fpa_push",  1.6,  // deg nose-down bias when ballooning
+    "flare_pitch_rate_min",    1.8,  // deg/s low-speed flare response
+    "flare_pitch_rate_max",    4.8,  // deg/s high-speed flare response
+    "touchdown_confirm_s",      0.24,
+    "touchdown_confirm_max_abs_vs", 1.2,
 
     // ── Ascent guidance ───────────────────────────────────
     // All values fall back to ifc_constants.ks defaults when set to -1.

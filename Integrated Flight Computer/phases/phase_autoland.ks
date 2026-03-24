@@ -46,11 +46,10 @@ FUNCTION _DEPLOY_TOUCHDOWN_SPOILERS {
 // ─────────────────────────────────────────────────────────
 FUNCTION _CHECK_BOUNCE_RECOVERY {
   PARAMETER br_agl_m, br_min_vs, br_confirm_s, br_max_s, reset_init.
-  LOCAL agl IS GET_AGL().
   LOCAL flare_h IS GET_RUNWAY_REL_HEIGHT().
   LOCAL airborne IS PHASE_ELAPSED() < br_max_s AND
                    SHIP:STATUS <> "LANDED" AND
-                   agl > br_agl_m AND
+                   flare_h > br_agl_m AND
                    SHIP:VERTICALSPEED > br_min_vs.
   IF airborne {
     IF BOUNCE_RECOVERY_START_UT < 0 { SET BOUNCE_RECOVERY_START_UT TO TIME:SECONDS. }
