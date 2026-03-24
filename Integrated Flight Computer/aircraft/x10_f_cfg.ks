@@ -168,10 +168,8 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Set to -1 to use the global default from ifc_constants.ks.
     "flare_gear_tag",          "ifc_maingear", // tag on parts used as main-gear flare/touchdown reference
     "flare_gear_h_offset_m",   4.84, // m positive bias so flare logic treats gear as 4.84 m higher
-    "flare_agl",               45,   // m runway-relative main-gear height to begin flare
-    "flare_touchdown_vs",      -0.25,// m/s target sink rate at wheel contact
-    "flare_vs_kp",               -1, // gamma correction per m/s sink-rate error (-1 = global)
-    "flare_fpa_kp",              -1, // gamma correction per deg FPA error (-1 = global)
+    "flare_agl",               48,   // m runway-relative main-gear height to begin flare
+    "flare_touchdown_vs",      -0.15,// m/s target sink rate at wheel contact
     "flare_cmd_fpa_min",         -1, // deg lower gamma clamp in flare (-1 = global)
     "flare_cmd_fpa_max",         6.0, // deg upper gamma clamp in flare
     "flare_roundout_end_h_m",    -1, // m runway-relative height where roundout is fully blended (-1 = global)
@@ -194,7 +192,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "flare_tecs_eb_ki",          0.0, // disable Eb integrator for flare stability tuning
     "flare_tecs_et_int_lim",     -1, // Et integrator clamp
     "flare_tecs_eb_int_lim",     1000, // tighter Eb integrator clamp
-    "flare_tecs_thr_trim",       0.16, // nominal flare thrust trim
+    "flare_tecs_thr_trim",       0.145, // nominal flare thrust trim
     "flare_tecs_thr_bal_k",      0.00010, // throttle bias from energy-balance error
     "flare_tecs_thr_slew_per_s", -1, // throttle command slew limit in flare
     "flare_tecs_climb_vs_gate",  0.10, // VS threshold to force throttle floor in flare
