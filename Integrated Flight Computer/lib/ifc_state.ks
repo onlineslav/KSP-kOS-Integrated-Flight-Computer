@@ -127,6 +127,7 @@ GLOBAL IFC_DEBUG_PANEL_ON IS FALSE.  // show secondary debug zone
 GLOBAL IFC_DEBUG_DRAW_GS  IS TRUE.  // TRUE = draw active approach + glideslope vectors in world
 GLOBAL IFC_DEBUG_GS_DRAW_MAIN IS 0.  // VECDRAW handle for glideslope line
 GLOBAL IFC_DEBUG_GS_DRAW_REF  IS 0.  // VECDRAW handle for flat approach reference
+GLOBAL IFC_DEBUG_GS_DRAW_TUBE IS LIST(). // LIST of VECDRAW handles for low-poly GS tube edges
 GLOBAL IFC_DEBUG_GS_DRAW_ILS_ID IS "". // ILS id currently represented by debug vectors
 GLOBAL LAST_DISPLAY_UT    IS 0.      // primary zone rate-limiter
 GLOBAL LAST_HEADER_UT     IS 0.      // header rate-limiter
@@ -503,6 +504,15 @@ FUNCTION IFC_INIT_STATE {
   IF IFC_DEBUG_GS_DRAW_REF <> 0 {
     SET IFC_DEBUG_GS_DRAW_REF:SHOW TO FALSE.
     SET IFC_DEBUG_GS_DRAW_REF TO 0.
+  }
+  IF IFC_DEBUG_GS_DRAW_TUBE:LENGTH > 0 {
+    LOCAL gs_draw_i IS 0.
+    UNTIL gs_draw_i >= IFC_DEBUG_GS_DRAW_TUBE:LENGTH {
+      LOCAL h IS IFC_DEBUG_GS_DRAW_TUBE[gs_draw_i].
+      IF h <> 0 { SET h:SHOW TO FALSE. }
+      SET gs_draw_i TO gs_draw_i + 1.
+    }
+    SET IFC_DEBUG_GS_DRAW_TUBE TO LIST().
   }
   SET IFC_DEBUG_GS_DRAW_ILS_ID TO "".
 

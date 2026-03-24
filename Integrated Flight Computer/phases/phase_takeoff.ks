@@ -25,6 +25,169 @@ FUNCTION RUN_TAKEOFF {
   }
 }
 
+FUNCTION _TO_MODULE_EVENT_NAME {
+  PARAMETER event_entry.
+  IF event_entry = 0 { RETURN "". }
+  IF event_entry:HASSUFFIX("NAME") AND event_entry:NAME <> "" {
+    RETURN event_entry:NAME.
+  }
+  RETURN "" + event_entry.
+}
+
+FUNCTION _TO_MODULE_HAS_EVENT {
+  PARAMETER module_obj, event_name.
+  IF module_obj = 0 OR event_name = "" { RETURN FALSE. }
+
+  IF module_obj:HASSUFFIX("HASEVENT") {
+    RETURN module_obj:HASEVENT(event_name).
+  }
+
+  IF module_obj:HASSUFFIX("ALLEVENTS") {
+    LOCAL all_events IS module_obj:ALLEVENTS.
+    LOCAL idx IS 0.
+    UNTIL idx >= all_events:LENGTH {
+      LOCAL ev_name IS _TO_MODULE_EVENT_NAME(all_events[idx]).
+      IF ev_name:TOLOWER = event_name:TOLOWER { RETURN TRUE. }
+      SET idx TO idx + 1.
+    }
+  }
+  RETURN FALSE.
+}
+
+FUNCTION _TO_MODULE_DO_EVENT_IF_PRESENT {
+  PARAMETER module_obj, event_name.
+  IF module_obj = 0 OR event_name = "" { RETURN FALSE. }
+  IF NOT module_obj:HASSUFFIX("DOEVENT") { RETURN FALSE. }
+  IF NOT _TO_MODULE_HAS_EVENT(module_obj, event_name) { RETURN FALSE. }
+  module_obj:DOEVENT(event_name).
+  RETURN TRUE.
+}
+
+FUNCTION _TO_MODULE_SET_CONTAINMENT_DISABLED {
+  PARAMETER module_obj.
+  IF module_obj = 0 { RETURN FALSE. }
+  IF NOT module_obj:HASSUFFIX("HASFIELD") { RETURN FALSE. }
+  IF NOT module_obj:HASSUFFIX("SETFIELD") { RETURN FALSE. }
+
+  LOCAL fields IS LIST(
+    "ContainmentEnabled",
+    "containmentEnabled",
+    "containmentenabled"
+  ).
+  LOCAL idx IS 0.
+  LOCAL did_set IS FALSE.
+  UNTIL idx >= fields:LENGTH {
+    LOCAL field_name IS fields[idx].
+    IF module_obj:HASFIELD(field_name) {
+      module_obj:SETFIELD(field_name, "False").
+      SET did_set TO TRUE.
+    }
+    SET idx TO idx + 1.
+  }
+  RETURN did_set.
+}
+
+FUNCTION _TO_RESOLVE_MODULE_OBJECT {
+  PARAMETER part_obj, module_entry.
+  IF module_entry = 0 { RETURN 0. }
+
+  LOCAL module_obj IS module_entry.
+  IF module_obj:HASSUFFIX("HASFIELD") { RETURN module_obj. }
+  IF part_obj = 0 OR NOT part_obj:HASSUFFIX("GETMODULE") { RETURN module_obj. }
+
+  LOCAL module_name IS "".
+  IF module_entry:HASSUFFIX("NAME") AND module_entry:NAME <> "" {
+    SET module_name TO module_entry:NAME.
+  } ELSE {
+    SET module_name TO "" + module_entry.
+  }
+  IF module_name = "" { RETURN module_obj. }
+
+  LOCAL probe_mod IS part_obj:GETMODULE(module_name).
+  IF probe_mod <> 0 { RETURN probe_mod. }
+  RETURN module_obj.
+}
+
+FUNCTION _TO_DISABLE_CONTAINMENT_PREFLIGHT {
+  LOCAL parts IS SHIP:PARTS.
+  LOCAL changed_parts IS 0.
+  LOCAL changed_modules IS 0.
+  LOCAL disable_events IS 0.
+  LOCAL field_sets IS 0.
+
+  LOCAL i IS 0.
+  UNTIL i >= parts:LENGTH {
+    LOCAL p IS parts[i].
+    SET i TO i + 1.
+
+    LOCAL part_changed IS FALSE.
+    IF p <> 0 AND p:HASSUFFIX("MODULES") {
+      LOCAL mods IS p:MODULES.
+      LOCAL j IS 0.
+      UNTIL j >= mods:LENGTH {
+        LOCAL m IS mods[j].
+        SET j TO j + 1.
+        IF m <> 0 {
+          LOCAL module_name IS "".
+          IF m:HASSUFFIX("NAME") AND m:NAME <> "" {
+            SET module_name TO m:NAME.
+          } ELSE {
+            SET module_name TO "" + m.
+          }
+          LOCAL module_name_lc IS module_name:TOLOWER.
+
+          LOCAL module_obj IS _TO_RESOLVE_MODULE_OBJECT(p, m).
+          LOCAL has_containment_field IS FALSE.
+          IF module_obj <> 0 AND module_obj:HASSUFFIX("HASFIELD") {
+            IF module_obj:HASFIELD("ContainmentEnabled")
+                OR module_obj:HASFIELD("containmentEnabled")
+                OR module_obj:HASFIELD("containmentenabled") {
+              SET has_containment_field TO TRUE.
+            }
+          }
+
+          LOCAL is_containment_module IS has_containment_field
+              OR module_name_lc:FIND("antimattertank") >= 0
+              OR module_name_lc:FIND("containment") >= 0.
+
+          IF is_containment_module {
+            LOCAL mod_changed IS FALSE.
+
+            IF _TO_MODULE_DO_EVENT_IF_PRESENT(module_obj, "Disable") {
+              SET mod_changed TO TRUE.
+              SET disable_events TO disable_events + 1.
+            } ELSE IF _TO_MODULE_DO_EVENT_IF_PRESENT(module_obj, "Disable Containment") {
+              SET mod_changed TO TRUE.
+              SET disable_events TO disable_events + 1.
+            } ELSE IF _TO_MODULE_DO_EVENT_IF_PRESENT(module_obj, "#LOC_FFT_ModuleAntimatterTank_Event_Disable_Title") {
+              SET mod_changed TO TRUE.
+              SET disable_events TO disable_events + 1.
+            }
+
+            IF _TO_MODULE_SET_CONTAINMENT_DISABLED(module_obj) {
+              SET mod_changed TO TRUE.
+              SET field_sets TO field_sets + 1.
+            }
+
+            IF mod_changed {
+              SET changed_modules TO changed_modules + 1.
+              SET part_changed TO TRUE.
+            }
+          }
+        }
+      }
+    }
+
+    IF part_changed { SET changed_parts TO changed_parts + 1. }
+  }
+
+  IF changed_modules > 0 {
+    IFC_SET_ALERT("TO preflight: containment OFF on " + changed_modules
+      + " modules / " + changed_parts + " parts"
+      + " (events " + disable_events + ", fields " + field_sets + ")").
+  }
+}
+
 FUNCTION _TO_GET_YAW_SIGN {
   LOCAL sign IS -1.
   IF ACTIVE_AIRCRAFT <> 0 {
@@ -233,6 +396,10 @@ FUNCTION _RUN_TO_PREFLIGHT {
     SET TELEM_RO_LOC_CORR TO 0.
     SET ROLLOUT_STEER_HDG TO TO_RWY_HDG.
     SET TELEM_STEER_BLEND TO 1.
+
+    // Preflight safety action:
+    // disable antimatter containment modules before spool-up.
+    _TO_DISABLE_CONTAINMENT_PREFLIGHT().
   }
 
   _TO_TRY_AUTO_STAGE().

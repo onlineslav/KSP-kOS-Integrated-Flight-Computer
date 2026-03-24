@@ -17,7 +17,7 @@
 // KSC runway notes:
 //   Runs roughly East-West near the equator.
 //   RWY 09 threshold = western end  (landing heading 090.4°)
-//   RWY 27 threshold = eastern end  (landing heading 270.4°)
+//   RWY 27 threshold = eastern end  (landing heading 270.0°)
 //   The two ends have slightly different latitudes.
 //   Runway elevation = 70 m MSL.
 //
@@ -128,7 +128,7 @@ REGISTER_BEACON(MAKE_BEACON(
 REGISTER_BEACON(MAKE_BEACON(
   "KSC_ILS_27L", BTYPE_ILS,
   ksc_rwy27_thr, ksc_rwy27l_elev,
-  LEXICON("hdg", 270.4, "gs_angle", GS_ANG, "rwy", "27L")
+  LEXICON("hdg", 270.0, "gs_angle", GS_ANG, "rwy", "27L")
 )).
 
 // Van's KSC long-runway thresholds (09R/27R), derived from local KK statics.

@@ -26,6 +26,8 @@ FUNCTION _DEPLOY_TOUCHDOWN_SPOILERS {
     SET ag_sp TO ACTIVE_AIRCRAFT["ag_spoilers"].
   }
   IF ag_sp > 0 { TRIGGER_AG(ag_sp, TRUE). }
+  // Force tagged spoiler modules to full touchdown deploy angle.
+  AS_DEPLOY_MAX_TOUCHDOWN().
 }
 
 // ─────────────────────────────────────────────────────────

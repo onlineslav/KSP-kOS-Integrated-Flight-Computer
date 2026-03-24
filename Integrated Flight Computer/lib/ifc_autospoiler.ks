@@ -224,73 +224,7 @@ FUNCTION _AS_SET_MODULE_STATE_FIELD {
 
 FUNCTION _AS_DEBUG_DUMP_TAGGED_PART {
   PARAMETER p.
-  IF p = 0 { RETURN. }
-  IF NOT p:HASSUFFIX("MODULES") { RETURN. }
-
-  PRINT "AS debug: tagged part " + _AS_PART_LABEL(p).
-
-  LOCAL mods IS p:MODULES.
-  LOCAL i IS 0.
-  UNTIL i >= mods:LENGTH {
-    LOCAL module_obj IS mods[i].
-    SET i TO i + 1.
-    IF module_obj <> 0 {
-      PRINT "AS debug:   module-entry " + ("" + module_obj).
-      LOCAL module_name IS "<unknown>".
-      IF module_obj:HASSUFFIX("NAME") AND module_obj:NAME <> "" {
-        SET module_name TO module_obj:NAME.
-      }
-      PRINT "AS debug:   module " + module_name.
-
-      IF module_obj:HASSUFFIX("ALLFIELDS") {
-        LOCAL all_fields IS module_obj:ALLFIELDS.
-        LOCAL show_n IS MIN(all_fields:LENGTH, 25).
-        LOCAL j IS 0.
-        UNTIL j >= show_n {
-          PRINT "AS debug:     field " + all_fields[j].
-          SET j TO j + 1.
-        }
-        IF all_fields:LENGTH > show_n {
-          PRINT "AS debug:     ... +" + (all_fields:LENGTH - show_n) + " more fields".
-        }
-      }
-    }
-  }
-
-  IF p:HASSUFFIX("ALLMODULES") {
-    PRINT "AS debug:   allmodules list:".
-    LOCAL allmods IS p:ALLMODULES.
-    LOCAL q_idx IS 0.
-    UNTIL q_idx >= allmods:LENGTH {
-      PRINT "AS debug:     allmod " + ("" + allmods[q_idx]).
-      SET q_idx TO q_idx + 1.
-    }
-  }
-
-  IF p:HASSUFFIX("GETMODULE") {
-    LOCAL names IS _AS_MODULE_NAME_CANDIDATES().
-    LOCAL k IS 0.
-    UNTIL k >= names:LENGTH {
-      LOCAL nm IS names[k].
-      SET k TO k + 1.
-      IF _AS_PART_HAS_MODULE_NAME(p, nm) {
-        LOCAL got_mod IS p:GETMODULE(nm).
-        PRINT "AS debug:   getmodule(" + nm + ") => OK".
-        IF got_mod:HASSUFFIX("ALLFIELDS") {
-          LOCAL all_fields2 IS got_mod:ALLFIELDS.
-          LOCAL show_n2 IS MIN(all_fields2:LENGTH, 25).
-          LOCAL j2 IS 0.
-          UNTIL j2 >= show_n2 {
-            PRINT "AS debug:     gm field " + all_fields2[j2].
-            SET j2 TO j2 + 1.
-          }
-          IF all_fields2:LENGTH > show_n2 {
-            PRINT "AS debug:     ... +" + (all_fields2:LENGTH - show_n2) + " more fields".
-          }
-        }
-      }
-    }
-  }
+  RETURN.
 }
 
 FUNCTION _AS_APPLY_CMD {
@@ -340,8 +274,6 @@ FUNCTION AS_DISCOVER_PARTS {
   LOCAL skipped_count IS 0.
   LOCAL parts IS SHIP:PARTS.
 
-  PRINT "AS discover: searching for tag '" + tag + "'.".
-
   LOCAL i IS 0.
   UNTIL i >= parts:LENGTH {
     LOCAL p IS parts[i].
@@ -357,7 +289,6 @@ FUNCTION AS_DISCOVER_PARTS {
 
       IF NOT p:HASSUFFIX("MODULES") {
         SET skipped_count TO skipped_count + 1.
-        PRINT "AS skip: " + _AS_PART_LABEL(p) + " (no MODULES suffix).".
       } ELSE {
         LOCAL mods IS p:MODULES.
         LOCAL bound IS FALSE.
@@ -389,7 +320,6 @@ FUNCTION AS_DISCOVER_PARTS {
                 )).
                 SET bound_count TO bound_count + 1.
                 SET bound TO TRUE.
-                PRINT "AS bind: " + _AS_PART_LABEL(p) + " -> " + nm + ":" + probe_field + " deploy=" + probe_deploy_label + " ready=" + probe_ready_label.
                 BREAK.
               }
             }
@@ -425,7 +355,6 @@ FUNCTION AS_DISCOVER_PARTS {
 
                 SET bound_count TO bound_count + 1.
                 SET bound TO TRUE.
-                PRINT "AS bind: " + _AS_PART_LABEL(p) + " -> " + mod_name + ":" + field_name + " deploy=" + deploy_label + " ready=" + ready_label.
                 BREAK.
               }
             }
@@ -434,7 +363,6 @@ FUNCTION AS_DISCOVER_PARTS {
 
         IF NOT bound {
           SET skipped_count TO skipped_count + 1.
-          PRINT "AS skip: " + _AS_PART_LABEL(p) + " (tagged, no deploy field match).".
           _AS_DEBUG_DUMP_TAGGED_PART(p).
         }
       }
@@ -443,15 +371,12 @@ FUNCTION AS_DISCOVER_PARTS {
 
   IF bound_count > 0 {
     SET AS_AVAILABLE TO TRUE.
-    IFC_SET_ALERT("AS discovered " + bound_count + " spoilers (tag '" + tag + "')").
   } ELSE {
     IF NOT AS_WARNED_NO_PARTS {
       IFC_SET_ALERT("AS disabled: no tagged spoiler parts for '" + tag + "'", "WARN").
       SET AS_WARNED_NO_PARTS TO TRUE.
     }
   }
-
-  PRINT "AS discover summary: tagged " + tagged_count + ", bound " + bound_count + ", skipped " + skipped_count + ".".
 }
 
 FUNCTION _AS_PHASE_CAP_DEG {
@@ -548,4 +473,25 @@ FUNCTION AS_RELEASE {
   SET TELEM_AS_RAW_DEG TO 0.
   SET TELEM_AS_ERR_MPS TO 0.
   SET TELEM_AS_ACTIVE TO 0.
+}
+
+// Force touchdown spoiler deployment to maximum configured deploy angle.
+// Used by autoland when touchdown spoilers are commanded.
+FUNCTION AS_DEPLOY_MAX_TOUCHDOWN {
+  IF NOT _AS_ENABLED() { RETURN. }
+
+  IF NOT AS_DISCOVERED { AS_DISCOVER_PARTS(). }
+  IF NOT AS_AVAILABLE { RETURN. }
+
+  LOCAL max_deg IS AC_PARAM("as_max_deflection_deg", AS_MAX_DEFLECTION_DEG, 0).
+  SET max_deg TO MAX(max_deg, 0).
+
+  SET AS_CMD_DEG TO max_deg.
+  SET AS_LAST_CAP_DEG TO max_deg.
+  _AS_APPLY_CMD(max_deg).
+
+  SET TELEM_AS_CMD_DEG TO max_deg.
+  SET TELEM_AS_CAP_DEG TO max_deg.
+  SET TELEM_AS_RAW_DEG TO max_deg.
+  SET TELEM_AS_ACTIVE TO 1.
 }
