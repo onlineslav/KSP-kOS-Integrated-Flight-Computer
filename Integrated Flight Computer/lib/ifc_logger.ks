@@ -65,7 +65,8 @@
 //   elev_defl_avg_deg average absolute pitch-surface deflection seen this sample (deg)
 //   elev_defl_max_deg max absolute pitch-surface deflection seen this sample (deg)
 //   elev_defl_n number of pitch-surface module samples used in deflection stats
-//   flare_req_up_a estimated upward accel needed to reach target VS by touchdown (m/s^2)
+//   flare_ctrl_h_m control-height state used by flare controller (gear_h_m + FLARE_CTRL_H_OFFSET, clamped >= 0) (m)
+//   flare_req_up_a estimated upward accel needed to reach target VS by touchdown using flare_ctrl_h_m (m/s^2)
 //   flare_thr_floor active flare throttle floor value (0..1)
 //   flare_tecs_et_err flare TECS total-energy error (m^2/s^2)
 //   flare_tecs_eb_err flare TECS energy-balance error (m^2/s^2)
@@ -335,7 +336,7 @@ FUNCTION LOGGER_INIT {
   SET LOG_CFG_FILE   TO IFC_ACTIVE_CFG_PATH:REPLACE(",", "_").
   IF LOG_CFG_FILE = "" { SET LOG_CFG_FILE TO "UNKNOWN". }
 
-  LOG "t_s,phase,subphase,ias_ms,vapp_ms,spd_err_ms,agl_m,gear_h_m,vs_ms,pitch_deg,aoa_deg,hdg_deg,bank_deg,thr_cmd,thr_cur,thr_intg,at_gain,at_tau_s,at_a_up,at_a_dn,at_kp_thr,at_ki_spd,at_thr_slew,as_cmd_deg,as_cap_deg,as_raw_deg,as_spd_err_ms,as_active,aa_hdg_cmd_deg,aa_fpa_cmd_deg,aa_fbw,aa_dir,actual_fpa_deg,ftf_hdg_err_deg,ftf_fix_idx,kos_steer_pit_deg,kos_steer_hdg_deg,aa_dir_vx,aa_dir_vy,aa_dir_vz,aa_dir_pitch_deg,aa_dir_hdg_deg,ils_loc_m,ils_gs_m,ils_dist_km,loc_corr_deg,gs_corr_deg,gs_latched,active_gs_ang_deg,ils_intercept_alt_m,d_gs_ms,fpa_preclamped_deg,gs_nom_alt_m,flare_fpa_cmd,flare_tgt_vs,flare_frac,flare_mode,flare_auth_limited,flare_vs_err,flare_fpa_err,flare_pitch_err,flare_pitch_in_cmd,elev_defl_avg_deg,elev_defl_max_deg,elev_defl_n,flare_req_up_a,flare_thr_floor,flare_tecs_et_err,flare_tecs_eb_err,flare_tecs_h_ref,flare_tecs_v_ref,flare_gamma_ref,flare_gamma_eb_term,flare_gamma_unsat,steer_hdg_deg,steer_blend,ro_loc_corr_deg,ro_hdg_err_deg,ro_yaw_tgt,ro_yaw_scale,ro_yaw_gate,yaw_cmd,roll_cmd,pitch_cmd,ro_pitch_tgt_deg,ro_pitch_err_deg,ro_pitch_ff,ro_roll_assist,flaps_cur,flaps_tgt,asc_j_ab,asc_j_rk,asc_validity,asc_q_pa,asc_q_raw_pa,asc_mach,asc_apo_m,asc_drag_n,asc_w_prop,asc_edot_aero,asc_edot_orb,asc_pitch_bias,asc_blend,asc_spooling,asc_ab_thr_ratio,asc_ab_t_now,asc_ab_t_avail,asc_ab_ign_on,asc_ab_flameouts,asc_rk_t_now,asc_rk_t_avail,asc_rk_ign_on,asc_rk_flameouts,ship_thrust,ship_avail_thrust,ship_ign_on,ship_flameouts,ifc_raw_dt_s,ifc_dt_s,ifc_loop_n,ifc_hz_est,ifc_raw_dt_max_s,ifc_raw_dt_min_s,phase_el_s,status,craft_name,cfg_file" TO LOG_FILE.
+  LOG "t_s,phase,subphase,ias_ms,vapp_ms,spd_err_ms,agl_m,gear_h_m,vs_ms,pitch_deg,aoa_deg,hdg_deg,bank_deg,thr_cmd,thr_cur,thr_intg,at_gain,at_tau_s,at_a_up,at_a_dn,at_kp_thr,at_ki_spd,at_thr_slew,as_cmd_deg,as_cap_deg,as_raw_deg,as_spd_err_ms,as_active,aa_hdg_cmd_deg,aa_fpa_cmd_deg,aa_fbw,aa_dir,actual_fpa_deg,ftf_hdg_err_deg,ftf_fix_idx,kos_steer_pit_deg,kos_steer_hdg_deg,aa_dir_vx,aa_dir_vy,aa_dir_vz,aa_dir_pitch_deg,aa_dir_hdg_deg,ils_loc_m,ils_gs_m,ils_dist_km,loc_corr_deg,gs_corr_deg,gs_latched,active_gs_ang_deg,ils_intercept_alt_m,d_gs_ms,fpa_preclamped_deg,gs_nom_alt_m,flare_fpa_cmd,flare_tgt_vs,flare_frac,flare_mode,flare_auth_limited,flare_vs_err,flare_fpa_err,flare_pitch_err,flare_pitch_in_cmd,elev_defl_avg_deg,elev_defl_max_deg,elev_defl_n,flare_ctrl_h_m,flare_req_up_a,flare_thr_floor,flare_tecs_et_err,flare_tecs_eb_err,flare_tecs_h_ref,flare_tecs_v_ref,flare_gamma_ref,flare_gamma_eb_term,flare_gamma_unsat,steer_hdg_deg,steer_blend,ro_loc_corr_deg,ro_hdg_err_deg,ro_yaw_tgt,ro_yaw_scale,ro_yaw_gate,yaw_cmd,roll_cmd,pitch_cmd,ro_pitch_tgt_deg,ro_pitch_err_deg,ro_pitch_ff,ro_roll_assist,flaps_cur,flaps_tgt,asc_j_ab,asc_j_rk,asc_validity,asc_q_pa,asc_q_raw_pa,asc_mach,asc_apo_m,asc_drag_n,asc_w_prop,asc_edot_aero,asc_edot_orb,asc_pitch_bias,asc_blend,asc_spooling,asc_ab_thr_ratio,asc_ab_t_now,asc_ab_t_avail,asc_ab_ign_on,asc_ab_flameouts,asc_rk_t_now,asc_rk_t_avail,asc_rk_ign_on,asc_rk_flameouts,ship_thrust,ship_avail_thrust,ship_ign_on,ship_flameouts,ifc_raw_dt_s,ifc_dt_s,ifc_loop_n,ifc_hz_est,ifc_raw_dt_max_s,ifc_raw_dt_min_s,phase_el_s,status,craft_name,cfg_file" TO LOG_FILE.
 
   SET LOG_ACTIVE TO TRUE.
   SET LOG_LAST_WRITE_UT TO TIME:SECONDS - IFC_CSV_LOG_PERIOD.
@@ -365,6 +366,7 @@ FUNCTION LOGGER_WRITE {
   LOCAL flare_vs_err IS 0.
   LOCAL flare_fpa_err IS 0.
   LOCAL flare_pitch_err IS 0.
+  LOCAL flare_ctrl_h_m IS MAX(gear_h + FLARE_CTRL_H_OFFSET, 0).
   LOCAL flare_req_up_a IS 0.
   LOCAL flare_thr_floor IS 0.
   LOCAL flare_mode IS "".
@@ -375,21 +377,23 @@ FUNCTION LOGGER_WRITE {
     SET flare_vs_err TO TELEM_FLARE_TGT_VS - vs_now.
     SET flare_fpa_err TO TELEM_AA_FPA_CMD - TELEM_ACTUAL_FPA_DEG.
     SET flare_pitch_err TO TELEM_AA_DIR_PITCH_DEG - TELEM_PITCH_DEG.
-    IF gear_h > 0.5 {
+    IF flare_ctrl_h_m > 0.5 {
       // Required average upward acceleration to move from current VS to target VS
-      // over remaining runway-relative height. Positive = need to arrest descent.
-      SET flare_req_up_a TO ((vs_now * vs_now) - (TELEM_FLARE_TGT_VS * TELEM_FLARE_TGT_VS)) / (2 * gear_h).
+      // over remaining control-height. Positive = need to arrest descent.
+      SET flare_req_up_a TO ((vs_now * vs_now) - (TELEM_FLARE_TGT_VS * TELEM_FLARE_TGT_VS)) / (2 * flare_ctrl_h_m).
     }
     SET flare_thr_floor TO TELEM_FLARE_THR_FLOOR.
   }
   LOCAL flare_pitch_in_cmd IS SHIP:CONTROL:PITCH.
-  LOCAL elev_stats IS _LOG_SAMPLE_PITCH_SURFACE_DEFLECTION().
   LOCAL elev_defl_avg_deg IS 0.
   LOCAL elev_defl_max_deg IS 0.
   LOCAL elev_defl_n IS 0.
-  IF elev_stats:HASKEY("avg_abs_deg") { SET elev_defl_avg_deg TO elev_stats["avg_abs_deg"]. }
-  IF elev_stats:HASKEY("max_abs_deg") { SET elev_defl_max_deg TO elev_stats["max_abs_deg"]. }
-  IF elev_stats:HASKEY("count") { SET elev_defl_n TO elev_stats["count"]. }
+  IF IFC_LOG_SAMPLE_CTRL_SURF AND (IFC_PHASE = PHASE_FLARE OR IFC_PHASE = PHASE_TOUCHDOWN) {
+    LOCAL elev_stats IS _LOG_SAMPLE_PITCH_SURFACE_DEFLECTION().
+    IF elev_stats:HASKEY("avg_abs_deg") { SET elev_defl_avg_deg TO elev_stats["avg_abs_deg"]. }
+    IF elev_stats:HASKEY("max_abs_deg") { SET elev_defl_max_deg TO elev_stats["max_abs_deg"]. }
+    IF elev_stats:HASKEY("count") { SET elev_defl_n TO elev_stats["count"]. }
+  }
   LOCAL bank  IS ROUND(TELEM_BANK_DEG, 3).
   LOCAL ship_t_now   IS SHIP:THRUST.
   LOCAL ship_t_avail IS SHIP:AVAILABLETHRUST.
@@ -480,6 +484,7 @@ FUNCTION LOGGER_WRITE {
     ROUND(elev_defl_avg_deg,          3),
     ROUND(elev_defl_max_deg,          3),
     ROUND(elev_defl_n,                0),
+    ROUND(flare_ctrl_h_m,             2),
     ROUND(flare_req_up_a,             3),
     flare_thr_floor,
     ROUND(TELEM_FLARE_ET_ERR,         3),

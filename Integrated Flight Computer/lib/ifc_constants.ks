@@ -416,6 +416,7 @@ GLOBAL IFC_HEADER_PERIOD    IS 0.20. // s  header + breadcrumb (5 Hz)
 GLOBAL IFC_SECONDARY_PERIOD IS 0.20. // s  debug panel (5 Hz)
 GLOBAL IFC_LOGGER_PERIOD    IS 0.50. // s  logger bar (2 Hz)
 GLOBAL IFC_CSV_LOG_PERIOD   IS 0.25. // s  CSV telemetry write period (4 Hz)
+GLOBAL IFC_LOG_SAMPLE_CTRL_SURF IS FALSE. // FALSE = skip expensive reflection-based control-surface deflection scan
                                       // WARNING: kOS LOG..TO blocks the main loop for the
                                       // duration of the file I/O. On Windows with AV this
                                       // can be 100-500 ms per call — reduce rate or disable

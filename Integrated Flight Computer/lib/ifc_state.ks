@@ -124,13 +124,13 @@ GLOBAL LAST_TELEM_UT IS 0.
 // ----------------------------
 GLOBAL UI_W               IS 50.     // terminal width, set by UI_INIT
 GLOBAL IFC_DEBUG_PANEL_ON IS FALSE.  // show secondary debug zone
-GLOBAL IFC_DEBUG_DRAW_GS  IS TRUE.  // TRUE = draw active approach + glideslope vectors in world
+GLOBAL IFC_DEBUG_DRAW_GS  IS FALSE.  // TRUE = draw active approach + glideslope vectors in world
 GLOBAL IFC_DEBUG_GS_DRAW_MAIN IS 0.  // VECDRAW handle for glideslope line
 GLOBAL IFC_DEBUG_GS_DRAW_REF  IS 0.  // VECDRAW handle for flat approach reference
 GLOBAL IFC_DEBUG_GS_DRAW_TUBE IS LIST(). // LIST of VECDRAW handles for low-poly GS tube edges
 GLOBAL IFC_DEBUG_GS_DRAW_ILS_ID IS "". // ILS id currently represented by debug vectors
 GLOBAL IFC_DEBUG_GS_LAST_LOG_UT IS -1. // last UT glideslope debug line was emitted
-GLOBAL IFC_DEBUG_DRAW_GEAR_HEIGHT IS TRUE. // TRUE = draw CoG->gear-bottom (red) and offset extension (blue)
+GLOBAL IFC_DEBUG_DRAW_GEAR_HEIGHT IS FALSE. // TRUE = draw CoG->gear-bottom (red) and offset extension (blue)
 GLOBAL IFC_DEBUG_GEAR_DRAW_RED IS 0. // VECDRAW handle for CoG-to-gear-bottom line
 GLOBAL IFC_DEBUG_GEAR_DRAW_BLUE IS 0. // VECDRAW handle for offset extension line
 GLOBAL LAST_DISPLAY_UT    IS 0.      // primary zone rate-limiter
