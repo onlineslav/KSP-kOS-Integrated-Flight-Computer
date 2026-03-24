@@ -220,6 +220,10 @@ LOCAL _DEFAULT_AIRCRAFT IS LEXICON(
   "flare_disable_speed_bleed",-1,
   "touchdown_confirm_s", -1,
   "touchdown_confirm_max_abs_vs", -1,
+  "touchdown_fallback_max_abs_vs", -1,
+  "touchdown_fallback_max_agl_m", -1,
+  "touchdown_nose_hold_s", -1,
+  "touchdown_nose_lower_rate_dps", -1,
   "notes",              "Default config."
 ).
 

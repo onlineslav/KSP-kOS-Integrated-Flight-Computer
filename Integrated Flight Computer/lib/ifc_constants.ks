@@ -264,6 +264,8 @@ GLOBAL TOUCHDOWN_FALLBACK_AGL_M IS 0.8. // m runway-relative fallback detector i
 GLOBAL TOUCHDOWN_FALLBACK_MAX_VS IS 0.2. // m/s max |VS| for fallback detector
 GLOBAL TOUCHDOWN_FALLBACK_MAX_AGL_M IS 8.0. // m absolute AGL guard for fallback detector
 GLOBAL TOUCHDOWN_SETTLE_S IS 0.20. // s hold TOUCHDOWN phase to let gear loads settle
+GLOBAL TOUCHDOWN_NOSE_HOLD_S IS 0.15. // s hold captured touchdown pitch before starting nose-lowering profile
+GLOBAL TOUCHDOWN_NOSE_LOWER_RATE_DPS IS 2.0. // deg/s max commanded nose-lowering pitch-target rate in TOUCHDOWN
 GLOBAL BOUNCE_RECOVERY_AGL_M IS 2.5. // m if airborne above this in touchdown/rollout, consider bounce recovery
 GLOBAL BOUNCE_RECOVERY_MIN_VS IS 0.6. // m/s minimum upward VS to count as a real bounce
 GLOBAL BOUNCE_RECOVERY_CONFIRM_S IS 0.30. // s airborne criteria must persist before bounce recovery

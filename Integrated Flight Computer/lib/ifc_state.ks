@@ -167,6 +167,9 @@ GLOBAL TELEM_D_GS          IS 0.  // raw d(GS_dev)/dt before combining into gs_c
 GLOBAL TELEM_FPA_PRECLAMPED IS 0. // fpa_cmd before AOA/pitch-cap clamp (deg)
 GLOBAL TELEM_FLARE_TGT_VS  IS 0.  // target sink rate from flare schedule (m/s)
 GLOBAL TELEM_FLARE_FRAC    IS 0.  // flare progress: 0 = entry AGL, 1 = ground
+GLOBAL TELEM_FLARE_ROUND_BLEND_H IS 0. // roundout height-based blend fraction (0..1)
+GLOBAL TELEM_FLARE_ROUND_BLEND_TTG IS 0. // roundout time-to-ground blend fraction (0..1)
+GLOBAL TELEM_FLARE_ROUND_BLEND_TOTAL IS 0. // roundout effective blend fraction applied to VS target (0..1)
 GLOBAL TELEM_FLARE_THR_FLOOR IS 0. // flare autothrottle throttle-floor value used this cycle
 GLOBAL TELEM_FLARE_ET_ERR  IS 0.  // flare TECS total-energy error (m^2/s^2)
 GLOBAL TELEM_FLARE_EB_ERR  IS 0.  // flare TECS energy-balance error (m^2/s^2)
@@ -646,6 +649,9 @@ FUNCTION IFC_INIT_STATE {
   SET TELEM_FPA_PRECLAMPED TO 0.
   SET TELEM_FLARE_TGT_VS TO 0.
   SET TELEM_FLARE_FRAC   TO 0.
+  SET TELEM_FLARE_ROUND_BLEND_H TO 0.
+  SET TELEM_FLARE_ROUND_BLEND_TTG TO 0.
+  SET TELEM_FLARE_ROUND_BLEND_TOTAL TO 0.
   SET TELEM_FLARE_THR_FLOOR TO 0.
   SET TELEM_FLARE_ET_ERR TO 0.
   SET TELEM_FLARE_EB_ERR TO 0.

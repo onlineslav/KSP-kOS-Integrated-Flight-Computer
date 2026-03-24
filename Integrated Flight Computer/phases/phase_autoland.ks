@@ -170,12 +170,17 @@ FUNCTION _COMPUTE_FLARE_SUBMODE {
 }
 
 FUNCTION _COMPUTE_FLARE_REFS {
-  PARAMETER flare_h, ias, vs_now, flare_touchdown_vs, vref, disable_speed_bleed,
+  PARAMETER flare_submode, flare_h, ias, vs_now, flare_touchdown_vs, vref, disable_speed_bleed,
             roundout_start_h, roundout_end_h, roundout_curve, roundout_ttg_start_s,
             roundout_ttg_end_s, auth_recovery_gain.
 
+  // Flare profile + roundout both use the same control-height reference
+  // (gear height plus captured offset) for consistent TECS geometry.
   LOCAL frac IS CLAMP(1 - flare_h / MAX(FLARE_ENTRY_AGL, 1), 0, 1).
   LOCAL vs_ref IS FLARE_ENTRY_VS + (flare_touchdown_vs - FLARE_ENTRY_VS) * frac.
+  LOCAL round_blend_h IS 0.
+  LOCAL round_blend_ttg IS 0.
+  LOCAL round_blend IS 0.
 
   IF NOT disable_speed_bleed {
     LOCAL speed_excess IS MAX(ias - vref, 0).
@@ -188,16 +193,19 @@ FUNCTION _COMPUTE_FLARE_REFS {
     SET round_start_eff TO round_start_eff * (1 + auth_recovery_gain).
   }
 
-  IF roundout_curve > 0 AND round_start_eff > roundout_end_h {
+  // Roundout shaping should only modify VS references once the submode has
+  // explicitly transitioned to ROUNDOUT. This prevents pre-roundout TTG blend
+  // from flattening descent while still in CAPTURE/TRACK.
+  IF flare_submode = FLARE_MODE_ROUNDOUT AND roundout_curve > 0 AND round_start_eff > roundout_end_h {
     LOCAL round_norm IS CLAMP((round_start_eff - flare_h) / MAX(round_start_eff - roundout_end_h, 0.1), 0, 1).
-    LOCAL round_blend_h IS CLAMP(round_norm * roundout_curve, 0, 1).
+    SET round_blend_h TO CLAMP(round_norm * roundout_curve, 0, 1).
     LOCAL sink_mag IS MAX(-vs_now, 0.5).
     LOCAL ttg_now IS flare_h / sink_mag.
     LOCAL ttg_start_eff IS MAX(roundout_ttg_start_s, roundout_ttg_end_s + 0.1).
     LOCAL ttg_end_eff IS MAX(roundout_ttg_end_s, 0).
     LOCAL ttg_norm IS CLAMP((ttg_start_eff - ttg_now) / MAX(ttg_start_eff - ttg_end_eff, 0.1), 0, 1).
-    LOCAL round_blend_ttg IS CLAMP(ttg_norm * roundout_curve, 0, 1).
-    LOCAL round_blend IS MAX(round_blend_h, round_blend_ttg).
+    SET round_blend_ttg TO CLAMP(ttg_norm * roundout_curve, 0, 1).
+    SET round_blend TO MAX(round_blend_h, round_blend_ttg).
     SET vs_ref TO vs_ref + (flare_touchdown_vs - vs_ref) * round_blend.
   }
 
@@ -207,7 +215,10 @@ FUNCTION _COMPUTE_FLARE_REFS {
   RETURN LEXICON(
     "frac", frac,
     "vs_ref", vs_ref,
-    "gamma_ref", gamma_ref
+    "gamma_ref", gamma_ref,
+    "round_blend_h", round_blend_h,
+    "round_blend_ttg", round_blend_ttg,
+    "round_blend", round_blend
   ).
 }
 
@@ -560,6 +571,7 @@ FUNCTION _RUN_FLARE {
   SET flare_balloon_min_h_m TO MAX(flare_balloon_min_h_m, 0).
   SET flare_balloon_gamma_down_deg TO CLAMP(flare_balloon_gamma_down_deg, flare_cmd_fpa_min, flare_cmd_fpa_max).
 
+  // Roundout thresholds use the same control-height reference as TECS.
   SET FLARE_SUBMODE TO _COMPUTE_FLARE_SUBMODE(
     flare_h_ctrl,
     flare_roundout_start_h_m,
@@ -568,6 +580,7 @@ FUNCTION _RUN_FLARE {
   ).
 
   LOCAL refs IS _COMPUTE_FLARE_REFS(
+    FLARE_SUBMODE,
     flare_h_ctrl,
     ias,
     vs_now,
@@ -584,6 +597,9 @@ FUNCTION _RUN_FLARE {
   LOCAL flare_frac IS refs["frac"].
   LOCAL flare_tgt_vs IS refs["vs_ref"].
   LOCAL gamma_ref IS refs["gamma_ref"].
+  SET TELEM_FLARE_ROUND_BLEND_H TO refs["round_blend_h"].
+  SET TELEM_FLARE_ROUND_BLEND_TTG TO refs["round_blend_ttg"].
+  SET TELEM_FLARE_ROUND_BLEND_TOTAL TO refs["round_blend"].
   IF FLARE_TECS_H_REF <= 0 OR PHASE_ELAPSED() < 0.3 {
     SET FLARE_TECS_H_REF TO MAX(flare_h_ctrl, 1).
   }
@@ -747,6 +763,9 @@ FUNCTION _RUN_TOUCHDOWN {
   SET TELEM_RO_YAW_SCALE   TO 0.
   SET TELEM_RO_YAW_GATE    TO 0.
   SET TELEM_FLARE_AOA_CLAMP_ACTIVE TO 0.
+  SET TELEM_FLARE_ROUND_BLEND_H TO 0.
+  SET TELEM_FLARE_ROUND_BLEND_TTG TO 0.
+  SET TELEM_FLARE_ROUND_BLEND_TOTAL TO 0.
   SET THROTTLE_CMD TO 0.
 
   LOCAL nose_hold_cmd              IS AC_PARAM("rollout_nose_hold_cmd",          ROLLOUT_NOSE_HOLD_CMD,          -0.5).
@@ -754,9 +773,11 @@ FUNCTION _RUN_TOUCHDOWN {
   LOCAL rollout_pitch_max_cmd      IS MIN(AC_PARAM("rollout_pitch_max_cmd",      ROLLOUT_PITCH_MAX_CMD,          0.001), 1).
   LOCAL rollout_pitch_max_down_cmd IS MIN(AC_PARAM("rollout_pitch_max_down_cmd", ROLLOUT_PITCH_MAX_DOWN_CMD,     0), rollout_pitch_max_cmd).
   LOCAL rollout_pitch_slew_per_s   IS AC_PARAM("rollout_pitch_slew_per_s",       ROLLOUT_PITCH_SLEW_PER_S,       0.001).
-  // Use rollout nose target immediately during TOUCHDOWN to put the nose gear down.
+  // TOUCHDOWN de-rotation target (nose-lowering profile converges here).
   LOCAL touchdown_nose_target_pitch IS AC_PARAM("rollout_nose_target_pitch_deg", ROLLOUT_NOSE_TARGET_PITCH_DEG, -0.5).
   LOCAL touchdown_settle_s         IS AC_PARAM("rollout_touchdown_settle_s",     TOUCHDOWN_SETTLE_S,             0.001).
+  LOCAL touchdown_nose_hold_s      IS AC_PARAM("touchdown_nose_hold_s",          TOUCHDOWN_NOSE_HOLD_S,          0).
+  LOCAL touchdown_nose_lower_rate  IS AC_PARAM("touchdown_nose_lower_rate_dps",  TOUCHDOWN_NOSE_LOWER_RATE_DPS,  0.001).
   LOCAL br_agl_m                   IS AC_PARAM("bounce_recovery_agl_m",         BOUNCE_RECOVERY_AGL_M,          0.001).
   LOCAL br_min_vs                  IS AC_PARAM("bounce_recovery_min_vs",        BOUNCE_RECOVERY_MIN_VS,         0.001).
   LOCAL br_confirm_s               IS AC_PARAM("bounce_recovery_confirm_s",     BOUNCE_RECOVERY_CONFIRM_S,      0.001).
@@ -791,7 +812,9 @@ FUNCTION _RUN_TOUCHDOWN {
     SET SHIP:CONTROL:PITCH TO 0.
     SET ROLLOUT_YAW_CMD_PREV   TO 0.
     SET ROLLOUT_PITCH_CMD_PREV TO 0.
-    SET ROLLOUT_PITCH_REF_DEG TO touchdown_nose_target_pitch.
+    // Start from current touchdown pitch and lower the nose with a bounded
+    // de-rotation profile instead of stepping directly to the final target.
+    SET ROLLOUT_PITCH_REF_DEG TO MAX(GET_PITCH(), touchdown_nose_target_pitch).
     SET ROLLOUT_PITCH_TGT_DEG TO ROLLOUT_PITCH_REF_DEG.
 
     // Capture touchdown heading and start wheelsteering from that heading.
@@ -815,10 +838,34 @@ FUNCTION _RUN_TOUCHDOWN {
   IF ag_dr > 0 AND SHIP:STATUS = "LANDED" { TRIGGER_AG(ag_dr, TRUE). }
 
   // Closed-loop touchdown pitch command:
-  // drive directly toward rollout nose target; suppress positive nose-up feedforward.
+  // Follow a bounded de-rotation profile:
+  // - hold captured pitch briefly after main-gear touchdown
+  // - then lower pitch target at a limited rate toward the rollout nose target.
+  SET touchdown_nose_hold_s TO MAX(touchdown_nose_hold_s, 0).
+  SET touchdown_nose_lower_rate TO MAX(touchdown_nose_lower_rate, 0.1).
+  IF SHIP:STATUS = "LANDED" {
+    LOCAL td_elapsed IS PHASE_ELAPSED().
+    IF td_elapsed <= touchdown_nose_hold_s {
+      SET ROLLOUT_PITCH_TGT_DEG TO MAX(TOUCHDOWN_CAPTURE_PITCH_DEG, touchdown_nose_target_pitch).
+    } ELSE {
+      LOCAL td_drop_elapsed IS td_elapsed - touchdown_nose_hold_s.
+      LOCAL td_sched_tgt IS MAX(
+        TOUCHDOWN_CAPTURE_PITCH_DEG - touchdown_nose_lower_rate * td_drop_elapsed,
+        touchdown_nose_target_pitch
+      ).
+      SET ROLLOUT_PITCH_TGT_DEG TO td_sched_tgt.
+    }
+  } ELSE {
+    // If a bounce unloads the gear, do not continue forcing the nose down.
+    SET ROLLOUT_PITCH_TGT_DEG TO MAX(ROLLOUT_PITCH_TGT_DEG, GET_PITCH()).
+  }
+
   LOCAL pitch_now IS GET_PITCH().
-  LOCAL pitch_err IS ROLLOUT_PITCH_REF_DEG - pitch_now.
-  LOCAL td_pitch_ff IS MIN(nose_hold_cmd, 0).
+  LOCAL pitch_err IS ROLLOUT_PITCH_TGT_DEG - pitch_now.
+  LOCAL td_pitch_ff IS 0.
+  IF SHIP:STATUS = "LANDED" AND PHASE_ELAPSED() < touchdown_nose_hold_s AND nose_hold_cmd > 0 {
+    SET td_pitch_ff TO nose_hold_cmd.
+  }
   LOCAL td_pitch_target IS td_pitch_ff + pitch_err * rollout_pitch_hold_kp.
   SET td_pitch_target TO CLAMP(td_pitch_target, -rollout_pitch_max_down_cmd, rollout_pitch_max_cmd).
   LOCAL td_pitch_cmd IS MOVE_TOWARD(
@@ -828,7 +875,7 @@ FUNCTION _RUN_TOUCHDOWN {
   ).
   SET ROLLOUT_PITCH_CMD_PREV TO td_pitch_cmd.
   SET SHIP:CONTROL:PITCH TO td_pitch_cmd.
-  SET TELEM_RO_PITCH_TGT TO ROLLOUT_PITCH_REF_DEG.
+  SET TELEM_RO_PITCH_TGT TO ROLLOUT_PITCH_TGT_DEG.
   SET TELEM_RO_PITCH_ERR TO pitch_err.
   SET TELEM_RO_PITCH_FF  TO td_pitch_ff.
 
@@ -988,9 +1035,9 @@ FUNCTION _RUN_ROLLOUT {
 
   // Nose gear protection:
   // 1) Hold touchdown pitch attitude with feedback right after landing.
-  // 2) Once stable and slow enough, ramp target pitch down gradually.
+  // 2) After minimum hold (or once sufficiently slow), ramp target pitch down gradually.
   LOCAL desired_pitch_deg IS ROLLOUT_PITCH_REF_DEG.
-  IF SHIP:STATUS = "LANDED" AND PHASE_ELAPSED() >= nose_hold_min_s AND ias <= nose_release_ias {
+  IF SHIP:STATUS = "LANDED" AND (PHASE_ELAPSED() >= nose_hold_min_s OR ias <= nose_release_ias) {
     SET desired_pitch_deg TO rollout_nose_target_pitch.
   }
   SET ROLLOUT_PITCH_TGT_DEG TO MOVE_TOWARD(

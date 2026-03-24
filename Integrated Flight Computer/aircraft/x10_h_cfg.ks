@@ -193,6 +193,8 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "rollout_yaw_fade_ias", 35,               // [m/s]             IAS where yaw-assist output fades toward zero.                                   (20)
     "rollout_yaw_max_cmd", 0.22,              // [cmd]             Max magnitude of rollout yaw command.                                            (0.50)
     "rollout_touchdown_settle_s", 0.55,       // [s]               Post-touchdown settle delay before full rollout logic.                           (0.20)
+    "touchdown_nose_hold_s", 0.25,            // [s]               Hold main-gear touchdown pitch before commanded nose-lowering begins.            (0.15)
+    "touchdown_nose_lower_rate_dps", 1.5,     // [deg/s]           Max commanded de-rotation rate toward rollout_nose_target_pitch_deg.             (2.0)
     "bounce_recovery_agl_m", 2.2,             // [m]               Max AGL for bounce-recovery logic to engage.                                     (2.5)
     "bounce_recovery_min_vs", 1.2,            // [m/s]             Minimum positive VS that flags a bounce condition.                               (0.6)
     "bounce_recovery_confirm_s", 0.45,        // [s]               Required bounce persistence before recovery mode latches.                        (0.30)

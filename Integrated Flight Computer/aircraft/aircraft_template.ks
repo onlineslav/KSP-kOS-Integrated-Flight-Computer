@@ -233,6 +233,10 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "flare_disable_speed_bleed", -1, // 1 disable speed-driven extra sink, 0 enable, -1 use global default
     "touchdown_confirm_s", -1, // s debounce for FLARE->TOUCHDOWN (-1 = global)
     "touchdown_confirm_max_abs_vs", -1, // m/s max |VS| at FLARE->TOUCHDOWN commit (-1 = global)
+    "touchdown_fallback_max_abs_vs", -1, // m/s max |VS| for fallback touchdown detector (-1 = global)
+    "touchdown_fallback_max_agl_m", -1, // m absolute AGL guard for fallback touchdown detector (-1 = global)
+    "touchdown_nose_hold_s", -1, // s hold captured touchdown pitch before lowering nose (-1 = global)
+    "touchdown_nose_lower_rate_dps", -1, // deg/s max nose-lowering target rate in TOUCHDOWN (-1 = global)
 
     // ── Ascent guidance ───────────────────────────────────
     // All values fall back to ifc_constants.ks defaults when set to -1.
