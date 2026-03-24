@@ -34,46 +34,6 @@ FUNCTION _APP_GS_VIS_CLEAR {
   SET IFC_DEBUG_GS_DRAW_ILS_ID TO "".
 }
 
-FUNCTION _APP_GS_TUBE_SEG_DRAW {
-  PARAMETER thr_ll, thr_alt, gs_hdg, gs_ang, draw_len_m, tube_radius_m, seg_deg, line_width.
-  RETURN VECDRAW(
-    {
-      LOCAL thr_pos_now IS thr_ll:ALTITUDEPOSITION(thr_alt).
-      LOCAL up_vec_now IS thr_pos_now:NORMALIZED.
-      LOCAL app_fwd_now IS HEADING(gs_hdg, 0):FOREVECTOR.
-      LOCAL gs_axis_now IS (app_fwd_now + up_vec_now * TAN(gs_ang)):NORMALIZED.
-
-      LOCAL side_ref_now IS VCRS(gs_axis_now, up_vec_now).
-      IF VDOT(side_ref_now, side_ref_now) < 0.000001 {
-        SET side_ref_now TO VCRS(gs_axis_now, HEADING(90, 0):FOREVECTOR).
-      }
-      IF VDOT(side_ref_now, side_ref_now) < 0.000001 {
-        SET side_ref_now TO HEADING(90, 0):FOREVECTOR.
-      } ELSE {
-        SET side_ref_now TO side_ref_now:NORMALIZED.
-      }
-
-      LOCAL ring_up_now IS VCRS(side_ref_now, gs_axis_now):NORMALIZED.
-      LOCAL offset_now IS side_ref_now * COS(seg_deg) * tube_radius_m
-        + ring_up_now * SIN(seg_deg) * tube_radius_m.
-      RETURN thr_pos_now + offset_now.
-    },
-    {
-      LOCAL thr_pos_now IS thr_ll:ALTITUDEPOSITION(thr_alt).
-      LOCAL up_vec_now IS thr_pos_now:NORMALIZED.
-      LOCAL app_fwd_now IS HEADING(gs_hdg, 0):FOREVECTOR.
-      LOCAL gs_axis_now IS (app_fwd_now + up_vec_now * TAN(gs_ang)):NORMALIZED.
-      RETURN gs_axis_now * draw_len_m.
-    },
-    { RETURN RGBA(255, 255, 0, 0.22). },
-    "",
-    1,
-    TRUE,
-    line_width,
-    FALSE
-  ).
-}
-
 FUNCTION _APP_GS_VIS_SYNC {
   IF NOT IFC_DEBUG_DRAW_GS {
     IF IFC_DEBUG_GS_DRAW_MAIN <> 0 OR IFC_DEBUG_GS_DRAW_REF <> 0 OR IFC_DEBUG_GS_DRAW_TUBE:LENGTH > 0 {
@@ -83,40 +43,58 @@ FUNCTION _APP_GS_VIS_SYNC {
   }
 
   IF ACTIVE_ILS_ID = "" { RETURN. }
-
-  IF IFC_DEBUG_GS_DRAW_ILS_ID = ACTIVE_ILS_ID AND IFC_DEBUG_GS_DRAW_TUBE:LENGTH > 0 {
-    RETURN.
-  }
-
-  _APP_GS_VIS_CLEAR().
-
   LOCAL ils_bcn IS GET_BEACON(ACTIVE_ILS_ID).
   IF NOT ils_bcn:HASKEY("ll") { RETURN. }
+
+  IF IFC_DEBUG_GS_DRAW_ILS_ID <> ACTIVE_ILS_ID OR IFC_DEBUG_GS_DRAW_MAIN = 0 {
+    _APP_GS_VIS_CLEAR().
+    SET IFC_DEBUG_GS_DRAW_MAIN TO VECDRAW(
+      V(0, 0, 0),
+      V(0, 0, 0),
+      RGBA(1, 1, 0, 0.60),
+      "",
+      1,
+      TRUE,
+      0.2
+    ).
+    SET IFC_DEBUG_GS_DRAW_ILS_ID TO ACTIVE_ILS_ID.
+  }
 
   LOCAL thr_ll IS ils_bcn["ll"].
   LOCAL thr_alt IS ils_bcn["alt_asl"].
   LOCAL gs_hdg IS MOD(ils_bcn["hdg"] + 180, 360).
   LOCAL gs_ang IS ils_bcn["gs_angle"].
-  LOCAL draw_len_m IS IFC_DEBUG_GS_DRAW_LEN_M.
-  LOCAL tube_radius_m IS MAX(IFC_DEBUG_GS_BEAM_DIAM_M * 0.5, 0.1).
-  LOCAL side_count IS MAX(ROUND(IFC_DEBUG_GS_TUBE_SIDES, 0), 3).
-  LOCAL line_width IS MAX(IFC_DEBUG_GS_TUBE_LINE_WIDTH, 1).
-  SET IFC_DEBUG_GS_DRAW_TUBE TO LIST().
-
-  LOCAL i IS 0.
-  UNTIL i >= side_count {
-    LOCAL seg_deg IS 360 * i / side_count.
-    IFC_DEBUG_GS_DRAW_TUBE:ADD(_APP_GS_TUBE_SEG_DRAW(
-      thr_ll, thr_alt, gs_hdg, gs_ang, draw_len_m, tube_radius_m, seg_deg, line_width
-    )).
-    SET i TO i + 1.
+  LOCAL draw_len_m IS MAX(IFC_DEBUG_GS_DRAW_LEN_M, 200).
+  LOCAL draw_ahead_m IS MAX(IFC_DEBUG_GS_DRAW_LOCAL_AHEAD_M, 1).
+  LOCAL draw_behind_m IS MAX(IFC_DEBUG_GS_DRAW_LOCAL_BEHIND_M, 1).
+  // Keep debug beam width sane regardless of accidental config extremes.
+  LOCAL draw_width_m IS CLAMP(IFC_DEBUG_GS_DRAW_WIDTH_M, 0.01, 0.5).
+  LOCAL ship_ll IS SHIP:GEOPOSITION.
+  LOCAL ship_dist_from_thr IS GEO_DISTANCE(thr_ll, ship_ll).
+  LOCAL ship_brg_from_thr IS GEO_BEARING(thr_ll, ship_ll).
+  LOCAL brg_err IS WRAP_180(ship_brg_from_thr - gs_hdg).
+  LOCAL ship_ax IS ship_dist_from_thr * COS(brg_err).
+  SET ship_ax TO CLAMP(ship_ax, 0, draw_len_m).
+  LOCAL seg_start_ax IS CLAMP(ship_ax - draw_behind_m, 0, draw_len_m).
+  LOCAL seg_end_ax IS CLAMP(ship_ax + draw_ahead_m, 0, draw_len_m).
+  IF seg_end_ax <= seg_start_ax {
+    SET seg_end_ax TO MIN(seg_start_ax + 1, draw_len_m).
   }
+  LOCAL seg_start_ll IS GEO_DESTINATION(thr_ll, gs_hdg, seg_start_ax).
+  LOCAL seg_end_ll IS GEO_DESTINATION(thr_ll, gs_hdg, seg_end_ax).
+  LOCAL seg_start_alt IS thr_alt + seg_start_ax * TAN(gs_ang).
+  LOCAL seg_end_alt IS thr_alt + seg_end_ax * TAN(gs_ang).
+  LOCAL seg_start_shipraw IS seg_start_ll:ALTITUDEPOSITION(seg_start_alt).
+  LOCAL seg_end_shipraw IS seg_end_ll:ALTITUDEPOSITION(seg_end_alt).
 
-  IF IFC_DEBUG_GS_DRAW_TUBE:LENGTH > 0 {
-    SET IFC_DEBUG_GS_DRAW_MAIN TO IFC_DEBUG_GS_DRAW_TUBE[0].
+  IF IFC_DEBUG_GS_DRAW_MAIN <> 0 {
+    // VecDraw expects SHIP-RAW coordinates.
+    // Draw a local segment around the aircraft to avoid very-long-line artifacts.
+    SET IFC_DEBUG_GS_DRAW_MAIN:START TO seg_start_shipraw.
+    SET IFC_DEBUG_GS_DRAW_MAIN:VEC TO seg_end_shipraw - seg_start_shipraw.
+    SET IFC_DEBUG_GS_DRAW_MAIN:WIDTH TO draw_width_m.
+    SET IFC_DEBUG_GS_DRAW_MAIN:SHOW TO TRUE.
   }
-
-  SET IFC_DEBUG_GS_DRAW_ILS_ID TO ACTIVE_ILS_ID.
 }
 
 FUNCTION RUN_APPROACH {

@@ -129,6 +129,7 @@ GLOBAL IFC_DEBUG_GS_DRAW_MAIN IS 0.  // VECDRAW handle for glideslope line
 GLOBAL IFC_DEBUG_GS_DRAW_REF  IS 0.  // VECDRAW handle for flat approach reference
 GLOBAL IFC_DEBUG_GS_DRAW_TUBE IS LIST(). // LIST of VECDRAW handles for low-poly GS tube edges
 GLOBAL IFC_DEBUG_GS_DRAW_ILS_ID IS "". // ILS id currently represented by debug vectors
+GLOBAL IFC_DEBUG_GS_LAST_LOG_UT IS -1. // last UT glideslope debug line was emitted
 GLOBAL LAST_DISPLAY_UT    IS 0.      // primary zone rate-limiter
 GLOBAL LAST_HEADER_UT     IS 0.      // header rate-limiter
 GLOBAL LAST_SECONDARY_UT  IS 0.      // secondary zone rate-limiter
@@ -515,6 +516,9 @@ FUNCTION IFC_INIT_STATE {
     SET IFC_DEBUG_GS_DRAW_TUBE TO LIST().
   }
   SET IFC_DEBUG_GS_DRAW_ILS_ID TO "".
+  SET IFC_DEBUG_GS_LAST_LOG_UT TO -1.
+  // Purge any stale vecdraws that may survive script reloads without a live handle.
+  CLEARVECDRAWS().
 
   SET AA_AVAILABLE   TO FALSE.
   SET AA_DIRECTOR_ON TO FALSE.

@@ -10,10 +10,11 @@
 // ----------------------------
 GLOBAL IFC_LOOP_DT         IS 0.02.   // s  (50 Hz)
 GLOBAL IFC_TELEMETRY_PERIOD IS 1.0.   // s  between HUD refreshes
-GLOBAL IFC_DEBUG_GS_DRAW_LEN_M IS 60000. // m length of debug glideslope beam from threshold
-GLOBAL IFC_DEBUG_GS_BEAM_DIAM_M IS 5.0.  // m diameter of debug glideslope beam cylinder
-GLOBAL IFC_DEBUG_GS_TUBE_SIDES IS 8.      // low-poly tube sides for glideslope visualization
-GLOBAL IFC_DEBUG_GS_TUBE_LINE_WIDTH IS 1. // line width used for each tube edge
+GLOBAL IFC_DEBUG_GS_DRAW_LEN_M IS 60000. // m log-projection length from threshold along GS track
+GLOBAL IFC_DEBUG_GS_DRAW_WIDTH_M IS 3.0. // m draw width for glideslope visual line
+GLOBAL IFC_DEBUG_GS_DRAW_LOCAL_AHEAD_M IS 250.  // m segment shown ahead of aircraft along GS axis
+GLOBAL IFC_DEBUG_GS_DRAW_LOCAL_BEHIND_M IS 250. // m segment shown behind aircraft along GS axis
+GLOBAL IFC_DEBUG_GS_LOG_PERIOD_S IS 1.0. // s between glideslope debug log lines
 
 // ----------------------------
 // Phase names  (top-level)
