@@ -17,7 +17,7 @@
 # Ideas
 
 - ensure brakes cannot activate until nosegear landed (incl debounce - maybe 0.5s)
-
+- if aircraft dips below some altitude (AGL) floor while on ILS, climb to regain glideslope as opposed to simply holding alt until GS recaptured
 - Modulate spoiler deflection using both speed error and aerodynamic pressure (q).
 - Add autobrakes that modulate braking percentage dynamically.
 - Add a manual-control button that keeps IFC running without fully exiting.

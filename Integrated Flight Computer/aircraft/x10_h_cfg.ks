@@ -17,11 +17,11 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // 1) Identity + Airframe Envelope
     // ========================================================
     "name", "X10-H Bigboi",                   // [string]          Aircraft display name shown in IFC status and logs.                              
-    "notes", "X10-H Spaceplane",              // [string]          Free-text note shown at IFC startup for quick context.                           
+//  "notes", "X10-H Spaceplane",              // [string]          Free-text note shown at IFC startup for quick context.                           UNUSED
 
-    "vs0", 92.0,                              // [m/s]             Landing-configuration stall speed estimate used for protection/scheduling logic. 
+//  "vs0", 92.0,                              // [m/s]             Landing-configuration stall speed estimate used for protection/scheduling logic. UNUSED
     "a_crit", 0.0,                            // [deg]             FAR critical AoA. 0 disables AoA-ratio based protections until tuned.            
-    "tailstrike_pitch_max_deg", 16.5,         // [deg]             Absolute pitch cap near runway to protect tail.                                  (20.0)
+    "tailstrike_pitch_max_deg", 15.5,         // [deg]             Absolute pitch cap near runway to protect tail.                                  (20.0)
 
     // AtmosphereAutopilot moderator limits (per-aircraft overrides).
     "aa_max_aoa", 18,                         // [deg]             Max commanded AoA in FBW director.                                               (12)
@@ -78,7 +78,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "takeoff_loc_guard_m", 140.0,             // [m]               LOC error clamp used before steering conversion.                                 (120.0)
     "takeoff_steer_max_corr", 10.0,           // [deg]             Max heading correction via wheel steering channel.                               (10.0)
     "takeoff_steer_hdg_rate_kd", 0.18,        // [deg/(deg/s)]     Heading-rate damping to suppress runway weave.                                   (0.20)
-    "takeoff_dir_max_corr", 6.0,              // [deg]             Max heading correction passed to director channel.                               (6.0)
+//  "takeoff_dir_max_corr", 6.0,              // [deg]             Max heading correction passed to director channel.                               (6.0) UNUSED
     "takeoff_yaw_start_ias", 0.0,             // [m/s]             IAS where rudder-assist blending begins.                                         (20.0)
     "takeoff_yaw_full_ias", 45.0,             // [m/s]             IAS where rudder-assist reaches full authority.                                  (90.0)
     "takeoff_yaw_min_scale", 0.55,            // [0..1]            Minimum rudder gain floor at low IAS during rollout.                             (0.25)
@@ -138,19 +138,19 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // ========================================================
     // Flare geometry and command shaping.
     "flare_gear_tag", "ifc_maingear",         // [string]          Part tag used as main-gear height reference.                                     ("ifc_maingear")
-    "flare_gear_h_offset_m", 2.0,             // [m]               Bias applied to gear reference height for flare timing.                          (0.0)
-    "flare_agl", 36,                          // [m]               Runway-relative trigger height to enter flare phase.                             (25)
+    "flare_gear_h_offset_m", 1.0,             // [m]               Bias applied to gear reference height for flare timing.                          (0.0)
+    "flare_agl", 30,                          // [m]               Runway-relative trigger height to enter flare phase.                             (25)
     "flare_touchdown_vs", -0.35,              // [m/s]             Target sink rate at touchdown.                                                   (-0.3)
     "flare_cmd_fpa_min", -1,                  // [deg]             Lower clamp on flare FPA command.                                                (-6.0)
     "flare_cmd_fpa_max", 4.5,                 // [deg]             Upper clamp on flare FPA command before AoA compensation.                        (4.0)
-    "flare_cmd_rate_min_dps", 1.2,            // [deg/s]           Minimum flare command rate at low speed.                                         (0.8)
-    "flare_cmd_rate_max_dps", 3.2,            // [deg/s]           Maximum flare command rate at high speed.                                        (2.2)
-    "flare_roundout_start_h_m", 16.0,         // [m]               Height where roundout blend begins.                                              (8.0)
-    "flare_roundout_end_h_m", 1.5,            // [m]               Height where roundout blend completes near touchdown.                            (0.8)
+    "flare_cmd_rate_min_dps", 0.9,            // [deg/s]           Minimum flare command rate at low speed.                                         (0.8)
+    "flare_cmd_rate_max_dps", 2.4,            // [deg/s]           Maximum flare command rate at high speed.                                        (2.2)
+    "flare_roundout_start_h_m", 11.0,         // [m]               Height where roundout blend begins.                                              (8.0)
+    "flare_roundout_end_h_m", 1.0,            // [m]               Height where roundout blend completes near touchdown.                            (0.8)
     "flare_roundout_curve", 1.0,              // [unitless]        Roundout curve exponent shaping float vs settle behavior.                        (1.0)
     "flare_disable_speed_bleed", 1,           // [bool]            TRUE disables extra sink augmentation from speed-above-Vref term.                (TRUE)
-    "flare_min_throttle", 0.0,                // [0..1]            Throttle floor in flare prior to low-altitude blend/recovery.                    (0.0)
-    "flare_min_throttle_agl_blend", -1,       // [m]               Height where throttle floor blends down near touchdown.                          (8.0)
+    "flare_min_throttle", 0.08,               // [0..1]            Throttle floor in flare prior to low-altitude blend/recovery.                    (0.0)
+    "flare_min_throttle_agl_blend", 5.0,      // [m]               Height where throttle floor blends down near touchdown.                          (8.0)
 
     // Flare authority monitor and recovery.
     "flare_authority_vs_err_trigger", -1,     // [m/s]             VS error trigger for authority-limited detection.                                (0.8)
@@ -193,7 +193,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "rollout_nose_hold_cmd", 0.14,            // [cmd]             Initial nose-up hold command during early rollout.                               (0.0)
     "rollout_nose_release_ias", 60,           // [m/s]             IAS where nose-hold behavior is released.                                        (35)
     "rollout_nose_hold_min_s", 2.4,           // [s]               Minimum hold time before allowing nose-release logic.                            (1.0)
-    "rollout_nose_min_ref_deg", 4.0,          // [deg]             Minimum pitch reference while nose-hold is active.                               (2.0)
+//  "rollout_nose_min_ref_deg", 4.0,          // [deg]             Minimum pitch reference while nose-hold is active.                               (2.0) UNUSED
     "rollout_nose_target_pitch_deg", 0.8,     // [deg]             Target pitch once nose transitions toward runway attitude.                       (0.0)
     "rollout_nose_target_slew_dps", 0.35,     // [deg/s]           Slew rate for nose target pitch transition.                                      (1.2)
     "rollout_pitch_hold_kp", 0.09,            // [cmd/deg]         Pitch-hold gain during rollout attitude control.                                 (0.08)
