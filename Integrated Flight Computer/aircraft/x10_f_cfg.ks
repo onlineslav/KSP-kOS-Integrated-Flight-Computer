@@ -157,7 +157,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // ── AA Moderators ─────────────────────────────────────
     // Per-aircraft overrides for AtmosphereAutopilot FBW limits.
     // Set to -1 to use the global default from ifc_constants.ks.
-    "aa_max_aoa",      25,   // deg max AoA  (global: 12)
+    "aa_max_aoa",      18,   // deg max AoA  (global: 12)
     "aa_max_g",        -1,   // G   max G    (global: 3.5)
     "aa_max_sideslip", -1,   // deg max sideslip (global: 5)
     "aa_max_side_g",   -1,   // G   max lateral G (global: 1.5)
@@ -167,23 +167,24 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Override the global constants for this specific aircraft.
     // Set to -1 to use the global default from ifc_constants.ks.
     "flare_gear_tag",          "ifc_maingear", // tag on parts used as main-gear flare/touchdown reference
-    "flare_agl",               48,   // m runway-relative main-gear height to begin flare
-    "flare_touchdown_vs",      -0.15,// m/s target sink rate at wheel contact
+    "tailstrike_pitch_max_deg", 15.5, // deg absolute near-runway pitch cap for tailstrike protection
+    "flare_agl",               30,   // m runway-relative main-gear height to begin flare
+    "flare_touchdown_vs",      -0.35,// m/s target sink rate at wheel contact
     "flare_cmd_fpa_min",         -1, // deg lower gamma clamp in flare (-1 = global)
-    "flare_cmd_fpa_max",         6.0, // deg upper gamma clamp in flare
-    "flare_roundout_end_h_m",    -1, // m runway-relative height where roundout is fully blended (-1 = global)
-    "flare_min_throttle",        0.0, // 0..1 flare throttle floor before blend/recovery
-    "flare_min_throttle_agl_blend",-1, // m below this height throttle floor blends down (-1 = global)
+    "flare_cmd_fpa_max",         4.5, // deg upper gamma clamp in flare
+    "flare_min_throttle",        0.08, // 0..1 flare throttle floor before blend/recovery
+    "flare_min_throttle_agl_blend",5.0, // m below this height throttle floor blends down
     "flare_authority_vs_err_trigger",-1, // m/s authority-limited trigger on VS error (-1 = global)
     "flare_authority_pitch_err_trigger",-1, // deg authority-limited trigger on pitch error (-1 = global)
     "flare_authority_fpa_err_trigger",-1, // deg authority-limited trigger on FPA error (-1 = global)
     "flare_authority_detect_s",  -1, // s persistence before authority-limited latch (-1 = global)
     "flare_authority_recovery_gain",-1, // 0..1 recovery gain for throttle/roundout recovery (-1 = global)
     "flare_disable_speed_bleed", 1,// extra sink per m/s above Vref during flare (kept very small)
-    "flare_roundout_start_h_m",      24.0, // m runway-relative main-gear final sink blend zone (earlier sink arrest)
-    "flare_roundout_curve", 0.0,  // full roundout blend prev 1
-    "flare_cmd_rate_min_dps",    1.8,  // deg/s low-speed flare response
-    "flare_cmd_rate_max_dps",    4.8,  // deg/s high-speed flare response
+    "flare_roundout_start_h_m",      11.0, // m runway-relative main-gear final sink blend zone
+    "flare_roundout_end_h_m",        1.0,  // m runway-relative height where roundout is fully blended
+    "flare_roundout_curve",          1.0,  // roundout blend shaping exponent
+    "flare_cmd_rate_min_dps",        0.9,  // deg/s low-speed flare response
+    "flare_cmd_rate_max_dps",        2.4,  // deg/s high-speed flare response
     // TECS flare tuning (set -1 to use globals).
     "flare_tecs_et_kp",          -1, // throttle proportional gain on total-energy error
     "flare_tecs_et_ki",          -1, // throttle integral gain on total-energy error
@@ -196,7 +197,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "flare_tecs_thr_slew_per_s", -1, // throttle command slew limit in flare
     "flare_tecs_climb_vs_gate",  0.10, // VS threshold to force throttle floor in flare
     "touchdown_confirm_s",      0.24,
-    "touchdown_confirm_max_abs_vs", 1.2,
+    "touchdown_confirm_max_abs_vs", 2.5,
 
     // ── Ascent guidance ───────────────────────────────────
     // All values fall back to ifc_constants.ks defaults when set to -1.

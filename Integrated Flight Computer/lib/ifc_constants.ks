@@ -165,9 +165,9 @@ GLOBAL KD_ALT_FPA     IS 0.05.   // deg FPA / (m/s) vertical speed  (damping)
 GLOBAL KD_FTF_ALT_FPA IS 0.3.    // FLY_TO_FIX VS damping — larger than KD_ALT_FPA to suppress phugoid during speed transitions
 GLOBAL MAX_DESC_FPA IS -6.0.  // deg  steepest descent allowed enroute
 GLOBAL MAX_CLIMB_FPA IS 5.0.  // deg  steepest climb allowed enroute
-// AA Director command mapping:
-// FALSE (default): AA_SET_DIRECTOR treats fpa_cmd as a direct pitch command.
-// TRUE:            AA_SET_DIRECTOR adds current AoA (pitch_cmd = fpa_cmd + AoA).
+// IFC FPA->Director pitch mapping mode:
+// FALSE (default): FPA guidance is sent as-is as Director pitch command.
+// TRUE:            IFC converts FPA guidance to pitch (pitch_cmd = fpa_cmd + AoA).
 // Keep FALSE unless flight-test evidence shows a specific aircraft needs AoA add.
 GLOBAL AA_DIR_ADD_AOA_COMP IS FALSE.
 // Absolute pitch cap for low-height tailstrike protection.
@@ -261,7 +261,8 @@ GLOBAL TOUCHDOWN_AGL_M  IS 2.    // m AGL considered touchdown (radar alt)
 GLOBAL TOUCHDOWN_CONFIRM_S IS 0.12. // s touchdown conditions must persist before switching phases
 GLOBAL TOUCHDOWN_CONFIRM_MAX_ABS_VS IS 2.5. // m/s max |VS| allowed when committing FLARE->TOUCHDOWN
 GLOBAL TOUCHDOWN_FALLBACK_AGL_M IS 0.8. // m runway-relative fallback detector if LANDED status lags
-GLOBAL TOUCHDOWN_FALLBACK_MAX_VS IS 0.2. // m/s max VS for fallback detector (descending/near-zero)
+GLOBAL TOUCHDOWN_FALLBACK_MAX_VS IS 0.2. // m/s max |VS| for fallback detector
+GLOBAL TOUCHDOWN_FALLBACK_MAX_AGL_M IS 8.0. // m absolute AGL guard for fallback detector
 GLOBAL TOUCHDOWN_SETTLE_S IS 0.20. // s hold TOUCHDOWN phase to let gear loads settle
 GLOBAL BOUNCE_RECOVERY_AGL_M IS 2.5. // m if airborne above this in touchdown/rollout, consider bounce recovery
 GLOBAL BOUNCE_RECOVERY_MIN_VS IS 0.6. // m/s minimum upward VS to count as a real bounce

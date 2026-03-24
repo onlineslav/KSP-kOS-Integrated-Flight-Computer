@@ -129,7 +129,7 @@ FUNCTION RUN_CRUISE {
     LOCAL fpa_cmd IS CLAMP(-alt_err * KP_ALT_FPA, MAX_DESC_FPA, MAX_CLIMB_FPA).
 
     LOCAL using_native IS _RUN_CRUISE_AA_CRUISE(CRUISE_COURSE_DEG, tgt_alt).
-    IF NOT using_native { AA_SET_DIRECTOR(CRUISE_COURSE_DEG, fpa_cmd). }
+    IF NOT using_native { AA_SET_DIRECTOR_FPA(CRUISE_COURSE_DEG, fpa_cmd). }
     _RUN_CRUISE_THROTTLE().
 
     SET TELEM_AA_HDG_CMD TO CRUISE_COURSE_DEG.
@@ -173,7 +173,7 @@ FUNCTION RUN_CRUISE {
   IF hdg_err > 45 AND fpa_cmd < 0 { SET fpa_cmd TO 0. }
 
   LOCAL using_native IS _RUN_CRUISE_AA_CRUISE(brg, tgt_alt).
-  IF NOT using_native { AA_SET_DIRECTOR(brg, fpa_cmd). }
+  IF NOT using_native { AA_SET_DIRECTOR_FPA(brg, fpa_cmd). }
   _RUN_CRUISE_THROTTLE().
 
   SET TELEM_AA_HDG_CMD TO brg.

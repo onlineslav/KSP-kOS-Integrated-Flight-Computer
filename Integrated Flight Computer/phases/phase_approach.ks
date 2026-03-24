@@ -437,7 +437,7 @@ FUNCTION _RUN_FLY_TO_FIX {
     }
     SET IFC_DESIRED_STEERING TO HEADING(hdg_cmd, fpa_cmd).
   } ELSE {
-    AA_SET_DIRECTOR(hdg_cmd, fpa_cmd).
+    AA_SET_DIRECTOR_FPA(hdg_cmd, fpa_cmd).
   }
   SET TELEM_AA_HDG_CMD TO hdg_cmd.
   SET TELEM_AA_FPA_CMD TO fpa_cmd.
@@ -563,7 +563,7 @@ FUNCTION _RUN_ILS_TRACK {
     }
     SET fpa_cmd TO MAX(MIN(fpa_cmd, max_fpa_for_pitch), APP_FPA_PITCH_FLOOR).
   }
-  AA_SET_DIRECTOR(hdg_cmd, fpa_cmd).
+  AA_SET_DIRECTOR_FPA(hdg_cmd, fpa_cmd).
   SET TELEM_AA_HDG_CMD TO hdg_cmd.
   SET TELEM_AA_FPA_CMD TO fpa_cmd.
   SET TELEM_LOC_CORR   TO loc_corr.

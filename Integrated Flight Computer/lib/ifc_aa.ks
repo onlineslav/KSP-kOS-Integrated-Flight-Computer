@@ -6,6 +6,20 @@
 //
 // Wraps all ADDONS:AA calls behind availability guards so the
 // rest of the IFC never needs to check AA_AVAILABLE itself.
+//
+// Director API contract used by IFC:
+// - Use AA_SET_DIRECTOR_PITCH(hdg, pitch_deg) when guidance already produced
+//   a pitch command (e.g., flare theta with tailstrike clamp).
+// - Use AA_SET_DIRECTOR_FPA(hdg, fpa_deg) when guidance is FPA-based and must
+//   be mapped to director pitch using AA_COMPUTE_DIRECTOR_PITCH_FROM_FPA().
+// - AA_SET_DIRECTOR(...) is retained only as a backward-compatible alias to
+//   the PITCH variant to avoid silent behavior changes in legacy code.
+//
+// Fast diagnosis checklist for "AA not tracking":
+// 1) Compare aa_dir_pitch_deg vs pitch_deg (tracking quality).
+// 2) Compare aa_fpa_cmd_deg vs aa_dir_pitch_deg to verify FPA->pitch mapping.
+// 3) Compare aoa_deg vs (aa_dir_pitch_deg - aa_fpa_cmd_deg) when FPA helper
+//    and AoA compensation are enabled.
 // ============================================================
 
 // Resolve a valid AA addon handle.
@@ -85,19 +99,29 @@ FUNCTION AA_INIT {
   }
 }
 
-// Point the AA Director at (heading_deg, fpa_deg).
-// fpa_deg is the flight path angle: negative = descending.
-// If AA is unavailable, falls back to kOS LOCK STEERING.
-FUNCTION AA_SET_DIRECTOR {
-  PARAMETER hdg_deg, fpa_deg.
-
-  // AA Director consumes a direction vector (nose attitude), not FPA directly.
-  // Default mapping is pitch_cmd = fpa_deg. Optional AoA compensation can be
-  // re-enabled via AA_DIR_ADD_AOA_COMP for specific aircraft if needed.
+// Convert a guidance FPA command (deg) to the pitch command (deg) that AA
+// Director actually consumes through aa:DIRECTION.
+//
+// Diagnostics for future regressions:
+// - Logger columns:
+//   aa_fpa_cmd_deg, aa_dir_pitch_deg, pitch_deg, aoa_deg
+// - If AA_DIR_ADD_AOA_COMP = TRUE, expected relation is approximately:
+//   aa_dir_pitch_deg ~= aa_fpa_cmd_deg + aoa_deg
+// - If AA_DIR_ADD_AOA_COMP = FALSE, expected relation is approximately:
+//   aa_dir_pitch_deg ~= aa_fpa_cmd_deg
+FUNCTION AA_COMPUTE_DIRECTOR_PITCH_FROM_FPA {
+  PARAMETER fpa_deg.
   LOCAL pitch_cmd IS fpa_deg.
-  IF AA_DIR_ADD_AOA_COMP {
-    SET pitch_cmd TO pitch_cmd + GET_AOA().
-  }
+  IF AA_DIR_ADD_AOA_COMP { SET pitch_cmd TO pitch_cmd + GET_AOA(). }
+  RETURN pitch_cmd.
+}
+
+// Low-level Director command.
+// IMPORTANT: second parameter is pitch (deg), not FPA.
+// If AA is unavailable, falls back to kOS LOCK STEERING.
+FUNCTION AA_SET_DIRECTOR_PITCH {
+  PARAMETER hdg_deg, pitch_cmd_deg.
+  LOCAL pitch_cmd IS pitch_cmd_deg.
 
   LOCAL aa IS _AA_GET_HANDLE().
   IF aa = 0 {
@@ -137,6 +161,21 @@ FUNCTION AA_SET_DIRECTOR {
     SET aa:DIRECTOR TO TRUE.
     SET AA_DIRECTOR_ON TO TRUE.
   }
+}
+
+// Convenience wrapper for guidance loops expressed in FPA.
+// Keeps the FPA->pitch mapping explicit at call sites.
+FUNCTION AA_SET_DIRECTOR_FPA {
+  PARAMETER hdg_deg, fpa_deg.
+  LOCAL pitch_cmd IS AA_COMPUTE_DIRECTOR_PITCH_FROM_FPA(fpa_deg).
+  AA_SET_DIRECTOR_PITCH(hdg_deg, pitch_cmd).
+}
+
+// Backward-compatible alias.
+// NOTE: AA_SET_DIRECTOR now expects pitch degrees.
+FUNCTION AA_SET_DIRECTOR {
+  PARAMETER hdg_deg, pitch_cmd_deg.
+  AA_SET_DIRECTOR_PITCH(hdg_deg, pitch_cmd_deg).
 }
 
 // Switch to AA Cruise mode (FPA + heading hold).

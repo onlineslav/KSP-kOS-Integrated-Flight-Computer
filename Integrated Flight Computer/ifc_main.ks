@@ -532,7 +532,7 @@ FUNCTION _RUN_FLIGHT_PLAN {
 
   SAS OFF.
   LOCK THROTTLE TO THROTTLE_CMD.
-  // LOCK STEERING is established only when AA is unavailable (see AA_SET_DIRECTOR).
+  // LOCK STEERING is established only when AA is unavailable (see AA_SET_DIRECTOR_PITCH).
   // When AA Director or FBW is active, kOS LOCK STEERING must NOT be held or the
   // two control writers fight each other and produce near-zero net deflection.
 

@@ -160,7 +160,7 @@ GLOBAL TELEM_PITCH_DEG     IS 0.  // nose pitch above horizon (deg)
 GLOBAL TELEM_BANK_DEG      IS 0.  // bank angle (deg, + = right wing down)
 
 GLOBAL TELEM_AA_HDG_CMD    IS 0.  // heading sent to AA Director (deg)
-GLOBAL TELEM_AA_FPA_CMD    IS 0.  // FPA sent to AA Director (deg)
+GLOBAL TELEM_AA_FPA_CMD    IS 0.  // cross-phase vertical guidance scalar from phase logic (typically FPA deg; pitch-commanded phases may store pitch deg)
 GLOBAL TELEM_LOC_CORR      IS 0.  // ILS localizer heading correction (deg)
 GLOBAL TELEM_GS_CORR       IS 0.  // ILS glideslope FPA correction (deg)
 GLOBAL TELEM_D_GS          IS 0.  // raw d(GS_dev)/dt before combining into gs_corr (m/s)
@@ -181,6 +181,7 @@ GLOBAL TELEM_FLARE_IAS_DOT   IS 0. // flare filtered IAS derivative (m/s^2)
 GLOBAL TELEM_FLARE_THETA_CMD_RAW IS 0. // flare director pitch command before tailstrike clamp (deg)
 GLOBAL TELEM_FLARE_THETA_CMD_CLAMPED IS 0. // flare director pitch command after tailstrike clamp (deg)
 GLOBAL TELEM_FLARE_THETA_CLAMP_ACTIVE IS 0. // 1 when tailstrike clamp is active this cycle, else 0
+GLOBAL TELEM_FLARE_AOA_CLAMP_ACTIVE IS 0. // 1 when flare is likely AoA-limited on nose-up pitch demand, else 0
 GLOBAL TELEM_FLARE_AUTH_REASON IS "NONE". // flare authority-limited reason code (NONE/TRACK/SIGN/TAILSTRIKE/BALLOON)
 GLOBAL TELEM_STEER_BLEND   IS 0.  // rollout wheelsteering blend factor (0-1)
 GLOBAL TELEM_RO_HDG_ERR    IS 0.  // rollout: actual hdg minus steer target (deg)
@@ -219,7 +220,7 @@ GLOBAL TELEM_KOS_STEER_HDG  IS 0.  // compass heading of IFC_DESIRED_STEERING (k
 GLOBAL TELEM_AA_DIR_VX        IS 0.  // X component of direction vector passed to aa:DIRECTION (world frame)
 GLOBAL TELEM_AA_DIR_VY        IS 0.  // Y component
 GLOBAL TELEM_AA_DIR_VZ        IS 0.  // Z component
-GLOBAL TELEM_AA_DIR_PITCH_DEG IS 0.  // actual pitch of the direction vector (should match aa_fpa_cmd_deg)
+GLOBAL TELEM_AA_DIR_PITCH_DEG IS 0.  // pitch of the vector sent to aa:DIRECTION (deg)
 GLOBAL TELEM_AA_DIR_HDG_DEG   IS 0.  // actual heading of the direction vector (should match aa_hdg_cmd_deg)
 
 // ----------------------------
@@ -659,6 +660,7 @@ FUNCTION IFC_INIT_STATE {
   SET TELEM_FLARE_THETA_CMD_RAW TO 0.
   SET TELEM_FLARE_THETA_CMD_CLAMPED TO 0.
   SET TELEM_FLARE_THETA_CLAMP_ACTIVE TO 0.
+  SET TELEM_FLARE_AOA_CLAMP_ACTIVE TO 0.
   SET TELEM_FLARE_AUTH_REASON TO "NONE".
   SET TELEM_STEER_BLEND  TO 0.
   SET TELEM_RO_HDG_ERR   TO 0.

@@ -555,7 +555,8 @@ FUNCTION _RUN_TO_ROTATE {
   } ELSE {
     LOCAL hdg_cmd IS TO_RWY_HDG.
     LOCAL dir_pitch_cmd IS CLAMP_TAILSTRIKE_DIRECTOR_CMD(TO_ROTATE_PITCH_CMD).
-    AA_SET_DIRECTOR(hdg_cmd, dir_pitch_cmd).
+    // Rotation branch commands director pitch directly.
+    AA_SET_DIRECTOR_PITCH(hdg_cmd, dir_pitch_cmd).
     SET TELEM_AA_HDG_CMD TO hdg_cmd.
     SET TELEM_AA_FPA_CMD TO dir_pitch_cmd.
 
@@ -624,7 +625,7 @@ FUNCTION _RUN_TO_CLIMB {
 
   UNLOCK WHEELSTEERING.
   LOCAL hdg_cmd IS TO_RWY_HDG.
-  AA_SET_DIRECTOR(hdg_cmd, TO_CLIMB_FPA_CMD).
+  AA_SET_DIRECTOR_FPA(hdg_cmd, TO_CLIMB_FPA_CMD).
   SET TELEM_AA_HDG_CMD TO hdg_cmd.
   SET TELEM_AA_FPA_CMD TO TO_CLIMB_FPA_CMD.
 

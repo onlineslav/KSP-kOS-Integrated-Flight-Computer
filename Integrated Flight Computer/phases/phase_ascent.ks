@@ -310,7 +310,7 @@ FUNCTION _ASC_CORRIDOR {
     SET fpa_cmd TO MIN(fpa_cmd, surf_fpa + 0.5).
   }
   LOCAL hdg_cmd IS _ASC_HDG_SMOOTH(_ASC_SURFACE_HDG(), dt).
-  AA_SET_DIRECTOR(hdg_cmd, fpa_cmd).
+  AA_SET_DIRECTOR_FPA(hdg_cmd, fpa_cmd).
   SET TELEM_AA_HDG_CMD TO hdg_cmd.
   SET TELEM_AA_FPA_CMD TO fpa_cmd.
   SET TELEM_LOC_CORR   TO 0.
@@ -445,7 +445,7 @@ FUNCTION _ASC_ZOOM {
   LOCAL surf_fpa IS _ASC_SURF_FPA_SMOOTH(dt).
   LOCAL fpa_cmd  IS CLAMP(surf_fpa + ASC_PITCH_BIAS, ASC_ZOOM_FPA_MIN, ASC_ZOOM_FPA_MAX).
   LOCAL hdg_cmd IS _ASC_HDG_SMOOTH(_ASC_SURFACE_HDG(), dt).
-  AA_SET_DIRECTOR(hdg_cmd, fpa_cmd).
+  AA_SET_DIRECTOR_FPA(hdg_cmd, fpa_cmd).
   SET TELEM_AA_HDG_CMD TO hdg_cmd.
   SET TELEM_AA_FPA_CMD TO fpa_cmd.
   SET TELEM_LOC_CORR   TO 0.
@@ -542,7 +542,7 @@ FUNCTION _ASC_ROCKET_SUSTAIN {
       LOCAL orb_fpa IS _ASC_ORB_FPA().
       LOCAL fpa_blend IS srf_fpa * (1 - ASC_STEER_BLEND) + orb_fpa * ASC_STEER_BLEND.
       LOCAL hdg_cmd IS _ASC_HDG_SMOOTH(_ASC_BLEND_HDG(ASC_STEER_BLEND), dt).
-      AA_SET_DIRECTOR(hdg_cmd, fpa_blend).
+      AA_SET_DIRECTOR_FPA(hdg_cmd, fpa_blend).
       SET TELEM_AA_HDG_CMD TO hdg_cmd.
       SET TELEM_AA_FPA_CMD TO fpa_blend.
       SET TELEM_LOC_CORR   TO 0.
@@ -575,7 +575,7 @@ FUNCTION _ASC_ROCKET_SUSTAIN {
   LOCAL fpa_cmd  IS CLAMP(fpa_base + ASC_PITCH_BIAS, -15.0, ASC_PITCH_MAX_SUSTAIN).
 
   LOCAL hdg_cmd IS _ASC_HDG_SMOOTH(_ASC_BLEND_HDG(ASC_STEER_BLEND), dt).
-  AA_SET_DIRECTOR(hdg_cmd, fpa_cmd).
+  AA_SET_DIRECTOR_FPA(hdg_cmd, fpa_cmd).
   SET TELEM_AA_HDG_CMD TO hdg_cmd.
   SET TELEM_AA_FPA_CMD TO fpa_cmd.
   SET TELEM_LOC_CORR   TO 0.
@@ -625,7 +625,7 @@ FUNCTION _ASC_ROCKET_CLOSEOUT {
 
   LOCAL fpa_cmd IS CLAMP(orb_fpa + apo_guard, -5.0, 10.0).
   LOCAL hdg_cmd IS _ASC_HDG_SMOOTH(_ASC_BLEND_HDG(ASC_STEER_BLEND), dt).
-  AA_SET_DIRECTOR(hdg_cmd, fpa_cmd).
+  AA_SET_DIRECTOR_FPA(hdg_cmd, fpa_cmd).
   SET TELEM_AA_HDG_CMD TO hdg_cmd.
   SET TELEM_AA_FPA_CMD TO fpa_cmd.
   SET TELEM_LOC_CORR   TO 0.
@@ -664,7 +664,7 @@ FUNCTION _ASC_CIRCULARISE {
   LOCAL orb_hdg IS _ASC_ORB_HDG().
 
   LOCAL hdg_cmd IS _ASC_HDG_SMOOTH(orb_hdg, dt).
-  AA_SET_DIRECTOR(hdg_cmd, orb_fpa).
+  AA_SET_DIRECTOR_FPA(hdg_cmd, orb_fpa).
   SET TELEM_AA_HDG_CMD TO hdg_cmd.
   SET TELEM_AA_FPA_CMD TO orb_fpa.
   SET TELEM_LOC_CORR   TO 0.

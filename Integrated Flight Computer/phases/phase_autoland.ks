@@ -314,9 +314,10 @@ FUNCTION _COMPUTE_GAMMA_CMD {
 FUNCTION _COMPUTE_THETA_CMD {
   PARAMETER gamma_cmd.
   LOCAL theta_cmd IS gamma_cmd.
-  IF NOT AA_DIR_ADD_AOA_COMP {
-    // Director expects pitch; add AoA so gamma guidance maps to a usable nose attitude.
-    // Bound compensation to avoid pathological spikes from noisy AoA samples.
+  IF AA_DIR_ADD_AOA_COMP {
+    // Optional FPA->pitch mapping mode:
+    // when enabled, convert gamma-style command to pitch by adding AoA.
+    // Keep bounded to avoid command spikes from noisy AoA samples.
     LOCAL aoa_comp IS CLAMP(GET_AOA(), -2, 20).
     SET theta_cmd TO gamma_cmd + aoa_comp.
   }
@@ -409,7 +410,8 @@ FUNCTION _CHECK_FLARE_CLIMBAWAY {
 }
 
 FUNCTION _RUN_FLARE_TOUCHDOWN_GATE {
-  PARAMETER flare_h, vs_now, touchdown_confirm_s, touchdown_confirm_max_abs_vs.
+  PARAMETER flare_h, agl_now, vs_now, touchdown_confirm_s, touchdown_confirm_max_abs_vs,
+            touchdown_fallback_max_abs_vs, touchdown_fallback_max_agl_m.
 
   IF SHIP:STATUS = "LANDED" {
     IF TOUCHDOWN_CANDIDATE_UT < 0 { SET TOUCHDOWN_CANDIDATE_UT TO TIME:SECONDS. }
@@ -433,11 +435,16 @@ FUNCTION _RUN_FLARE_TOUCHDOWN_GATE {
     RETURN TRUE.
   }
 
+  // Fallback path when SHIP:STATUS lags. Keep this conservative so we do not
+  // transition early while still airborne.
+  SET touchdown_fallback_max_abs_vs TO MAX(touchdown_fallback_max_abs_vs, 0.01).
+  SET touchdown_fallback_max_agl_m  TO MAX(touchdown_fallback_max_agl_m, 0.1).
   LOCAL td_gear_count IS COUNT_MAIN_GEAR_BELOW(TOUCHDOWN_FALLBACK_AGL_M).
   LOCAL td_gear_need IS 1.
   IF FLARE_GEAR_PARTS:LENGTH >= 2 { SET td_gear_need TO 2. }
   LOCAL td_fallback IS flare_h < TOUCHDOWN_FALLBACK_AGL_M AND
-                      vs_now <= TOUCHDOWN_FALLBACK_MAX_VS AND
+                      agl_now <= touchdown_fallback_max_agl_m AND
+                      ABS(vs_now) <= touchdown_fallback_max_abs_vs AND
                       td_gear_count >= td_gear_need.
   IF td_fallback {
     IF TOUCHDOWN_CANDIDATE_UT < 0 { SET TOUCHDOWN_CANDIDATE_UT TO TIME:SECONDS. }
@@ -447,7 +454,6 @@ FUNCTION _RUN_FLARE_TOUCHDOWN_GATE {
         SET TOUCHDOWN_CANDIDATE_UT TO TIME:SECONDS.
         RETURN FALSE.
       }
-      _DEPLOY_TOUCHDOWN_SPOILERS().
       SET TOUCHDOWN_CAPTURE_PITCH_DEG TO GET_PITCH().
       SET TOUCHDOWN_INIT_DONE         TO FALSE.
       SET TOUCHDOWN_CANDIDATE_UT      TO -1.
@@ -476,12 +482,15 @@ FUNCTION _RUN_FLARE {
 
   LOCAL flare_h IS GET_MAIN_GEAR_RUNWAY_HEIGHT_MIN().
   LOCAL flare_h_ctrl IS 0.
+  LOCAL agl_now IS GET_AGL().
   LOCAL ias IS MAX(GET_IAS(), 10).
   LOCAL vs_now IS SHIP:VERTICALSPEED.
   LOCAL flare_touchdown_vs IS _GET_FLARE_TOUCHDOWN_VS().
   LOCAL vref IS AC_PARAM("v_ref", ACTIVE_V_APP - 10, 0).
   LOCAL touchdown_confirm_s IS AC_PARAM("touchdown_confirm_s", TOUCHDOWN_CONFIRM_S, 0.001).
   LOCAL touchdown_confirm_max_abs_vs IS AC_PARAM("touchdown_confirm_max_abs_vs", TOUCHDOWN_CONFIRM_MAX_ABS_VS, 0.001).
+  LOCAL touchdown_fallback_max_abs_vs IS AC_PARAM("touchdown_fallback_max_abs_vs", TOUCHDOWN_FALLBACK_MAX_VS, 0.001).
+  LOCAL touchdown_fallback_max_agl_m IS AC_PARAM("touchdown_fallback_max_agl_m", TOUCHDOWN_FALLBACK_MAX_AGL_M, 0.001).
 
   IF _CHECK_FLARE_CLIMBAWAY(flare_h, vs_now) { RETURN. }
 
@@ -615,6 +624,11 @@ FUNCTION _RUN_FLARE {
   LOCAL max_aoa IS AC_PARAM("aa_max_aoa", AA_MAX_AOA, 0.001).
   LOCAL aoa_near_lim IS FALSE.
   IF max_aoa > 0 AND GET_AOA() >= max_aoa - 0.5 { SET aoa_near_lim TO TRUE. }
+  // Diagnostic flag: "likely AoA-limited" means AoA is at/near limit while flare
+  // still requests nose-up response (positive pitch error and unresolved sink error).
+  // This is a conservative proxy because AA does not expose an explicit AoA-clamp state.
+  LOCAL aoa_clamp_likely IS aoa_near_lim AND pitch_err > 0.5 AND vs_err > 0.
+  SET TELEM_FLARE_AOA_CLAMP_ACTIVE TO CHOOSE 1 IF aoa_clamp_likely ELSE 0.
   IF flare_h_ctrl > flare_balloon_min_h_m AND vs_now > flare_balloon_vs_trigger {
     SET FLARE_BALLOON_ACTIVE TO TRUE.
   } ELSE IF FLARE_BALLOON_ACTIVE AND (vs_now <= flare_balloon_clear_vs OR flare_h_ctrl <= flare_balloon_min_h_m) {
@@ -682,7 +696,8 @@ FUNCTION _RUN_FLARE {
   IF tailstrike_limited_now AND vs_err > 0 {
     _FLARE_AUTH_LATCH("TAILSTRIKE").
   }
-  AA_SET_DIRECTOR(ACTIVE_RWY_HDG, theta_cmd).
+  // Flare computes a direct pitch command (theta), not an FPA command.
+  AA_SET_DIRECTOR_PITCH(ACTIVE_RWY_HDG, theta_cmd).
   SET TELEM_AA_HDG_CMD   TO ACTIVE_RWY_HDG.
   SET TELEM_AA_FPA_CMD   TO gamma_cmd.
   SET TELEM_FLARE_TGT_VS TO flare_tgt_vs.
@@ -709,7 +724,15 @@ FUNCTION _RUN_FLARE {
     FLARE_BALLOON_ACTIVE
   ).
 
-  IF _RUN_FLARE_TOUCHDOWN_GATE(flare_h, vs_now, touchdown_confirm_s, touchdown_confirm_max_abs_vs) {
+  IF _RUN_FLARE_TOUCHDOWN_GATE(
+    flare_h,
+    agl_now,
+    vs_now,
+    touchdown_confirm_s,
+    touchdown_confirm_max_abs_vs,
+    touchdown_fallback_max_abs_vs,
+    touchdown_fallback_max_agl_m
+  ) {
     RETURN.
   }
 }
@@ -723,6 +746,7 @@ FUNCTION _RUN_TOUCHDOWN {
   SET TELEM_RO_ROLL_ASSIST TO 0.
   SET TELEM_RO_YAW_SCALE   TO 0.
   SET TELEM_RO_YAW_GATE    TO 0.
+  SET TELEM_FLARE_AOA_CLAMP_ACTIVE TO 0.
   SET THROTTLE_CMD TO 0.
 
   LOCAL nose_hold_cmd              IS AC_PARAM("rollout_nose_hold_cmd",          ROLLOUT_NOSE_HOLD_CMD,          -0.5).
@@ -737,21 +761,23 @@ FUNCTION _RUN_TOUCHDOWN {
   LOCAL br_min_vs                  IS AC_PARAM("bounce_recovery_min_vs",        BOUNCE_RECOVERY_MIN_VS,         0.001).
   LOCAL br_confirm_s               IS AC_PARAM("bounce_recovery_confirm_s",     BOUNCE_RECOVERY_CONFIRM_S,      0.001).
   LOCAL br_max_s                   IS AC_PARAM("bounce_recovery_max_s",         BOUNCE_RECOVERY_MAX_S,          0.001).
+  LOCAL ag_tr                      IS 0.
+  IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("ag_thrust_rev") { SET ag_tr TO ACTIVE_AIRCRAFT["ag_thrust_rev"]. }
+  LOCAL ag_dr                      IS 0.
+  IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("ag_drogue") { SET ag_dr TO ACTIVE_AIRCRAFT["ag_drogue"]. }
 
   // One-time touchdown handoff work.
   IF NOT TOUCHDOWN_INIT_DONE {
     // Spoilers (action group from aircraft config).
-    _DEPLOY_TOUCHDOWN_SPOILERS().
+    IF SHIP:STATUS = "LANDED" { _DEPLOY_TOUCHDOWN_SPOILERS(). }
 
     // Reverse thrust (action group from aircraft config).
-    LOCAL ag_tr IS 0.
-    IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("ag_thrust_rev") { SET ag_tr TO ACTIVE_AIRCRAFT["ag_thrust_rev"]. }
-    IF ag_tr > 0 { TRIGGER_AG(ag_tr, TRUE). }
+    IF ag_tr > 0 AND SHIP:STATUS = "LANDED" { TRIGGER_AG(ag_tr, TRUE). }
 
     // Drogue chute (action group from aircraft config).
-    LOCAL ag_dr IS 0.
-    IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("ag_drogue") { SET ag_dr TO ACTIVE_AIRCRAFT["ag_drogue"]. }
-    IF ag_dr > 0 { TRIGGER_AG(ag_dr, TRUE). }
+    // Only deploy on positive landed status; if status is lagging, this will
+    // be retried every loop below and arm as soon as contact is confirmed.
+    IF ag_dr > 0 AND SHIP:STATUS = "LANDED" { TRIGGER_AG(ag_dr, TRUE). }
 
     BRAKES OFF.
 
@@ -779,6 +805,15 @@ FUNCTION _RUN_TOUCHDOWN {
     SET TOUCHDOWN_INIT_DONE TO TRUE.
   }
 
+  // Retry drogue deploy while in TOUCHDOWN in case this phase was entered from
+  // fallback before SHIP:STATUS latched to LANDED. Keep touchdown devices
+  // behind positive landed status so they cannot fire in-air.
+  IF SHIP:STATUS = "LANDED" {
+    _DEPLOY_TOUCHDOWN_SPOILERS().
+    IF ag_tr > 0 { TRIGGER_AG(ag_tr, TRUE). }
+  }
+  IF ag_dr > 0 AND SHIP:STATUS = "LANDED" { TRIGGER_AG(ag_dr, TRUE). }
+
   // Closed-loop touchdown pitch command:
   // drive directly toward rollout nose target; suppress positive nose-up feedforward.
   LOCAL pitch_now IS GET_PITCH().
@@ -801,7 +836,7 @@ FUNCTION _RUN_TOUCHDOWN {
   IF _CHECK_BOUNCE_RECOVERY(br_agl_m, br_min_vs, br_confirm_s, br_max_s, TRUE) { RETURN. }
 
   // Hold briefly in TOUCHDOWN to absorb contact transients before rollout.
-  IF PHASE_ELAPSED() >= touchdown_settle_s {
+  IF PHASE_ELAPSED() >= touchdown_settle_s AND SHIP:STATUS = "LANDED" {
     SET TOUCHDOWN_INIT_DONE         TO FALSE.
     SET TOUCHDOWN_CANDIDATE_UT      TO -1.
     SET TOUCHDOWN_CAPTURE_PITCH_DEG TO 0.

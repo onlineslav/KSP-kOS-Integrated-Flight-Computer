@@ -159,13 +159,14 @@ FUNCTION GET_TAILSTRIKE_PITCH_MAX {
   RETURN AC_PARAM("tailstrike_pitch_max_deg", TAILSTRIKE_PITCH_MAX_DEG, 0.001).
 }
 
-// Clamp the command value sent into AA_SET_DIRECTOR so the resulting
+// Clamp the pitch command value sent into AA_SET_DIRECTOR_PITCH so the resulting
 // nose pitch never exceeds the configured tailstrike protection limit.
 FUNCTION CLAMP_TAILSTRIKE_DIRECTOR_CMD {
   PARAMETER aa_cmd.
   LOCAL cmd_max IS GET_TAILSTRIKE_PITCH_MAX().
   IF AA_DIR_ADD_AOA_COMP {
-    // AA adds AoA internally in this mode, so cap in command-space.
+    // IFC is operating in FPA->pitch mapping mode (adds AoA before sending
+    // Director pitch), so cap in command-space to preserve absolute pitch cap.
     LOCAL aoa_comp IS CLAMP(GET_AOA(), -2, 20).
     SET cmd_max TO cmd_max - aoa_comp.
   }

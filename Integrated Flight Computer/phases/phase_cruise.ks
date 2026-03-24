@@ -30,7 +30,7 @@ FUNCTION RUN_CRUISE {
     }
     LOCAL alt_err IS SHIP:ALTITUDE - CRUISE_ALT_M.
     LOCAL fpa_cmd IS CLAMP(-alt_err * KP_ALT_FPA, MAX_DESC_FPA, MAX_CLIMB_FPA).
-    AA_SET_DIRECTOR(CRUISE_COURSE_DEG, fpa_cmd).
+    AA_SET_DIRECTOR_FPA(CRUISE_COURSE_DEG, fpa_cmd).
     SET TELEM_AA_HDG_CMD TO CRUISE_COURSE_DEG.
     SET TELEM_AA_FPA_CMD TO fpa_cmd.
     SET TELEM_LOC_CORR   TO 0.
@@ -73,7 +73,7 @@ FUNCTION RUN_CRUISE {
   IF hdg_err > 180 { SET hdg_err TO 360 - hdg_err. }
   IF hdg_err > 45 AND fpa_cmd < 0 { SET fpa_cmd TO 0. }
 
-  AA_SET_DIRECTOR(brg, fpa_cmd).
+  AA_SET_DIRECTOR_FPA(brg, fpa_cmd).
   SET TELEM_AA_HDG_CMD TO brg.
   SET TELEM_AA_FPA_CMD TO fpa_cmd.
   SET TELEM_LOC_CORR   TO 0.
