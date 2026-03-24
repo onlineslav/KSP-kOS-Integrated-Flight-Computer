@@ -190,10 +190,10 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // TECS flare tuning (set -1 to use globals).
     "flare_tecs_et_kp",          -1, // throttle proportional gain on total-energy error
     "flare_tecs_et_ki",          -1, // throttle integral gain on total-energy error
-    "flare_tecs_eb_kp",          -1, // gamma proportional gain on energy-balance error
-    "flare_tecs_eb_ki",          -1, // gamma integral gain on energy-balance error
+    "flare_tecs_eb_kp",          0.0002, // reduced gamma proportional gain on energy-balance error
+    "flare_tecs_eb_ki",          0.0, // disable Eb integrator for flare stability tuning
     "flare_tecs_et_int_lim",     -1, // Et integrator clamp
-    "flare_tecs_eb_int_lim",     -1, // Eb integrator clamp
+    "flare_tecs_eb_int_lim",     1000, // tighter Eb integrator clamp
     "flare_tecs_thr_trim",       0.16, // nominal flare thrust trim
     "flare_tecs_thr_bal_k",      0.00010, // throttle bias from energy-balance error
     "flare_tecs_thr_slew_per_s", -1, // throttle command slew limit in flare

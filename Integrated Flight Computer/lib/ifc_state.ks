@@ -169,6 +169,9 @@ GLOBAL TELEM_FLARE_ET_ERR  IS 0.  // flare TECS total-energy error (m^2/s^2)
 GLOBAL TELEM_FLARE_EB_ERR  IS 0.  // flare TECS energy-balance error (m^2/s^2)
 GLOBAL TELEM_FLARE_H_REF   IS 0.  // flare TECS runway-relative reference height (m)
 GLOBAL TELEM_FLARE_V_REF   IS 0.  // flare TECS reference speed (m/s)
+GLOBAL TELEM_FLARE_GAMMA_REF IS 0. // flare TECS gamma reference from sink schedule (deg)
+GLOBAL TELEM_FLARE_GAMMA_EB_TERM IS 0. // flare TECS gamma contribution from energy-balance loop (deg)
+GLOBAL TELEM_FLARE_GAMMA_CMD_UNSAT IS 0. // flare TECS gamma command before clamp/slew (deg)
 GLOBAL TELEM_STEER_BLEND   IS 0.  // rollout wheelsteering blend factor (0-1)
 GLOBAL TELEM_RO_HDG_ERR    IS 0.  // rollout: actual hdg minus steer target (deg)
 GLOBAL TELEM_RO_YAW_TGT    IS 0.  // rollout: yaw command target before slew rate
@@ -619,6 +622,9 @@ FUNCTION IFC_INIT_STATE {
   SET TELEM_FLARE_EB_ERR TO 0.
   SET TELEM_FLARE_H_REF TO 0.
   SET TELEM_FLARE_V_REF TO 0.
+  SET TELEM_FLARE_GAMMA_REF TO 0.
+  SET TELEM_FLARE_GAMMA_EB_TERM TO 0.
+  SET TELEM_FLARE_GAMMA_CMD_UNSAT TO 0.
   SET TELEM_STEER_BLEND  TO 0.
   SET TELEM_RO_HDG_ERR   TO 0.
   SET TELEM_RO_YAW_TGT   TO 0.

@@ -67,6 +67,9 @@
 //   flare_tecs_eb_err flare TECS energy-balance error (m^2/s^2)
 //   flare_tecs_h_ref flare TECS runway-relative height reference (m)
 //   flare_tecs_v_ref flare TECS speed reference (m/s)
+//   flare_gamma_ref flare gamma reference from sink schedule (deg)
+//   flare_gamma_eb_term flare gamma contribution from TECS energy-balance loop (deg)
+//   flare_gamma_unsat flare gamma command before clamp/slew (deg)
 //
 // ROLLOUT INTERNALS  (tuning: rollout_* aircraft params, ROLLOUT_* constants)
 //   steer_hdg_deg  wheelsteering target heading (deg)
@@ -156,7 +159,7 @@ FUNCTION LOGGER_INIT {
   SET LOG_CFG_FILE   TO IFC_ACTIVE_CFG_PATH:REPLACE(",", "_").
   IF LOG_CFG_FILE = "" { SET LOG_CFG_FILE TO "UNKNOWN". }
 
-  LOG "t_s,phase,subphase,ias_ms,vapp_ms,spd_err_ms,agl_m,gear_h_m,vs_ms,pitch_deg,aoa_deg,hdg_deg,bank_deg,thr_cmd,thr_cur,thr_intg,at_gain,at_tau_s,at_a_up,at_a_dn,at_kp_thr,at_ki_spd,at_thr_slew,as_cmd_deg,as_cap_deg,as_raw_deg,as_spd_err_ms,as_active,aa_hdg_cmd_deg,aa_fpa_cmd_deg,aa_fbw,aa_dir,actual_fpa_deg,ftf_hdg_err_deg,ftf_fix_idx,kos_steer_pit_deg,kos_steer_hdg_deg,aa_dir_vx,aa_dir_vy,aa_dir_vz,aa_dir_pitch_deg,aa_dir_hdg_deg,ils_loc_m,ils_gs_m,ils_dist_km,loc_corr_deg,gs_corr_deg,gs_latched,active_gs_ang_deg,ils_intercept_alt_m,d_gs_ms,fpa_preclamped_deg,gs_nom_alt_m,flare_fpa_cmd,flare_tgt_vs,flare_frac,flare_mode,flare_auth_limited,flare_vs_err,flare_fpa_err,flare_pitch_err,flare_req_up_a,flare_thr_floor,flare_tecs_et_err,flare_tecs_eb_err,flare_tecs_h_ref,flare_tecs_v_ref,steer_hdg_deg,steer_blend,ro_loc_corr_deg,ro_hdg_err_deg,ro_yaw_tgt,ro_yaw_scale,ro_yaw_gate,yaw_cmd,roll_cmd,pitch_cmd,ro_pitch_tgt_deg,ro_pitch_err_deg,ro_pitch_ff,ro_roll_assist,flaps_cur,flaps_tgt,asc_j_ab,asc_j_rk,asc_validity,asc_q_pa,asc_q_raw_pa,asc_mach,asc_apo_m,asc_drag_n,asc_w_prop,asc_edot_aero,asc_edot_orb,asc_pitch_bias,asc_blend,asc_spooling,asc_ab_thr_ratio,asc_ab_t_now,asc_ab_t_avail,asc_ab_ign_on,asc_ab_flameouts,asc_rk_t_now,asc_rk_t_avail,asc_rk_ign_on,asc_rk_flameouts,ship_thrust,ship_avail_thrust,ship_ign_on,ship_flameouts,ifc_raw_dt_s,ifc_dt_s,ifc_loop_n,ifc_hz_est,ifc_raw_dt_max_s,ifc_raw_dt_min_s,phase_el_s,status,craft_name,cfg_file" TO LOG_FILE.
+  LOG "t_s,phase,subphase,ias_ms,vapp_ms,spd_err_ms,agl_m,gear_h_m,vs_ms,pitch_deg,aoa_deg,hdg_deg,bank_deg,thr_cmd,thr_cur,thr_intg,at_gain,at_tau_s,at_a_up,at_a_dn,at_kp_thr,at_ki_spd,at_thr_slew,as_cmd_deg,as_cap_deg,as_raw_deg,as_spd_err_ms,as_active,aa_hdg_cmd_deg,aa_fpa_cmd_deg,aa_fbw,aa_dir,actual_fpa_deg,ftf_hdg_err_deg,ftf_fix_idx,kos_steer_pit_deg,kos_steer_hdg_deg,aa_dir_vx,aa_dir_vy,aa_dir_vz,aa_dir_pitch_deg,aa_dir_hdg_deg,ils_loc_m,ils_gs_m,ils_dist_km,loc_corr_deg,gs_corr_deg,gs_latched,active_gs_ang_deg,ils_intercept_alt_m,d_gs_ms,fpa_preclamped_deg,gs_nom_alt_m,flare_fpa_cmd,flare_tgt_vs,flare_frac,flare_mode,flare_auth_limited,flare_vs_err,flare_fpa_err,flare_pitch_err,flare_req_up_a,flare_thr_floor,flare_tecs_et_err,flare_tecs_eb_err,flare_tecs_h_ref,flare_tecs_v_ref,flare_gamma_ref,flare_gamma_eb_term,flare_gamma_unsat,steer_hdg_deg,steer_blend,ro_loc_corr_deg,ro_hdg_err_deg,ro_yaw_tgt,ro_yaw_scale,ro_yaw_gate,yaw_cmd,roll_cmd,pitch_cmd,ro_pitch_tgt_deg,ro_pitch_err_deg,ro_pitch_ff,ro_roll_assist,flaps_cur,flaps_tgt,asc_j_ab,asc_j_rk,asc_validity,asc_q_pa,asc_q_raw_pa,asc_mach,asc_apo_m,asc_drag_n,asc_w_prop,asc_edot_aero,asc_edot_orb,asc_pitch_bias,asc_blend,asc_spooling,asc_ab_thr_ratio,asc_ab_t_now,asc_ab_t_avail,asc_ab_ign_on,asc_ab_flameouts,asc_rk_t_now,asc_rk_t_avail,asc_rk_ign_on,asc_rk_flameouts,ship_thrust,ship_avail_thrust,ship_ign_on,ship_flameouts,ifc_raw_dt_s,ifc_dt_s,ifc_loop_n,ifc_hz_est,ifc_raw_dt_max_s,ifc_raw_dt_min_s,phase_el_s,status,craft_name,cfg_file" TO LOG_FILE.
 
   SET LOG_ACTIVE TO TRUE.
   SET LOG_LAST_WRITE_UT TO TIME:SECONDS - IFC_CSV_LOG_PERIOD.
@@ -295,6 +298,9 @@ FUNCTION LOGGER_WRITE {
     ROUND(TELEM_FLARE_EB_ERR,         3),
     ROUND(TELEM_FLARE_H_REF,          2),
     ROUND(TELEM_FLARE_V_REF,          2),
+    ROUND(TELEM_FLARE_GAMMA_REF,      3),
+    ROUND(TELEM_FLARE_GAMMA_EB_TERM,  3),
+    ROUND(TELEM_FLARE_GAMMA_CMD_UNSAT,3),
     ROUND(ROLLOUT_STEER_HDG,          2),
     ROUND(TELEM_STEER_BLEND,          3),
     ROUND(TELEM_RO_LOC_CORR,          3),

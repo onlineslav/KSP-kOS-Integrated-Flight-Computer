@@ -199,8 +199,8 @@ FUNCTION _UPDATE_FLARE_AUTHORITY_STATE {
 }
 
 FUNCTION _COMPUTE_FLARE_VREF_SCHED {
-  PARAMETER vapp, vref.
-  LOCAL frac_ref IS CLAMP(1 - FLARE_TECS_H_REF / MAX(FLARE_ENTRY_AGL, 1), 0, 1).
+  PARAMETER vapp, vref, flare_frac.
+  LOCAL frac_ref IS CLAMP(flare_frac, 0, 1).
   RETURN vapp + (vref - vapp) * frac_ref.
 }
 
@@ -228,6 +228,9 @@ FUNCTION _COMPUTE_GAMMA_CMD {
   }
 
   SET gamma_unsat TO gamma_ref + eb_kp * e_balance_err + eb_ki * FLARE_TECS_EB_INT.
+  SET TELEM_FLARE_GAMMA_REF TO gamma_ref.
+  SET TELEM_FLARE_GAMMA_EB_TERM TO eb_kp * e_balance_err + eb_ki * FLARE_TECS_EB_INT.
+  SET TELEM_FLARE_GAMMA_CMD_UNSAT TO gamma_unsat.
   SET gamma_raw TO CLAMP(gamma_unsat, gamma_cmd_min, gamma_cmd_max).
   IF FLARE_AUTH_LIMITED {
     IF e_balance_err >= 0 {
@@ -341,6 +344,13 @@ FUNCTION _RUN_FLARE_TOUCHDOWN_GATE {
   PARAMETER flare_h, vs_now, touchdown_confirm_s, touchdown_confirm_max_abs_vs.
 
   IF SHIP:STATUS = "LANDED" {
+    IF TOUCHDOWN_CANDIDATE_UT < 0 { SET TOUCHDOWN_CANDIDATE_UT TO TIME:SECONDS. }
+    SET FLARE_SUBMODE TO FLARE_MODE_TOUCHDOWN_CONFIRM.
+    IF TIME:SECONDS - TOUCHDOWN_CANDIDATE_UT < touchdown_confirm_s { RETURN FALSE. }
+    IF ABS(vs_now) > touchdown_confirm_max_abs_vs {
+      SET TOUCHDOWN_CANDIDATE_UT TO TIME:SECONDS.
+      RETURN FALSE.
+    }
     _DEPLOY_TOUCHDOWN_SPOILERS().
     SET TOUCHDOWN_CAPTURE_PITCH_DEG TO GET_PITCH().
     SET TOUCHDOWN_INIT_DONE         TO FALSE.
@@ -476,7 +486,7 @@ FUNCTION _RUN_FLARE {
     SET FLARE_TECS_H_REF TO MAX(flare_h, 1).
   }
   _UPDATE_FLARE_H_REF(flare_tgt_vs).
-  LOCAL v_ref_sched IS _COMPUTE_FLARE_VREF_SCHED(ACTIVE_V_APP, vref).
+  LOCAL v_ref_sched IS _COMPUTE_FLARE_VREF_SCHED(ACTIVE_V_APP, vref, flare_frac).
   LOCAL g IS 9.81.
   LOCAL e_total_ref IS 0.5 * v_ref_sched * v_ref_sched + g * FLARE_TECS_H_REF.
   LOCAL e_total_now IS 0.5 * ias * ias + g * flare_h.
@@ -524,6 +534,11 @@ FUNCTION _RUN_FLARE {
     flare_tecs_eb_int_lim,
     flare_authority_recovery_gain
   ).
+  // Late flare priority: when sink is already worse than target in ROUNDOUT,
+  // do not let the energy-balance loop command additional nose-down beyond gamma_ref.
+  IF FLARE_SUBMODE = FLARE_MODE_ROUNDOUT AND vs_err > 0 AND gamma_cmd < gamma_ref {
+    SET gamma_cmd TO gamma_ref.
+  }
 
   LOCAL theta_cmd IS _COMPUTE_THETA_CMD(gamma_cmd).
   AA_SET_DIRECTOR(ACTIVE_RWY_HDG, theta_cmd).
