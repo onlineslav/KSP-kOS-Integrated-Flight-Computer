@@ -123,13 +123,23 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Set to -1 to use the global default from ifc_constants.ks.
     "flare_agl",               35,   // m AGL to trigger flare
     "flare_touchdown_vs",      -0.05,// m/s target sink rate at wheel contact (neg = descending)
-    "flare_ias_to_vs_gain",     0.006,// extra sink commanded per m/s above Vref (energy bleed)
-    "flare_roundout_agl",       5.0, // m AGL where final roundout blend begins
-    "flare_roundout_strength",  1.0, // 0..1 blend strength toward touchdown VS in roundout zone
-    "flare_balloon_vs_trigger", 0.05,// m/s: if VS rises above this during flare, push nose down
-    "flare_balloon_fpa_push",   1.2, // deg extra nose-down FPA added when balloon recovery fires
-    "flare_pitch_rate_min",     1.2, // deg/s slowest FPA change rate (at low IAS)
-    "flare_pitch_rate_max",     2.8, // deg/s fastest FPA change rate (at high IAS)
+    "flare_vs_kp",               -1, // gamma correction per m/s sink-rate error (-1 = global)
+    "flare_fpa_kp",              -1, // gamma correction per deg FPA error (-1 = global)
+    "flare_cmd_fpa_min",         -1, // deg lower gamma clamp in flare (-1 = global)
+    "flare_cmd_fpa_max",         -1, // deg upper gamma clamp in flare (-1 = global)
+    "flare_roundout_end_h_m",    -1, // m runway-relative height where roundout is fully blended (-1 = global)
+    "flare_min_throttle",        -1, // 0..1 flare throttle floor before blend/recovery (-1 = global)
+    "flare_min_throttle_agl_blend",-1, // m below this height throttle floor blends down (-1 = global)
+    "flare_authority_vs_err_trigger",-1, // m/s authority-limited trigger on VS error (-1 = global)
+    "flare_authority_pitch_err_trigger",-1, // deg authority-limited trigger on pitch error (-1 = global)
+    "flare_authority_fpa_err_trigger",-1, // deg authority-limited trigger on FPA error (-1 = global)
+    "flare_authority_detect_s",  -1, // s persistence before authority-limited latch (-1 = global)
+    "flare_authority_recovery_gain",-1, // 0..1 recovery gain for throttle/roundout recovery (-1 = global)
+    "flare_disable_speed_bleed", 0,// extra sink commanded per m/s above Vref (energy bleed)
+    "flare_roundout_start_h_m",       5.0, // m AGL where final roundout blend begins
+    "flare_roundout_curve",  1.0, // 0..1 blend strength toward touchdown VS in roundout zone
+    "flare_cmd_rate_min_dps",     1.2, // deg/s slowest FPA change rate (at low IAS)
+    "flare_cmd_rate_max_dps",     2.8, // deg/s fastest FPA change rate (at high IAS)
 
     // ── Ascent guidance ───────────────────────────────────
     // All values fall back to ifc_constants.ks defaults when set to -1.

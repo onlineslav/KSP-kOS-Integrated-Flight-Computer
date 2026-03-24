@@ -27,7 +27,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Vref: threshold crossing speed (used for display/logging).
     // Reduce Vapp toward Vref during the flare by cutting throttle.
     "v_app",        152.0,  // prev: 140,175,200  // we want ~10-15deg aoa (150 gives 10deg aoa) (140 gives 13.8deg aoa)
-    "v_ref",        148.0,  // prev: 130,130,150,170
+    "v_ref",        142.0,  // tuned up to retain more flare authority/energy
     // Approach speed schedule shaping:
     // Vint = Vapp + clamp((Vapp - Vref) * gain, min_add, max_add)
     "app_spd_intercept_gain",    0.45,
@@ -167,15 +167,36 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Override the global constants for this specific aircraft.
     // Set to -1 to use the global default from ifc_constants.ks.
     "flare_gear_tag",          "ifc_maingear", // tag on parts used as main-gear flare/touchdown reference
-    "flare_agl",               90,   // m runway-relative main-gear height to begin flare (conservative while retuning)
+    "flare_agl",               45,   // m runway-relative main-gear height to begin flare
     "flare_touchdown_vs",      -0.25,// m/s target sink rate at wheel contact
-    "flare_ias_to_vs_gain",    0.000,// extra sink per m/s above Vref during flare (kept very small)
-    "flare_roundout_agl",      24.0, // m runway-relative main-gear final sink blend zone (earlier sink arrest)
-    "flare_roundout_strength", 0.0,  // full roundout blend prev 1
-    "flare_balloon_vs_trigger",0.25, // m/s VS threshold for anti-balloon push
-    "flare_balloon_fpa_push",  1.6,  // deg nose-down bias when ballooning
-    "flare_pitch_rate_min",    1.8,  // deg/s low-speed flare response
-    "flare_pitch_rate_max",    4.8,  // deg/s high-speed flare response
+    "flare_vs_kp",               -1, // gamma correction per m/s sink-rate error (-1 = global)
+    "flare_fpa_kp",              -1, // gamma correction per deg FPA error (-1 = global)
+    "flare_cmd_fpa_min",         -1, // deg lower gamma clamp in flare (-1 = global)
+    "flare_cmd_fpa_max",         6.0, // deg upper gamma clamp in flare
+    "flare_roundout_end_h_m",    -1, // m runway-relative height where roundout is fully blended (-1 = global)
+    "flare_min_throttle",        0.0, // 0..1 flare throttle floor before blend/recovery
+    "flare_min_throttle_agl_blend",-1, // m below this height throttle floor blends down (-1 = global)
+    "flare_authority_vs_err_trigger",-1, // m/s authority-limited trigger on VS error (-1 = global)
+    "flare_authority_pitch_err_trigger",-1, // deg authority-limited trigger on pitch error (-1 = global)
+    "flare_authority_fpa_err_trigger",-1, // deg authority-limited trigger on FPA error (-1 = global)
+    "flare_authority_detect_s",  -1, // s persistence before authority-limited latch (-1 = global)
+    "flare_authority_recovery_gain",-1, // 0..1 recovery gain for throttle/roundout recovery (-1 = global)
+    "flare_disable_speed_bleed", 1,// extra sink per m/s above Vref during flare (kept very small)
+    "flare_roundout_start_h_m",      24.0, // m runway-relative main-gear final sink blend zone (earlier sink arrest)
+    "flare_roundout_curve", 0.0,  // full roundout blend prev 1
+    "flare_cmd_rate_min_dps",    1.8,  // deg/s low-speed flare response
+    "flare_cmd_rate_max_dps",    4.8,  // deg/s high-speed flare response
+    // TECS flare tuning (set -1 to use globals).
+    "flare_tecs_et_kp",          -1, // throttle proportional gain on total-energy error
+    "flare_tecs_et_ki",          -1, // throttle integral gain on total-energy error
+    "flare_tecs_eb_kp",          -1, // gamma proportional gain on energy-balance error
+    "flare_tecs_eb_ki",          -1, // gamma integral gain on energy-balance error
+    "flare_tecs_et_int_lim",     -1, // Et integrator clamp
+    "flare_tecs_eb_int_lim",     -1, // Eb integrator clamp
+    "flare_tecs_thr_trim",       0.16, // nominal flare thrust trim
+    "flare_tecs_thr_bal_k",      0.00010, // throttle bias from energy-balance error
+    "flare_tecs_thr_slew_per_s", -1, // throttle command slew limit in flare
+    "flare_tecs_climb_vs_gate",  0.10, // VS threshold to force throttle floor in flare
     "touchdown_confirm_s",      0.24,
     "touchdown_confirm_max_abs_vs", 1.2,
 

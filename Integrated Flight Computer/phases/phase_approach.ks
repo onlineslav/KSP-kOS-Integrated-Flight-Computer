@@ -588,6 +588,13 @@ FUNCTION _RUN_ILS_TRACK {
         SET FLARE_ENTRY_VS  TO CLAMP(vs_now, FLARE_MIN_ENTRY_SINK_VS, -0.05). // seed to a shallow descending band
         // Capture runway-relative flare-entry height (floor 1 to avoid /0).
         SET FLARE_ENTRY_AGL TO MAX(flare_h_now, 1).
+        SET FLARE_SUBMODE TO FLARE_MODE_CAPTURE.
+        SET FLARE_AUTH_LIMITED TO FALSE.
+        SET FLARE_AUTH_START_UT TO -1.
+        SET FLARE_TECS_ET_INT TO 0.
+        SET FLARE_TECS_EB_INT TO 0.
+        SET FLARE_TECS_H_REF TO FLARE_ENTRY_AGL.
+        SET THR_INTEGRAL TO 0.
         SET FLARE_TRIGGER_START_UT TO -1.
         SET TOUCHDOWN_CANDIDATE_UT TO -1.
         _APP_AA_RELEASE().  // hand throttle authority back to IFC before flare

@@ -103,6 +103,26 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Override the global constants for this specific aircraft.
     // Set to -1 to use the global default from ifc_constants.ks.
     "flare_agl",    -1,   // m AGL to begin flare  (-1 = use FLARE_AGL_M)
+    "flare_touchdown_vs",      -1, // m/s  (-1 = use TOUCHDOWN_VS)
+    "flare_vs_kp",               -1, // gamma correction per m/s sink-rate error (-1 = global)
+    "flare_fpa_kp",              -1, // gamma correction per deg FPA error (-1 = global)
+    "flare_cmd_fpa_min",         -1, // deg lower gamma clamp in flare (-1 = global)
+    "flare_cmd_fpa_max",         -1, // deg upper gamma clamp in flare (-1 = global)
+    "flare_cmd_rate_min_dps",    -1, // deg/s low-speed gamma slew floor (-1 = global)
+    "flare_cmd_rate_max_dps",    -1, // deg/s high-speed gamma slew ceiling (-1 = global)
+    "flare_roundout_start_h_m",  -1, // m runway-relative height where roundout starts (-1 = global)
+    "flare_roundout_end_h_m",    -1, // m runway-relative height where roundout is full (-1 = global)
+    "flare_roundout_curve",      -1, // 0 disables roundout; >0 scales roundout blend (-1 = global)
+    "flare_min_throttle",        -1, // 0..1 flare throttle floor before blend/recovery (-1 = global)
+    "flare_min_throttle_agl_blend",-1, // m below this height throttle floor blends down (-1 = global)
+    "flare_authority_vs_err_trigger",-1, // m/s authority-limited trigger on VS error (-1 = global)
+    "flare_authority_pitch_err_trigger",-1, // deg authority-limited trigger on pitch error (-1 = global)
+    "flare_authority_fpa_err_trigger",-1, // deg authority-limited trigger on FPA error (-1 = global)
+    "flare_authority_detect_s",  -1, // s persistence before authority-limited latch (-1 = global)
+    "flare_authority_recovery_gain",-1, // 0..1 recovery gain for throttle/roundout recovery (-1 = global)
+    "flare_disable_speed_bleed", -1, // 1 disable speed-driven extra sink, 0 enable, -1 = global default
+    "touchdown_confirm_s",       -1, // s debounce for FLARE->TOUCHDOWN (-1 = global)
+    "touchdown_confirm_max_abs_vs",-1, // m/s max |VS| at FLARE->TOUCHDOWN commit (-1 = global)
 
     // ── Ascent guidance ───────────────────────────────────
     // All values fall back to ifc_constants.ks defaults when set to -1.

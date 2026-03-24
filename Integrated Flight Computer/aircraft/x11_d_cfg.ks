@@ -175,13 +175,23 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Set to -1 to use the global default from ifc_constants.ks.
     "flare_agl",               80,  // m AGL to begin flare; was 85 but terrain rise near KSC causes ~60m effective trigger
     "flare_touchdown_vs",     -0.05, // m/s target sink rate at wheel contact
-    "flare_ias_to_vs_gain",    0.010,// extra sink per m/s above Vref during flare
-    "flare_roundout_agl",      8.0,  // m AGL final sink blend zone
-    "flare_roundout_strength", 1.0,  // full roundout blend
-    "flare_balloon_vs_trigger",0.08, // m/s VS threshold for anti-balloon push
-    "flare_balloon_fpa_push",  1.4,  // deg nose-down bias when ballooning
-    "flare_pitch_rate_min",    1.0,  // deg/s low-speed flare response
-    "flare_pitch_rate_max",    3.0,  // deg/s high-speed flare response
+    "flare_vs_kp",               -1, // gamma correction per m/s sink-rate error (-1 = global)
+    "flare_fpa_kp",              -1, // gamma correction per deg FPA error (-1 = global)
+    "flare_cmd_fpa_min",         -1, // deg lower gamma clamp in flare (-1 = global)
+    "flare_cmd_fpa_max",         -1, // deg upper gamma clamp in flare (-1 = global)
+    "flare_roundout_end_h_m",    -1, // m runway-relative height where roundout is fully blended (-1 = global)
+    "flare_min_throttle",        -1, // 0..1 flare throttle floor before blend/recovery (-1 = global)
+    "flare_min_throttle_agl_blend",-1, // m below this height throttle floor blends down (-1 = global)
+    "flare_authority_vs_err_trigger",-1, // m/s authority-limited trigger on VS error (-1 = global)
+    "flare_authority_pitch_err_trigger",-1, // deg authority-limited trigger on pitch error (-1 = global)
+    "flare_authority_fpa_err_trigger",-1, // deg authority-limited trigger on FPA error (-1 = global)
+    "flare_authority_detect_s",  -1, // s persistence before authority-limited latch (-1 = global)
+    "flare_authority_recovery_gain",-1, // 0..1 recovery gain for throttle/roundout recovery (-1 = global)
+    "flare_disable_speed_bleed", 0,// extra sink per m/s above Vref during flare
+    "flare_roundout_start_h_m",      8.0,  // m AGL final sink blend zone
+    "flare_roundout_curve", 1.0,  // full roundout blend
+    "flare_cmd_rate_min_dps",    1.0,  // deg/s low-speed flare response
+    "flare_cmd_rate_max_dps",    3.0,  // deg/s high-speed flare response
     "touchdown_confirm_s",      0.16,
     "touchdown_confirm_max_abs_vs", 2.0,
 

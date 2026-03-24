@@ -164,6 +164,11 @@ GLOBAL TELEM_D_GS          IS 0.  // raw d(GS_dev)/dt before combining into gs_c
 GLOBAL TELEM_FPA_PRECLAMPED IS 0. // fpa_cmd before AOA/pitch-cap clamp (deg)
 GLOBAL TELEM_FLARE_TGT_VS  IS 0.  // target sink rate from flare schedule (m/s)
 GLOBAL TELEM_FLARE_FRAC    IS 0.  // flare progress: 0 = entry AGL, 1 = ground
+GLOBAL TELEM_FLARE_THR_FLOOR IS 0. // flare autothrottle throttle-floor value used this cycle
+GLOBAL TELEM_FLARE_ET_ERR  IS 0.  // flare TECS total-energy error (m^2/s^2)
+GLOBAL TELEM_FLARE_EB_ERR  IS 0.  // flare TECS energy-balance error (m^2/s^2)
+GLOBAL TELEM_FLARE_H_REF   IS 0.  // flare TECS runway-relative reference height (m)
+GLOBAL TELEM_FLARE_V_REF   IS 0.  // flare TECS reference speed (m/s)
 GLOBAL TELEM_STEER_BLEND   IS 0.  // rollout wheelsteering blend factor (0-1)
 GLOBAL TELEM_RO_HDG_ERR    IS 0.  // rollout: actual hdg minus steer target (deg)
 GLOBAL TELEM_RO_YAW_TGT    IS 0.  // rollout: yaw command target before slew rate
@@ -280,6 +285,12 @@ GLOBAL CRUISE_END_UT      IS -1.          // UT when course_time cruise ends (-1
 GLOBAL FLARE_PITCH_CMD  IS 0.   // current commanded FPA during flare (deg, smoothed)
 GLOBAL FLARE_ENTRY_VS   IS 0.   // vertical speed at flare trigger (m/s, negative)
 GLOBAL FLARE_ENTRY_AGL  IS 15.  // flare-reference height at trigger (m)
+GLOBAL FLARE_SUBMODE IS FLARE_MODE_CAPTURE. // FLARE_CAPTURE/FLARE_TRACK/ROUNDOUT/TOUCHDOWN_CONFIRM
+GLOBAL FLARE_AUTH_LIMITED IS FALSE. // TRUE when flare authority monitor is latched
+GLOBAL FLARE_AUTH_START_UT IS -1. // persistence timer for authority-limited detection
+GLOBAL FLARE_TECS_ET_INT IS 0. // flare TECS total-energy integrator
+GLOBAL FLARE_TECS_EB_INT IS 0. // flare TECS energy-balance integrator
+GLOBAL FLARE_TECS_H_REF IS 0. // flare TECS runway-relative reference height (m)
 GLOBAL FLARE_TRIGGER_START_UT IS -1. // debounce timer start for entering flare
 GLOBAL FLARE_GEAR_DISCOVERED IS FALSE. // TRUE once tagged main-gear parts are discovered for flare-height reference
 GLOBAL FLARE_GEAR_TAG_ACTIVE IS "". // active tag used for main-gear discovery cache
@@ -558,6 +569,12 @@ FUNCTION IFC_INIT_STATE {
   SET FLARE_PITCH_CMD  TO 0.
   SET FLARE_ENTRY_VS   TO 0.
   SET FLARE_ENTRY_AGL  TO FLARE_AGL_M.
+  SET FLARE_SUBMODE TO FLARE_MODE_CAPTURE.
+  SET FLARE_AUTH_LIMITED TO FALSE.
+  SET FLARE_AUTH_START_UT TO -1.
+  SET FLARE_TECS_ET_INT TO 0.
+  SET FLARE_TECS_EB_INT TO 0.
+  SET FLARE_TECS_H_REF TO FLARE_AGL_M.
   SET FLARE_TRIGGER_START_UT TO -1.
   SET FLARE_GEAR_DISCOVERED TO FALSE.
   SET FLARE_GEAR_TAG_ACTIVE TO "".
@@ -597,6 +614,11 @@ FUNCTION IFC_INIT_STATE {
   SET TELEM_FPA_PRECLAMPED TO 0.
   SET TELEM_FLARE_TGT_VS TO 0.
   SET TELEM_FLARE_FRAC   TO 0.
+  SET TELEM_FLARE_THR_FLOOR TO 0.
+  SET TELEM_FLARE_ET_ERR TO 0.
+  SET TELEM_FLARE_EB_ERR TO 0.
+  SET TELEM_FLARE_H_REF TO 0.
+  SET TELEM_FLARE_V_REF TO 0.
   SET TELEM_STEER_BLEND  TO 0.
   SET TELEM_RO_HDG_ERR   TO 0.
   SET TELEM_RO_YAW_TGT   TO 0.

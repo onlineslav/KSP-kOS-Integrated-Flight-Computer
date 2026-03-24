@@ -71,6 +71,13 @@ FUNCTION _CHECK_BOUNCE_RECOVERY {
       SET FLARE_PITCH_CMD TO ARCTAN(SHIP:VERTICALSPEED / entry_ias).
       SET FLARE_ENTRY_VS  TO CLAMP(SHIP:VERTICALSPEED, FLARE_MIN_ENTRY_SINK_VS, -0.05).
       SET FLARE_ENTRY_AGL TO MAX(flare_h, 1).
+      SET FLARE_SUBMODE TO FLARE_MODE_CAPTURE.
+      SET FLARE_AUTH_LIMITED TO FALSE.
+      SET FLARE_AUTH_START_UT TO -1.
+      SET FLARE_TECS_ET_INT TO 0.
+      SET FLARE_TECS_EB_INT TO 0.
+      SET FLARE_TECS_H_REF TO FLARE_ENTRY_AGL.
+      SET THR_INTEGRAL TO 0.
       SET IFC_ALERT_TEXT TO "BOUNCE recovery: returning to FLARE (" + ROUND(flare_h, 1) + " m rw)".
       SET IFC_ALERT_UT   TO TIME:SECONDS.
       SET_PHASE(PHASE_FLARE).
@@ -84,130 +91,270 @@ FUNCTION _CHECK_BOUNCE_RECOVERY {
 
 // ─────────────────────────────────────────────────────────
 // FLARE
-// Sink-rate targeting with AoA ceiling.
-//
-// As runway-relative height decreases from FLARE_ENTRY_AGL toward 0, the target
-// vertical speed is linearly interpolated from the entry sink
-// rate to TOUCHDOWN_VS (-0.3 m/s).  That target VS is
-// converted to a flight path angle and fed to AA Director.
-// AoA is protected by AA's own MAXAOA FBW limiter.
+// Submode-based flare controller:
+//   FLARE_CAPTURE -> FLARE_TRACK -> ROUNDOUT -> TOUCHDOWN_CONFIRM
+// Guidance uses runway-relative main-gear height as the vertical reference.
 // ─────────────────────────────────────────────────────────
-FUNCTION _RUN_FLARE {
-  SET TELEM_RO_ROLL_ASSIST TO 0.
-  SET TELEM_RO_YAW_SCALE   TO 0.
-  SET TELEM_RO_YAW_GATE    TO 0.
-  SET TELEM_RO_PITCH_TGT   TO 0.
-  SET TELEM_RO_PITCH_ERR   TO 0.
-  SET TELEM_RO_PITCH_FF    TO 0.
-  LOCAL flare_h IS GET_MAIN_GEAR_RUNWAY_HEIGHT_MIN().
-  LOCAL ias    IS MAX(GET_IAS(), 10).  // floor prevents divide-by-zero at very low speed
-  LOCAL vs_now IS SHIP:VERTICALSPEED.
+FUNCTION _AC_PARAM_NEG1 {
+  PARAMETER key, fallback.
+  IF ACTIVE_AIRCRAFT = 0 { RETURN fallback. }
+  IF NOT ACTIVE_AIRCRAFT:HASKEY(key) { RETURN fallback. }
+  LOCAL val IS ACTIVE_AIRCRAFT[key].
+  IF val <> -1 { RETURN val. }
+  RETURN fallback.
+}
 
-  // Per-aircraft flare overrides.
-  // flare_touchdown_vs is a negative value (e.g. -0.05) with -1 as sentinel.
-  // AC_PARAM cannot express "< 0 AND <> -1", so this one stays inline.
-  LOCAL flare_touchdown_vs IS TOUCHDOWN_VS.
+FUNCTION _GET_FLARE_TOUCHDOWN_VS {
+  LOCAL td_vs IS TOUCHDOWN_VS.
   IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("flare_touchdown_vs")
       AND ACTIVE_AIRCRAFT["flare_touchdown_vs"] <> -1
       AND ACTIVE_AIRCRAFT["flare_touchdown_vs"] < 0 {
-    SET flare_touchdown_vs TO ACTIVE_AIRCRAFT["flare_touchdown_vs"].
+    SET td_vs TO ACTIVE_AIRCRAFT["flare_touchdown_vs"].
   }
-  LOCAL flare_vs_gain           IS AC_PARAM("flare_ias_to_vs_gain",       FLARE_IAS_TO_VS_GAIN,     0).
-  LOCAL flare_balloon_vs        IS AC_PARAM("flare_balloon_vs_trigger",   FLARE_BALLOON_VS_TRIGGER, 0).
-  LOCAL flare_balloon_push      IS AC_PARAM("flare_balloon_fpa_push",     FLARE_BALLOON_FPA_PUSH,   0).
-  LOCAL flare_rate_min          IS AC_PARAM("flare_pitch_rate_min",       FLARE_PITCH_RATE_MIN,     0.001).
-  LOCAL flare_rate_max          IS AC_PARAM("flare_pitch_rate_max",       FLARE_PITCH_RATE_MAX,     0.001).
-  LOCAL flare_roundout_agl      IS AC_PARAM("flare_roundout_agl",         FLARE_ROUNDOUT_AGL_M,     0).
-  LOCAL flare_roundout_strength IS MIN(AC_PARAM("flare_roundout_strength", FLARE_ROUNDOUT_STRENGTH, 0), 1).
-  LOCAL touchdown_confirm_s     IS AC_PARAM("touchdown_confirm_s",         TOUCHDOWN_CONFIRM_S,      0.001).
-  LOCAL touchdown_confirm_max_abs_vs IS AC_PARAM("touchdown_confirm_max_abs_vs", TOUCHDOWN_CONFIRM_MAX_ABS_VS, 0.001).
-  // Vref: used for both energy-compensation sink and autothrottle target.
-  LOCAL vref IS AC_PARAM("v_ref", ACTIVE_V_APP - 10, 0).
-  IF flare_rate_max < flare_rate_min { SET flare_rate_max TO flare_rate_min. }
+  RETURN td_vs.
+}
 
-  // Progress: 0 = just entered flare, 1 = at ground level.
-  LOCAL frac IS CLAMP(1 - flare_h / FLARE_ENTRY_AGL, 0, 1).
+FUNCTION _COMPUTE_FLARE_SUBMODE {
+  PARAMETER flare_h, roundout_start_h, roundout_end_h, auth_recovery_gain.
 
-  // Interpolate target sink rate from entry VS down to touchdown target.
-  LOCAL base_vs IS FLARE_ENTRY_VS + (flare_touchdown_vs - FLARE_ENTRY_VS) * frac.
-
-  // Energy compensation: if still fast versus Vref, command extra sink.
-  // Fade speed-driven extra sink out as we approach touchdown:
-  // early flare can still shed energy, but the last part prioritizes a soft touchdown.
-  LOCAL speed_excess IS MAX(ias - vref, 0).
-  LOCAL speed_sink_blend IS CLAMP(1 - frac, 0, 1).
-  LOCAL tgt_vs IS base_vs - speed_excess * flare_vs_gain * speed_sink_blend.
-
-  // Final roundout: in the last few meters, blend sink target quickly
-  // toward flare_touchdown_vs to reduce hard wheel contact.
-  IF flare_roundout_agl > 0 AND flare_h < flare_roundout_agl AND flare_roundout_strength > 0 {
-    LOCAL round_frac IS CLAMP(1 - flare_h / flare_roundout_agl, 0, 1) * flare_roundout_strength.
-    SET tgt_vs TO tgt_vs + (flare_touchdown_vs - tgt_vs) * round_frac.
+  IF SHIP:STATUS = "LANDED" OR TOUCHDOWN_CANDIDATE_UT >= 0 {
+    RETURN FLARE_MODE_TOUCHDOWN_CONFIRM.
   }
 
-  SET tgt_vs TO CLAMP(tgt_vs, FLARE_MAX_SINK_VS, -0.05).
-
-  // Convert target VS to flight path angle (degrees).
-  LOCAL tgt_fpa IS ARCTAN(tgt_vs / ias).
-
-  // Anti-balloon recovery: if we climb in flare, bias nose down immediately.
-  // Floor the cap at the entry glideslope angle so the push can't cascade
-  // into a dive steeper than what we entered the flare with.
-  IF vs_now > flare_balloon_vs {
-    LOCAL balloon_floor IS ARCTAN(FLARE_ENTRY_VS / MAX(ias, 1)).
-    SET tgt_fpa TO MAX(MIN(tgt_fpa, FLARE_PITCH_CMD - flare_balloon_push), balloon_floor).
+  IF FLARE_SUBMODE = FLARE_MODE_CAPTURE AND PHASE_ELAPSED() < FLARE_CAPTURE_MIN_S {
+    RETURN FLARE_MODE_CAPTURE.
   }
 
-  // AoA ceiling is handled by AA's own MAXAOA FBW limiter — no IFC-level
-  // guard here.  A separate guard would freeze the flare FPA at the approach
-  // descent angle any time approach AoA is near the limit, preventing the
-  // flare from ever arresting sink rate.  AA is the correct backstop.
+  LOCAL round_start_eff IS roundout_start_h.
+  IF FLARE_AUTH_LIMITED {
+    SET round_start_eff TO round_start_eff * (1 + auth_recovery_gain).
+  }
 
-  // Speed-aware flare response: faster at high IAS, gentler at low IAS.
+  IF round_start_eff > roundout_end_h {
+    IF FLARE_SUBMODE = FLARE_MODE_ROUNDOUT {
+      IF flare_h <= round_start_eff + FLARE_ROUNDOUT_HYST_M { RETURN FLARE_MODE_ROUNDOUT. }
+    } ELSE IF flare_h <= round_start_eff {
+      RETURN FLARE_MODE_ROUNDOUT.
+    }
+  }
+
+  RETURN FLARE_MODE_TRACK.
+}
+
+FUNCTION _COMPUTE_FLARE_REFS {
+  PARAMETER flare_h, ias, flare_touchdown_vs, vref, disable_speed_bleed,
+            roundout_start_h, roundout_end_h, roundout_curve, auth_recovery_gain.
+
+  LOCAL frac IS CLAMP(1 - flare_h / MAX(FLARE_ENTRY_AGL, 1), 0, 1).
+  LOCAL vs_ref IS FLARE_ENTRY_VS + (flare_touchdown_vs - FLARE_ENTRY_VS) * frac.
+
+  IF NOT disable_speed_bleed {
+    LOCAL speed_excess IS MAX(ias - vref, 0).
+    LOCAL speed_sink_blend IS CLAMP(1 - frac, 0, 1).
+    SET vs_ref TO vs_ref - speed_excess * FLARE_SPEED_BLEED_GAIN * speed_sink_blend.
+  }
+
+  LOCAL round_start_eff IS roundout_start_h.
+  IF FLARE_AUTH_LIMITED {
+    SET round_start_eff TO round_start_eff * (1 + auth_recovery_gain).
+  }
+
+  IF roundout_curve > 0 AND round_start_eff > roundout_end_h {
+    LOCAL round_norm IS CLAMP((round_start_eff - flare_h) / MAX(round_start_eff - roundout_end_h, 0.1), 0, 1).
+    LOCAL round_blend IS CLAMP(round_norm * roundout_curve, 0, 1).
+    SET vs_ref TO vs_ref + (flare_touchdown_vs - vs_ref) * round_blend.
+  }
+
+  SET vs_ref TO CLAMP(vs_ref, FLARE_MAX_SINK_VS, -0.05).
+  LOCAL gamma_ref IS ARCTAN(vs_ref / MAX(ias, 1)).
+
+  RETURN LEXICON(
+    "frac", frac,
+    "vs_ref", vs_ref,
+    "gamma_ref", gamma_ref
+  ).
+}
+
+FUNCTION _UPDATE_FLARE_AUTHORITY_STATE {
+  PARAMETER vs_err, fpa_err, pitch_err, ctrl_limited,
+            vs_err_trigger, pitch_err_trigger, fpa_err_trigger, detect_s.
+
+  LOCAL same_dir IS (vs_err > 0 AND pitch_err > 0 AND fpa_err > 0) OR
+                   (vs_err < 0 AND pitch_err < 0 AND fpa_err < 0).
+  LOCAL candidate IS ABS(vs_err) > vs_err_trigger AND
+                    ABS(pitch_err) > pitch_err_trigger AND
+                    ABS(fpa_err) > fpa_err_trigger AND
+                    same_dir AND
+                    ctrl_limited.
+
+  IF candidate {
+    IF FLARE_AUTH_START_UT < 0 { SET FLARE_AUTH_START_UT TO TIME:SECONDS. }
+    IF TIME:SECONDS - FLARE_AUTH_START_UT >= detect_s {
+      SET FLARE_AUTH_LIMITED TO TRUE.
+    }
+  } ELSE {
+    SET FLARE_AUTH_START_UT TO -1.
+    SET FLARE_AUTH_LIMITED TO FALSE.
+  }
+}
+
+FUNCTION _COMPUTE_FLARE_VREF_SCHED {
+  PARAMETER vapp, vref.
+  LOCAL frac_ref IS CLAMP(1 - FLARE_TECS_H_REF / MAX(FLARE_ENTRY_AGL, 1), 0, 1).
+  RETURN vapp + (vref - vapp) * frac_ref.
+}
+
+FUNCTION _UPDATE_FLARE_H_REF {
+  PARAMETER vs_ref.
+  IF FLARE_TECS_H_REF <= 0 {
+    SET FLARE_TECS_H_REF TO FLARE_ENTRY_AGL.
+  }
+  SET FLARE_TECS_H_REF TO MAX(FLARE_TECS_H_REF + vs_ref * IFC_ACTUAL_DT, 0).
+}
+
+FUNCTION _COMPUTE_GAMMA_CMD {
+  PARAMETER gamma_ref, e_balance_err, ias, gamma_cmd_min, gamma_cmd_max,
+            gamma_rate_min, gamma_rate_max, eb_kp, eb_ki, eb_int_lim, auth_recovery_gain.
+
+  LOCAL gamma_unsat IS gamma_ref + eb_kp * e_balance_err + eb_ki * FLARE_TECS_EB_INT.
+  LOCAL gamma_raw IS CLAMP(gamma_unsat, gamma_cmd_min, gamma_cmd_max).
+  LOCAL sat_hi IS gamma_unsat >= gamma_cmd_max.
+  LOCAL sat_lo IS gamma_unsat <= gamma_cmd_min.
+  LOCAL block_int IS (sat_hi AND e_balance_err > 0) OR (sat_lo AND e_balance_err < 0).
+  IF NOT block_int {
+    SET FLARE_TECS_EB_INT TO CLAMP(FLARE_TECS_EB_INT + e_balance_err * IFC_ACTUAL_DT, -eb_int_lim, eb_int_lim).
+  } ELSE {
+    SET FLARE_TECS_EB_INT TO FLARE_TECS_EB_INT * 0.95.
+  }
+
+  SET gamma_unsat TO gamma_ref + eb_kp * e_balance_err + eb_ki * FLARE_TECS_EB_INT.
+  SET gamma_raw TO CLAMP(gamma_unsat, gamma_cmd_min, gamma_cmd_max).
+  IF FLARE_AUTH_LIMITED {
+    IF e_balance_err >= 0 {
+      SET gamma_raw TO gamma_cmd_max.
+    } ELSE {
+      SET gamma_raw TO gamma_cmd_min.
+    }
+  }
+
   LOCAL rate_span IS MAX(FLARE_RATE_HIGH_IAS - FLARE_RATE_LOW_IAS, 1).
   LOCAL rate_blend IS CLAMP((ias - FLARE_RATE_LOW_IAS) / rate_span, 0, 1).
-  LOCAL flare_rate IS flare_rate_min + (flare_rate_max - flare_rate_min) * rate_blend.
-
-  // Smooth the FPA transition at flare_rate deg/s.
-  SET FLARE_PITCH_CMD TO MOVE_TOWARD(
-    FLARE_PITCH_CMD, tgt_fpa,
-    flare_rate * IFC_ACTUAL_DT
-  ).
-
-  // Flare guidance is authored in FPA, but AA Director consumes pitch.
-  // When global AoA compensation is disabled (normal IFC setting), convert
-  // flare FPA to an equivalent pitch command here so the aircraft can
-  // actually pull toward the target sink profile.
-  LOCAL flare_dir_cmd IS FLARE_PITCH_CMD.
-  IF NOT AA_DIR_ADD_AOA_COMP {
-    SET flare_dir_cmd TO flare_dir_cmd + GET_AOA().
+  LOCAL gamma_rate IS gamma_rate_min + (gamma_rate_max - gamma_rate_min) * rate_blend.
+  IF FLARE_AUTH_LIMITED {
+    SET gamma_rate TO gamma_rate * (1 + auth_recovery_gain).
   }
-  AA_SET_DIRECTOR(ACTIVE_RWY_HDG, flare_dir_cmd).
-  SET TELEM_AA_HDG_CMD   TO ACTIVE_RWY_HDG.
-  SET TELEM_AA_FPA_CMD   TO FLARE_PITCH_CMD.
-  SET TELEM_FLARE_TGT_VS TO tgt_vs.
-  SET TELEM_FLARE_FRAC   TO frac.
+  SET gamma_rate TO MAX(gamma_rate, 0.05).
 
-  // Flare autothrottle: continue cascade targeting Vref to prevent stall
-  // from IAS loss that idle throttle causes on high-drag aircraft.
-  // Minimum throttle is 0 (no forced idle floor) so the aircraft can still
-  // reduce thrust naturally when above Vref.
-  AT_RUN_SPEED_HOLD(vref, 0, 1).
+  SET FLARE_PITCH_CMD TO MOVE_TOWARD(
+    FLARE_PITCH_CMD,
+    gamma_raw,
+    gamma_rate * IFC_ACTUAL_DT
+  ).
+  RETURN FLARE_PITCH_CMD.
+}
 
-  // Transition: touchdown.
-  // If KSP reports LANDED, commit immediately (no debounce) so flare ends
-  // the moment the wheels touch.  Keep the fallback path debounced.
+FUNCTION _COMPUTE_THETA_CMD {
+  PARAMETER gamma_cmd.
+  LOCAL theta_cmd IS gamma_cmd.
+  IF NOT AA_DIR_ADD_AOA_COMP {
+    // Director expects pitch; add AoA so gamma guidance maps to a usable nose attitude.
+    // Bound compensation to avoid pathological spikes from noisy AoA samples.
+    LOCAL aoa_comp IS CLAMP(GET_AOA(), -2, 20).
+    SET theta_cmd TO gamma_cmd + aoa_comp.
+  }
+  RETURN theta_cmd.
+}
+
+FUNCTION _RUN_FLARE_THROTTLE_POLICY {
+  PARAMETER flare_h, vs_now, vs_ref, e_total_err, e_balance_err,
+            thr_trim, et_kp, et_ki, et_int_lim, thr_bal_k, thr_slew,
+            min_throttle, min_throttle_agl_blend, climb_vs_gate, auth_recovery_gain.
+
+  LOCAL thr_floor IS CLAMP(min_throttle, 0, 1).
+  IF min_throttle_agl_blend > 0 AND flare_h < min_throttle_agl_blend {
+    SET thr_floor TO thr_floor * CLAMP(flare_h / min_throttle_agl_blend, 0, 1).
+  }
+  IF FLARE_AUTH_LIMITED {
+    SET thr_floor TO CLAMP(thr_floor + auth_recovery_gain, 0, 1).
+  }
+
+  LOCAL thr_max IS 1.
+  LOCAL raw_unsat IS thr_trim
+    + et_kp * e_total_err
+    + et_ki * FLARE_TECS_ET_INT
+    + thr_bal_k * e_balance_err.
+
+  // Keep throttle from feeding balloon/climb-away conditions.
+  IF vs_now > climb_vs_gate OR vs_now > vs_ref + 0.2 {
+    SET thr_max TO thr_floor.
+    SET raw_unsat TO MIN(raw_unsat, thr_floor).
+  }
+  IF e_balance_err < -300 {
+    SET thr_max TO MIN(thr_max, MAX(thr_floor, 0.25)).
+  }
+
+  LOCAL raw_thr IS CLAMP(raw_unsat, thr_floor, thr_max).
+  LOCAL sat_hi IS raw_unsat >= thr_max.
+  LOCAL sat_lo IS raw_unsat <= thr_floor.
+  LOCAL block_int IS (sat_hi AND e_total_err > 0) OR (sat_lo AND e_total_err < 0).
+  IF NOT block_int {
+    SET FLARE_TECS_ET_INT TO CLAMP(FLARE_TECS_ET_INT + e_total_err * IFC_ACTUAL_DT, -et_int_lim, et_int_lim).
+  } ELSE {
+    SET FLARE_TECS_ET_INT TO FLARE_TECS_ET_INT * 0.95.
+  }
+
+  SET raw_unsat TO thr_trim
+    + et_kp * e_total_err
+    + et_ki * FLARE_TECS_ET_INT
+    + thr_bal_k * e_balance_err.
+  SET raw_thr TO CLAMP(raw_unsat, thr_floor, thr_max).
+  SET THROTTLE_CMD TO MOVE_TOWARD(THROTTLE_CMD, raw_thr, MAX(thr_slew, 0.1) * IFC_ACTUAL_DT).
+  SET TELEM_FLARE_THR_FLOOR TO thr_floor.
+}
+
+FUNCTION _CHECK_FLARE_CLIMBAWAY {
+  PARAMETER flare_h, vs_now.
+  // Escape hatch: if flare has turned into sustained climb and we are back
+  // above the trigger band, hand back to approach ILS tracking.
+  LOCAL flare_agl IS AC_PARAM("flare_agl", FLARE_AGL_M, 0).
+  IF PHASE_ELAPSED() < 2 { RETURN FALSE. }
+  IF vs_now <= 0.8 { RETURN FALSE. }
+  IF flare_h <= flare_agl + FLARE_TRIGGER_HYST_M + 1 { RETURN FALSE. }
+
+  SET FLARE_TRIGGER_START_UT TO -1.
+  SET TOUCHDOWN_CANDIDATE_UT TO -1.
+  SET FLARE_SUBMODE          TO FLARE_MODE_CAPTURE.
+  SET FLARE_AUTH_LIMITED     TO FALSE.
+  SET FLARE_AUTH_START_UT    TO -1.
+  SET FLARE_TECS_ET_INT      TO 0.
+  SET FLARE_TECS_EB_INT      TO 0.
+  SET FLARE_TECS_H_REF       TO flare_agl.
+  SET THR_INTEGRAL           TO 0.
+  SET IFC_ALERT_TEXT TO "FLARE climb-away -> APPROACH ILS_TRACK".
+  SET IFC_ALERT_UT   TO TIME:SECONDS.
+  SET_SUBPHASE(SUBPHASE_ILS_TRACK).
+  SET_PHASE(PHASE_APPROACH).
+  RETURN TRUE.
+}
+
+FUNCTION _RUN_FLARE_TOUCHDOWN_GATE {
+  PARAMETER flare_h, vs_now, touchdown_confirm_s, touchdown_confirm_max_abs_vs.
+
   IF SHIP:STATUS = "LANDED" {
     _DEPLOY_TOUCHDOWN_SPOILERS().
     SET TOUCHDOWN_CAPTURE_PITCH_DEG TO GET_PITCH().
     SET TOUCHDOWN_INIT_DONE         TO FALSE.
     SET TOUCHDOWN_CANDIDATE_UT      TO -1.
     SET BOUNCE_RECOVERY_START_UT    TO -1.
+    SET FLARE_AUTH_LIMITED          TO FALSE.
+    SET FLARE_AUTH_START_UT         TO -1.
+    SET FLARE_TECS_ET_INT           TO 0.
+    SET FLARE_TECS_EB_INT           TO 0.
+    SET FLARE_SUBMODE               TO FLARE_MODE_TOUCHDOWN_CONFIRM.
     SET_PHASE(PHASE_TOUCHDOWN).
-    RETURN.
+    RETURN TRUE.
   }
 
-  // Fallback touchdown path: debounced for low-altitude near-ground cases.
   LOCAL td_gear_count IS COUNT_MAIN_GEAR_BELOW(TOUCHDOWN_FALLBACK_AGL_M).
   LOCAL td_gear_need IS 1.
   IF FLARE_GEAR_PARTS:LENGTH >= 2 { SET td_gear_need TO 2. }
@@ -216,23 +363,195 @@ FUNCTION _RUN_FLARE {
                       td_gear_count >= td_gear_need.
   IF td_fallback {
     IF TOUCHDOWN_CANDIDATE_UT < 0 { SET TOUCHDOWN_CANDIDATE_UT TO TIME:SECONDS. }
+    SET FLARE_SUBMODE TO FLARE_MODE_TOUCHDOWN_CONFIRM.
     IF TIME:SECONDS - TOUCHDOWN_CANDIDATE_UT >= touchdown_confirm_s {
       IF ABS(vs_now) > touchdown_confirm_max_abs_vs {
-        // Ignore high-rate rebound spikes; wait for a stable ground contact.
         SET TOUCHDOWN_CANDIDATE_UT TO TIME:SECONDS.
-        RETURN.
+        RETURN FALSE.
       }
-      // Capture pre-impact pitch while still in flare; this is a better
-      // nose-hold reference than waiting until touchdown transients begin.
       _DEPLOY_TOUCHDOWN_SPOILERS().
       SET TOUCHDOWN_CAPTURE_PITCH_DEG TO GET_PITCH().
       SET TOUCHDOWN_INIT_DONE         TO FALSE.
       SET TOUCHDOWN_CANDIDATE_UT      TO -1.
       SET BOUNCE_RECOVERY_START_UT    TO -1.
+      SET FLARE_AUTH_LIMITED          TO FALSE.
+      SET FLARE_AUTH_START_UT         TO -1.
+      SET FLARE_TECS_ET_INT           TO 0.
+      SET FLARE_TECS_EB_INT           TO 0.
       SET_PHASE(PHASE_TOUCHDOWN).
+      RETURN TRUE.
     }
   } ELSE {
     SET TOUCHDOWN_CANDIDATE_UT TO -1.
+  }
+
+  RETURN FALSE.
+}
+
+FUNCTION _RUN_FLARE {
+  SET TELEM_RO_ROLL_ASSIST TO 0.
+  SET TELEM_RO_YAW_SCALE   TO 0.
+  SET TELEM_RO_YAW_GATE    TO 0.
+  SET TELEM_RO_PITCH_TGT   TO 0.
+  SET TELEM_RO_PITCH_ERR   TO 0.
+  SET TELEM_RO_PITCH_FF    TO 0.
+
+  LOCAL flare_h IS GET_MAIN_GEAR_RUNWAY_HEIGHT_MIN().
+  LOCAL ias IS MAX(GET_IAS(), 10).
+  LOCAL vs_now IS SHIP:VERTICALSPEED.
+  LOCAL flare_touchdown_vs IS _GET_FLARE_TOUCHDOWN_VS().
+  LOCAL vref IS AC_PARAM("v_ref", ACTIVE_V_APP - 10, 0).
+  LOCAL touchdown_confirm_s IS AC_PARAM("touchdown_confirm_s", TOUCHDOWN_CONFIRM_S, 0.001).
+  LOCAL touchdown_confirm_max_abs_vs IS AC_PARAM("touchdown_confirm_max_abs_vs", TOUCHDOWN_CONFIRM_MAX_ABS_VS, 0.001).
+
+  IF _CHECK_FLARE_CLIMBAWAY(flare_h, vs_now) { RETURN. }
+
+  LOCAL flare_cmd_fpa_min IS _AC_PARAM_NEG1("flare_cmd_fpa_min", FLARE_CMD_FPA_MIN).
+  LOCAL flare_cmd_fpa_max IS _AC_PARAM_NEG1("flare_cmd_fpa_max", FLARE_CMD_FPA_MAX).
+  LOCAL flare_cmd_rate_min_dps IS _AC_PARAM_NEG1("flare_cmd_rate_min_dps", FLARE_CMD_RATE_MIN_DPS).
+  LOCAL flare_cmd_rate_max_dps IS _AC_PARAM_NEG1("flare_cmd_rate_max_dps", FLARE_CMD_RATE_MAX_DPS).
+  LOCAL flare_roundout_start_h_m IS _AC_PARAM_NEG1("flare_roundout_start_h_m", FLARE_ROUNDOUT_START_H_M).
+  LOCAL flare_roundout_end_h_m IS _AC_PARAM_NEG1("flare_roundout_end_h_m", FLARE_ROUNDOUT_END_H_M).
+  LOCAL flare_roundout_curve IS _AC_PARAM_NEG1("flare_roundout_curve", FLARE_ROUNDOUT_CURVE).
+  LOCAL flare_min_throttle IS _AC_PARAM_NEG1("flare_min_throttle", FLARE_MIN_THROTTLE).
+  LOCAL flare_min_throttle_agl_blend IS _AC_PARAM_NEG1("flare_min_throttle_agl_blend", FLARE_MIN_THROTTLE_AGL_BLEND).
+  LOCAL flare_authority_vs_err_trigger IS _AC_PARAM_NEG1("flare_authority_vs_err_trigger", FLARE_AUTH_VS_ERR_TRIGGER).
+  LOCAL flare_authority_pitch_err_trigger IS _AC_PARAM_NEG1("flare_authority_pitch_err_trigger", FLARE_AUTH_PITCH_ERR_TRIGGER).
+  LOCAL flare_authority_fpa_err_trigger IS _AC_PARAM_NEG1("flare_authority_fpa_err_trigger", FLARE_AUTH_FPA_ERR_TRIGGER).
+  LOCAL flare_authority_detect_s IS _AC_PARAM_NEG1("flare_authority_detect_s", FLARE_AUTH_DETECT_S).
+  LOCAL flare_authority_recovery_gain IS _AC_PARAM_NEG1("flare_authority_recovery_gain", FLARE_AUTH_RECOVERY_GAIN).
+  LOCAL flare_tecs_et_kp IS _AC_PARAM_NEG1("flare_tecs_et_kp", FLARE_TECS_ET_KP).
+  LOCAL flare_tecs_et_ki IS _AC_PARAM_NEG1("flare_tecs_et_ki", FLARE_TECS_ET_KI).
+  LOCAL flare_tecs_eb_kp IS _AC_PARAM_NEG1("flare_tecs_eb_kp", FLARE_TECS_EB_KP).
+  LOCAL flare_tecs_eb_ki IS _AC_PARAM_NEG1("flare_tecs_eb_ki", FLARE_TECS_EB_KI).
+  LOCAL flare_tecs_et_int_lim IS _AC_PARAM_NEG1("flare_tecs_et_int_lim", FLARE_TECS_ET_INT_LIM).
+  LOCAL flare_tecs_eb_int_lim IS _AC_PARAM_NEG1("flare_tecs_eb_int_lim", FLARE_TECS_EB_INT_LIM).
+  LOCAL flare_tecs_thr_trim IS _AC_PARAM_NEG1("flare_tecs_thr_trim", FLARE_TECS_THR_TRIM).
+  LOCAL flare_tecs_thr_bal_k IS _AC_PARAM_NEG1("flare_tecs_thr_bal_k", FLARE_TECS_THR_BAL_K).
+  LOCAL flare_tecs_thr_slew_per_s IS _AC_PARAM_NEG1("flare_tecs_thr_slew_per_s", FLARE_TECS_THR_SLEW_PER_S).
+  LOCAL flare_tecs_climb_vs_gate IS _AC_PARAM_NEG1("flare_tecs_climb_vs_gate", FLARE_TECS_CLIMB_VS_GATE).
+  LOCAL flare_disable_speed_bleed_raw IS _AC_PARAM_NEG1(
+    "flare_disable_speed_bleed",
+    CHOOSE 1 IF FLARE_DISABLE_SPEED_BLEED_DEFAULT ELSE 0
+  ).
+  LOCAL flare_disable_speed_bleed IS flare_disable_speed_bleed_raw <> 0.
+
+  IF flare_cmd_fpa_max < flare_cmd_fpa_min { SET flare_cmd_fpa_max TO flare_cmd_fpa_min. }
+  IF flare_cmd_rate_max_dps < flare_cmd_rate_min_dps { SET flare_cmd_rate_max_dps TO flare_cmd_rate_min_dps. }
+  IF flare_roundout_end_h_m < 0 { SET flare_roundout_end_h_m TO 0. }
+  IF flare_roundout_start_h_m < flare_roundout_end_h_m {
+    SET flare_roundout_start_h_m TO flare_roundout_end_h_m.
+  }
+  SET flare_roundout_curve TO MAX(flare_roundout_curve, 0).
+  SET flare_min_throttle TO CLAMP(flare_min_throttle, 0, 1).
+  SET flare_authority_detect_s TO MAX(flare_authority_detect_s, 0.05).
+  SET flare_authority_recovery_gain TO CLAMP(flare_authority_recovery_gain, 0, 1).
+  SET flare_tecs_et_int_lim TO MAX(flare_tecs_et_int_lim, 1).
+  SET flare_tecs_eb_int_lim TO MAX(flare_tecs_eb_int_lim, 1).
+  SET flare_tecs_thr_trim TO CLAMP(flare_tecs_thr_trim, 0, 1).
+  SET flare_tecs_thr_slew_per_s TO MAX(flare_tecs_thr_slew_per_s, 0.1).
+
+  SET FLARE_SUBMODE TO _COMPUTE_FLARE_SUBMODE(
+    flare_h,
+    flare_roundout_start_h_m,
+    flare_roundout_end_h_m,
+    flare_authority_recovery_gain
+  ).
+
+  LOCAL refs IS _COMPUTE_FLARE_REFS(
+    flare_h,
+    ias,
+    flare_touchdown_vs,
+    vref,
+    flare_disable_speed_bleed,
+    flare_roundout_start_h_m,
+    flare_roundout_end_h_m,
+    flare_roundout_curve,
+    flare_authority_recovery_gain
+  ).
+  LOCAL flare_frac IS refs["frac"].
+  LOCAL flare_tgt_vs IS refs["vs_ref"].
+  LOCAL gamma_ref IS refs["gamma_ref"].
+  IF FLARE_TECS_H_REF <= 0 OR PHASE_ELAPSED() < 0.3 {
+    SET FLARE_TECS_H_REF TO MAX(flare_h, 1).
+  }
+  _UPDATE_FLARE_H_REF(flare_tgt_vs).
+  LOCAL v_ref_sched IS _COMPUTE_FLARE_VREF_SCHED(ACTIVE_V_APP, vref).
+  LOCAL g IS 9.81.
+  LOCAL e_total_ref IS 0.5 * v_ref_sched * v_ref_sched + g * FLARE_TECS_H_REF.
+  LOCAL e_total_now IS 0.5 * ias * ias + g * flare_h.
+  LOCAL e_balance_ref IS g * FLARE_TECS_H_REF - 0.5 * v_ref_sched * v_ref_sched.
+  LOCAL e_balance_now IS g * flare_h - 0.5 * ias * ias.
+  LOCAL e_total_err IS e_total_ref - e_total_now.
+  LOCAL e_balance_err IS e_balance_ref - e_balance_now.
+
+  LOCAL vs_err IS flare_tgt_vs - vs_now.
+  LOCAL fpa_err IS gamma_ref - TELEM_ACTUAL_FPA_DEG.
+  LOCAL pitch_err IS TELEM_AA_DIR_PITCH_DEG - TELEM_PITCH_DEG.
+  LOCAL thr_now IS GET_CURRENT_THROTTLE().
+  LOCAL thr_at_floor IS thr_now <= TELEM_FLARE_THR_FLOOR + 0.02.
+  LOCAL thr_at_ceiling IS thr_now >= 0.98.
+  LOCAL max_aoa IS AC_PARAM("aa_max_aoa", AA_MAX_AOA, 0.001).
+  LOCAL aoa_near_lim IS FALSE.
+  IF max_aoa > 0 AND GET_AOA() >= max_aoa - 0.5 { SET aoa_near_lim TO TRUE. }
+  LOCAL ctrl_limited IS thr_at_floor OR thr_at_ceiling OR aoa_near_lim.
+  SET TELEM_FLARE_ET_ERR TO e_total_err.
+  SET TELEM_FLARE_EB_ERR TO e_balance_err.
+  SET TELEM_FLARE_H_REF TO FLARE_TECS_H_REF.
+  SET TELEM_FLARE_V_REF TO v_ref_sched.
+
+  _UPDATE_FLARE_AUTHORITY_STATE(
+    vs_err,
+    fpa_err,
+    pitch_err,
+    ctrl_limited,
+    flare_authority_vs_err_trigger,
+    flare_authority_pitch_err_trigger,
+    flare_authority_fpa_err_trigger,
+    flare_authority_detect_s
+  ).
+
+  LOCAL gamma_cmd IS _COMPUTE_GAMMA_CMD(
+    gamma_ref,
+    e_balance_err,
+    ias,
+    flare_cmd_fpa_min,
+    flare_cmd_fpa_max,
+    flare_cmd_rate_min_dps,
+    flare_cmd_rate_max_dps,
+    flare_tecs_eb_kp,
+    flare_tecs_eb_ki,
+    flare_tecs_eb_int_lim,
+    flare_authority_recovery_gain
+  ).
+
+  LOCAL theta_cmd IS _COMPUTE_THETA_CMD(gamma_cmd).
+  AA_SET_DIRECTOR(ACTIVE_RWY_HDG, theta_cmd).
+  SET TELEM_AA_HDG_CMD   TO ACTIVE_RWY_HDG.
+  SET TELEM_AA_FPA_CMD   TO gamma_cmd.
+  SET TELEM_FLARE_TGT_VS TO flare_tgt_vs.
+  SET TELEM_FLARE_FRAC   TO flare_frac.
+
+  _RUN_FLARE_THROTTLE_POLICY(
+    flare_h,
+    vs_now,
+    flare_tgt_vs,
+    e_total_err,
+    e_balance_err,
+    flare_tecs_thr_trim,
+    flare_tecs_et_kp,
+    flare_tecs_et_ki,
+    flare_tecs_et_int_lim,
+    flare_tecs_thr_bal_k,
+    flare_tecs_thr_slew_per_s,
+    flare_min_throttle,
+    flare_min_throttle_agl_blend,
+    flare_tecs_climb_vs_gate,
+    flare_authority_recovery_gain
+  ).
+
+  IF _RUN_FLARE_TOUCHDOWN_GATE(flare_h, vs_now, touchdown_confirm_s, touchdown_confirm_max_abs_vs) {
+    RETURN.
   }
 }
 

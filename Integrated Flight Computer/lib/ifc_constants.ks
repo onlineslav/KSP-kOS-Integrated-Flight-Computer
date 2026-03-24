@@ -194,19 +194,48 @@ GLOBAL FLARE_MAIN_GEAR_TAG_DEFAULT IS "ifc_maingear". // part tag used to identi
 GLOBAL FLARE_AGL_M      IS 25.   // m runway-relative height to trigger flare
 GLOBAL FLARE_TRIGGER_HYST_M IS 1.0. // m hysteresis for flare trigger re-arm
 GLOBAL FLARE_TRIGGER_CONFIRM_S IS 0.12. // s runway-relative height must remain below trigger to enter flare
-GLOBAL FLARE_PITCH_RATE IS 0.8.  // deg/s max rate of FPA change during flare
-GLOBAL FLARE_PITCH_RATE_MIN IS 0.6. // deg/s flare response at low IAS
-GLOBAL FLARE_PITCH_RATE_MAX IS 1.8. // deg/s flare response at high IAS
 GLOBAL FLARE_RATE_LOW_IAS   IS 40.  // m/s low-speed end of flare-rate schedule
 GLOBAL FLARE_RATE_HIGH_IAS  IS 95.  // m/s high-speed end of flare-rate schedule
 GLOBAL TOUCHDOWN_VS     IS -0.3. // m/s target sink rate at wheel contact
 GLOBAL FLARE_MIN_ENTRY_SINK_VS IS -6.0. // m/s deepest sink accepted to seed flare profile (entries worse than this are clamped)
 GLOBAL FLARE_MAX_SINK_VS IS -2.5. // m/s strongest sink command allowed in flare
-GLOBAL FLARE_IAS_TO_VS_GAIN IS 0.02. // extra sink per m/s above Vref during flare
-GLOBAL FLARE_ROUNDOUT_AGL_M IS 0.0. // m AGL final roundout blend toward touchdown target (0 = disabled)
-GLOBAL FLARE_ROUNDOUT_STRENGTH IS 1.0. // 0..1 blend strength toward flare_touchdown_vs in roundout zone
-GLOBAL FLARE_BALLOON_VS_TRIGGER IS 0.15. // m/s trigger balloon recovery when climbing
-GLOBAL FLARE_BALLOON_FPA_PUSH IS 1.0. // deg additional nose-down when ballooning
+GLOBAL FLARE_MODE_CAPTURE IS "FLARE_CAPTURE". // initial flare-capture shaping period
+GLOBAL FLARE_MODE_TRACK IS "FLARE_TRACK". // nominal tracking of sink profile
+GLOBAL FLARE_MODE_ROUNDOUT IS "ROUNDOUT". // late flare sink arrest near touchdown
+GLOBAL FLARE_MODE_TOUCHDOWN_CONFIRM IS "TOUCHDOWN_CONFIRM". // fallback touchdown debounce window
+GLOBAL FLARE_CAPTURE_MIN_S IS 0.50. // s minimum time to remain in flare-capture before normal track mode
+GLOBAL FLARE_ROUNDOUT_HYST_M IS 1.0. // m hysteresis applied at roundout-start threshold
+GLOBAL FLARE_VS_KP IS 0.30. // deg FPA correction per m/s sink-rate error
+GLOBAL FLARE_FPA_KP IS 0.35. // deg FPA correction per deg FPA error
+GLOBAL FLARE_CMD_FPA_MIN IS -6.0. // deg lower clamp for flare gamma command
+GLOBAL FLARE_CMD_FPA_MAX IS 4.0. // deg upper clamp for flare gamma command
+GLOBAL FLARE_CMD_RATE_MIN_DPS IS 0.8. // deg/s low-speed flare gamma slew
+GLOBAL FLARE_CMD_RATE_MAX_DPS IS 2.2. // deg/s high-speed flare gamma slew
+GLOBAL FLARE_ROUNDOUT_START_H_M IS 8.0. // m runway-relative main-gear height where roundout shaping begins
+GLOBAL FLARE_ROUNDOUT_END_H_M IS 0.8. // m runway-relative main-gear height where roundout shaping reaches full effect
+GLOBAL FLARE_ROUNDOUT_CURVE IS 1.0. // 0 disables roundout; >0 scales roundout blend strength
+GLOBAL FLARE_DISABLE_SPEED_BLEED_DEFAULT IS TRUE. // TRUE disables speed-driven extra sink during flare by default
+GLOBAL FLARE_SPEED_BLEED_GAIN IS 0.02. // extra sink per m/s above Vref when speed bleed is enabled
+GLOBAL FLARE_MIN_THROTTLE IS 0.0. // minimum throttle floor while in flare (before blenddown/recovery)
+GLOBAL FLARE_MIN_THROTTLE_AGL_BLEND IS 8.0. // m runway-relative height below which flare throttle floor blends down
+GLOBAL FLARE_AUTH_VS_ERR_TRIGGER IS 0.8. // m/s minimum positive vs_err for authority-limited detection
+GLOBAL FLARE_AUTH_PITCH_ERR_TRIGGER IS 2.0. // deg minimum pitch tracking error for authority-limited detection
+GLOBAL FLARE_AUTH_FPA_ERR_TRIGGER IS 1.0. // deg minimum FPA tracking error for authority-limited detection
+GLOBAL FLARE_AUTH_DETECT_S IS 0.35. // s detection persistence before authority-limited state latches
+GLOBAL FLARE_AUTH_RECOVERY_GAIN IS 0.20. // additive throttle-floor and roundout-advance gain in authority recovery
+// TECS-style flare control (coupled pitch/throttle handling):
+// - throttle controls total energy error (Et)
+// - pitch/gamma controls energy-balance error (Eb)
+GLOBAL FLARE_TECS_ET_KP IS 0.00008. // throttle per (m^2/s^2) total-energy error
+GLOBAL FLARE_TECS_ET_KI IS 0.00002. // throttle/(m^2/s^2*s) total-energy integral gain
+GLOBAL FLARE_TECS_EB_KP IS 0.00075. // deg per (m^2/s^2) energy-balance error
+GLOBAL FLARE_TECS_EB_KI IS 0.00008. // deg/(m^2/s^2*s) energy-balance integral gain
+GLOBAL FLARE_TECS_ET_INT_LIM IS 8000. // integral clamp for Et loop
+GLOBAL FLARE_TECS_EB_INT_LIM IS 5000. // integral clamp for Eb loop
+GLOBAL FLARE_TECS_THR_TRIM IS 0.18. // nominal flare throttle trim
+GLOBAL FLARE_TECS_THR_BAL_K IS 0.00008. // throttle bias from energy-balance error (reduces thrust when high on path)
+GLOBAL FLARE_TECS_THR_SLEW_PER_S IS 1.2. // /s max flare throttle command slew
+GLOBAL FLARE_TECS_CLIMB_VS_GATE IS 0.2. // m/s if VS exceeds this in flare, throttle forced to floor
 
 
 // ----------------------------
