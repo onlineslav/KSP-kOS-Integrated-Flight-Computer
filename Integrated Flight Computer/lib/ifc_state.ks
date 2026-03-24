@@ -172,6 +172,9 @@ GLOBAL TELEM_FLARE_V_REF   IS 0.  // flare TECS reference speed (m/s)
 GLOBAL TELEM_FLARE_GAMMA_REF IS 0. // flare TECS gamma reference from sink schedule (deg)
 GLOBAL TELEM_FLARE_GAMMA_EB_TERM IS 0. // flare TECS gamma contribution from energy-balance loop (deg)
 GLOBAL TELEM_FLARE_GAMMA_CMD_UNSAT IS 0. // flare TECS gamma command before clamp/slew (deg)
+GLOBAL TELEM_FLARE_ETDOT_ERR IS 0. // flare TECS total-energy rate error (m^2/s^3)
+GLOBAL TELEM_FLARE_EBDOT_ERR IS 0. // flare TECS energy-balance rate error (m^2/s^3)
+GLOBAL TELEM_FLARE_IAS_DOT   IS 0. // flare filtered IAS derivative (m/s^2)
 GLOBAL TELEM_STEER_BLEND   IS 0.  // rollout wheelsteering blend factor (0-1)
 GLOBAL TELEM_RO_HDG_ERR    IS 0.  // rollout: actual hdg minus steer target (deg)
 GLOBAL TELEM_RO_YAW_TGT    IS 0.  // rollout: yaw command target before slew rate
@@ -309,6 +312,8 @@ GLOBAL ROLLOUT_PITCH_REF_DEG IS 0. // touchdown-captured pitch attitude referenc
 GLOBAL ROLLOUT_PITCH_TGT_DEG IS 0. // time-evolving pitch target for rollout nose lowering (deg)
 GLOBAL ROLLOUT_STEER_HDG IS 0.         // computed wheelsteering target (logged for telemetry)
 GLOBAL ROLLOUT_REV_DEACTIVATED IS FALSE. // TRUE once reversers have been cut during rollout
+GLOBAL FLARE_IAS_PREV     IS 0.   // IAS from previous cycle used for energy-rate derivative (m/s)
+GLOBAL FLARE_IAS_DOT_FILT IS 0.   // EMA-filtered IAS derivative for energy-rate damping (m/s^2)
 
 // ----------------------------
 // GUI editor state
@@ -593,6 +598,8 @@ FUNCTION IFC_INIT_STATE {
   SET ROLLOUT_PITCH_TGT_DEG TO GET_PITCH().
   SET ROLLOUT_STEER_HDG       TO GET_COMPASS_HDG().
   SET ROLLOUT_REV_DEACTIVATED TO FALSE.
+  SET FLARE_IAS_PREV     TO GET_IAS().
+  SET FLARE_IAS_DOT_FILT TO 0.
 
   SET TELEM_COMPASS_HDG  TO 0.
   SET TELEM_PITCH_DEG    TO 0.
@@ -625,6 +632,9 @@ FUNCTION IFC_INIT_STATE {
   SET TELEM_FLARE_GAMMA_REF TO 0.
   SET TELEM_FLARE_GAMMA_EB_TERM TO 0.
   SET TELEM_FLARE_GAMMA_CMD_UNSAT TO 0.
+  SET TELEM_FLARE_ETDOT_ERR TO 0.
+  SET TELEM_FLARE_EBDOT_ERR TO 0.
+  SET TELEM_FLARE_IAS_DOT   TO 0.
   SET TELEM_STEER_BLEND  TO 0.
   SET TELEM_RO_HDG_ERR   TO 0.
   SET TELEM_RO_YAW_TGT   TO 0.

@@ -95,6 +95,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "v_r",                70.0,  // m/s  rotate speed
     "v2",                 80.0,  // m/s  V2 climb speed
     "takeoff_pitch_tgt",  12.0,  // deg  pitch target at rotation
+    "tailstrike_pitch_max_deg", -1, // deg absolute pitch cap near runway/takeoff/flare (-1 = global)
     "takeoff_pitch_slew_dps",     -1, // deg/s rotate-target pitch slew (-1 = global)
     "takeoff_rotate_pitch_kp",    -1, // pitch cmd per deg pitch error while on wheels (-1 = global)
     "takeoff_rotate_pitch_ff",    -1, // baseline back-pressure during rotation (-1 = global)
@@ -209,10 +210,13 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "flare_authority_fpa_err_trigger",-1, // deg FPA tracking trigger for authority-limited detector (-1 = global)
     "flare_authority_detect_s",  -1, // s persistence to latch authority-limited state (-1 = global)
     "flare_authority_recovery_gain",-1, // 0..1 recovery gain for throttle/roundout recovery branch (-1 = global)
-    "flare_tecs_et_kp",          -1, // throttle gain on total-energy error (-1 = global)
-    "flare_tecs_et_ki",          -1, // throttle integral gain on total-energy error (-1 = global)
-    "flare_tecs_eb_kp",          -1, // gamma gain on energy-balance error (-1 = global)
-    "flare_tecs_eb_ki",          -1, // gamma integral gain on energy-balance error (-1 = global)
+    "flare_tecs_et_kp",          -1, // throttle P gain on total-energy error (-1 = global)
+    "flare_tecs_et_ki",          -1, // throttle I gain on total-energy error (-1 = global)
+    "flare_tecs_et_kd",          -1, // throttle D gain on total-energy rate error (-1 = global, 0 = disabled)
+    "flare_tecs_eb_kp",          -1, // V*g-normalized gamma P gain on energy-balance error (-1 = global)
+    "flare_tecs_eb_ki",          -1, // V*g-normalized gamma I gain on energy-balance error (-1 = global)
+    "flare_tecs_eb_kd",          -1, // V*g-normalized gamma D gain on energy-balance rate error (-1 = global, 0 = disabled)
+    "flare_tecs_edot_alpha",     -1, // EMA alpha for IAS derivative filter used in energy-rate damping (-1 = global)
     "flare_tecs_et_int_lim",     -1, // Et integrator clamp (-1 = global)
     "flare_tecs_eb_int_lim",     -1, // Eb integrator clamp (-1 = global)
     "flare_tecs_thr_trim",       -1, // nominal flare throttle trim (-1 = global)

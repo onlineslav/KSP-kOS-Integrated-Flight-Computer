@@ -76,7 +76,9 @@ FUNCTION _CHECK_BOUNCE_RECOVERY {
       SET FLARE_AUTH_START_UT TO -1.
       SET FLARE_TECS_ET_INT TO 0.
       SET FLARE_TECS_EB_INT TO 0.
-      SET FLARE_TECS_H_REF TO FLARE_ENTRY_AGL.
+      SET FLARE_TECS_H_REF TO MAX(flare_h, 1).
+      SET FLARE_IAS_PREV     TO entry_ias.
+      SET FLARE_IAS_DOT_FILT TO 0.
       SET THR_INTEGRAL TO 0.
       SET IFC_ALERT_TEXT TO "BOUNCE recovery: returning to FLARE (" + ROUND(flare_h, 1) + " m rw)".
       SET IFC_ALERT_UT   TO TIME:SECONDS.
@@ -214,9 +216,10 @@ FUNCTION _UPDATE_FLARE_H_REF {
 
 FUNCTION _COMPUTE_GAMMA_CMD {
   PARAMETER gamma_ref, e_balance_err, ias, gamma_cmd_min, gamma_cmd_max,
-            gamma_rate_min, gamma_rate_max, eb_kp, eb_ki, eb_int_lim, auth_recovery_gain.
-
-  LOCAL gamma_unsat IS gamma_ref + eb_kp * e_balance_err + eb_ki * FLARE_TECS_EB_INT.
+            gamma_rate_min, gamma_rate_max, eb_kp, eb_ki, eb_int_lim, auth_recovery_gain,
+            e_bal_dot_err, eb_kd.
+  LOCAL vg IS MAX(ias * 9.81, 50).
+  LOCAL gamma_unsat IS gamma_ref + (eb_kp * e_balance_err + eb_ki * FLARE_TECS_EB_INT + eb_kd * e_bal_dot_err) / vg.
   LOCAL gamma_raw IS CLAMP(gamma_unsat, gamma_cmd_min, gamma_cmd_max).
   LOCAL sat_hi IS gamma_unsat >= gamma_cmd_max.
   LOCAL sat_lo IS gamma_unsat <= gamma_cmd_min.
@@ -227,9 +230,9 @@ FUNCTION _COMPUTE_GAMMA_CMD {
     SET FLARE_TECS_EB_INT TO FLARE_TECS_EB_INT * 0.95.
   }
 
-  SET gamma_unsat TO gamma_ref + eb_kp * e_balance_err + eb_ki * FLARE_TECS_EB_INT.
+  SET gamma_unsat TO gamma_ref + (eb_kp * e_balance_err + eb_ki * FLARE_TECS_EB_INT + eb_kd * e_bal_dot_err) / vg.
   SET TELEM_FLARE_GAMMA_REF TO gamma_ref.
-  SET TELEM_FLARE_GAMMA_EB_TERM TO eb_kp * e_balance_err + eb_ki * FLARE_TECS_EB_INT.
+  SET TELEM_FLARE_GAMMA_EB_TERM TO (eb_kp * e_balance_err + eb_ki * FLARE_TECS_EB_INT + eb_kd * e_bal_dot_err) / vg.
   SET TELEM_FLARE_GAMMA_CMD_UNSAT TO gamma_unsat.
   SET gamma_raw TO CLAMP(gamma_unsat, gamma_cmd_min, gamma_cmd_max).
   IF FLARE_AUTH_LIMITED {
@@ -271,7 +274,8 @@ FUNCTION _COMPUTE_THETA_CMD {
 FUNCTION _RUN_FLARE_THROTTLE_POLICY {
   PARAMETER flare_h, vs_now, vs_ref, e_total_err, e_balance_err,
             thr_trim, et_kp, et_ki, et_int_lim, thr_bal_k, thr_slew,
-            min_throttle, min_throttle_agl_blend, climb_vs_gate, auth_recovery_gain.
+            min_throttle, min_throttle_agl_blend, climb_vs_gate, auth_recovery_gain,
+            e_total_dot_err, et_kd.
 
   LOCAL thr_floor IS CLAMP(min_throttle, 0, 1).
   IF min_throttle_agl_blend > 0 AND flare_h < min_throttle_agl_blend {
@@ -285,6 +289,7 @@ FUNCTION _RUN_FLARE_THROTTLE_POLICY {
   LOCAL raw_unsat IS thr_trim
     + et_kp * e_total_err
     + et_ki * FLARE_TECS_ET_INT
+    + et_kd * e_total_dot_err
     + thr_bal_k * e_balance_err.
 
   // Keep throttle from feeding balloon/climb-away conditions.
@@ -309,6 +314,7 @@ FUNCTION _RUN_FLARE_THROTTLE_POLICY {
   SET raw_unsat TO thr_trim
     + et_kp * e_total_err
     + et_ki * FLARE_TECS_ET_INT
+    + et_kd * e_total_dot_err
     + thr_bal_k * e_balance_err.
   SET raw_thr TO CLAMP(raw_unsat, thr_floor, thr_max).
   SET THROTTLE_CMD TO MOVE_TOWARD(THROTTLE_CMD, raw_thr, MAX(thr_slew, 0.1) * IFC_ACTUAL_DT).
@@ -440,6 +446,10 @@ FUNCTION _RUN_FLARE {
   LOCAL flare_tecs_thr_bal_k IS _AC_PARAM_NEG1("flare_tecs_thr_bal_k", FLARE_TECS_THR_BAL_K).
   LOCAL flare_tecs_thr_slew_per_s IS _AC_PARAM_NEG1("flare_tecs_thr_slew_per_s", FLARE_TECS_THR_SLEW_PER_S).
   LOCAL flare_tecs_climb_vs_gate IS _AC_PARAM_NEG1("flare_tecs_climb_vs_gate", FLARE_TECS_CLIMB_VS_GATE).
+  LOCAL flare_tecs_edot_alpha IS _AC_PARAM_NEG1("flare_tecs_edot_alpha", FLARE_TECS_EDOT_ALPHA).
+  LOCAL flare_tecs_et_kd IS _AC_PARAM_NEG1("flare_tecs_et_kd", FLARE_TECS_ET_KD).
+  LOCAL flare_tecs_eb_kd IS _AC_PARAM_NEG1("flare_tecs_eb_kd", FLARE_TECS_EB_KD).
+  LOCAL tailstrike_pitch_max IS GET_TAILSTRIKE_PITCH_MAX().
   LOCAL flare_disable_speed_bleed_raw IS _AC_PARAM_NEG1(
     "flare_disable_speed_bleed",
     CHOOSE 1 IF FLARE_DISABLE_SPEED_BLEED_DEFAULT ELSE 0
@@ -495,6 +505,24 @@ FUNCTION _RUN_FLARE {
   LOCAL e_total_err IS e_total_ref - e_total_now.
   LOCAL e_balance_err IS e_balance_ref - e_balance_now.
 
+  // Energy rate errors for D-term damping.
+  // IAS derivative: EMA-filtered to reduce sensor noise.
+  LOCAL ias_dot_raw IS (ias - FLARE_IAS_PREV) / IFC_ACTUAL_DT.
+  SET FLARE_IAS_DOT_FILT TO flare_tecs_edot_alpha * ias_dot_raw + (1 - flare_tecs_edot_alpha) * FLARE_IAS_DOT_FILT.
+  SET FLARE_IAS_PREV TO ias.
+  // Demanded rates: d/dt(E_T_ref) = V_ref * V_ref_dot + g * VS_ref
+  // Measured rates: d/dt(E_T)    = V * V_dot + g * VS
+  // We approximate V_ref_dot ≈ 0 (Vref schedule slews slowly).
+  LOCAL e_total_dot_dem IS g * flare_tgt_vs.
+  LOCAL e_total_dot_meas IS ias * FLARE_IAS_DOT_FILT + g * vs_now.
+  LOCAL e_total_dot_err IS e_total_dot_dem - e_total_dot_meas.
+  LOCAL e_bal_dot_dem IS g * flare_tgt_vs.
+  LOCAL e_bal_dot_meas IS g * vs_now - ias * FLARE_IAS_DOT_FILT.
+  LOCAL e_bal_dot_err IS e_bal_dot_dem - e_bal_dot_meas.
+  SET TELEM_FLARE_ETDOT_ERR TO e_total_dot_err.
+  SET TELEM_FLARE_EBDOT_ERR TO e_bal_dot_err.
+  SET TELEM_FLARE_IAS_DOT   TO FLARE_IAS_DOT_FILT.
+
   LOCAL vs_err IS flare_tgt_vs - vs_now.
   LOCAL fpa_err IS gamma_ref - TELEM_ACTUAL_FPA_DEG.
   LOCAL pitch_err IS TELEM_AA_DIR_PITCH_DEG - TELEM_PITCH_DEG.
@@ -504,7 +532,11 @@ FUNCTION _RUN_FLARE {
   LOCAL max_aoa IS AC_PARAM("aa_max_aoa", AA_MAX_AOA, 0.001).
   LOCAL aoa_near_lim IS FALSE.
   IF max_aoa > 0 AND GET_AOA() >= max_aoa - 0.5 { SET aoa_near_lim TO TRUE. }
-  LOCAL ctrl_limited IS thr_at_floor OR thr_at_ceiling OR aoa_near_lim.
+  // Pitch at/over tailstrike limit with unresolved nose-up error is treated as
+  // an authority limit so flare recovery can shift toward throttle support.
+  LOCAL tailstrike_limited_prev IS TELEM_AA_DIR_PITCH_DEG >= tailstrike_pitch_max - 0.25 AND
+                                   pitch_err > 0 AND vs_err > 0.
+  LOCAL ctrl_limited IS thr_at_floor OR thr_at_ceiling OR aoa_near_lim OR tailstrike_limited_prev.
   SET TELEM_FLARE_ET_ERR TO e_total_err.
   SET TELEM_FLARE_EB_ERR TO e_balance_err.
   SET TELEM_FLARE_H_REF TO FLARE_TECS_H_REF.
@@ -532,7 +564,9 @@ FUNCTION _RUN_FLARE {
     flare_tecs_eb_kp,
     flare_tecs_eb_ki,
     flare_tecs_eb_int_lim,
-    flare_authority_recovery_gain
+    flare_authority_recovery_gain,
+    e_bal_dot_err,
+    flare_tecs_eb_kd
   ).
   // Late flare priority: when sink is already worse than target in ROUNDOUT,
   // do not let the energy-balance loop command additional nose-down beyond gamma_ref.
@@ -540,7 +574,13 @@ FUNCTION _RUN_FLARE {
     SET gamma_cmd TO gamma_ref.
   }
 
-  LOCAL theta_cmd IS _COMPUTE_THETA_CMD(gamma_cmd).
+  LOCAL theta_cmd_raw IS _COMPUTE_THETA_CMD(gamma_cmd).
+  LOCAL theta_cmd IS CLAMP_TAILSTRIKE_DIRECTOR_CMD(theta_cmd_raw).
+  LOCAL tailstrike_limited_now IS theta_cmd < theta_cmd_raw - 0.001.
+  IF tailstrike_limited_now AND vs_err > 0 {
+    SET FLARE_AUTH_LIMITED TO TRUE.
+    IF FLARE_AUTH_START_UT < 0 { SET FLARE_AUTH_START_UT TO TIME:SECONDS. }
+  }
   AA_SET_DIRECTOR(ACTIVE_RWY_HDG, theta_cmd).
   SET TELEM_AA_HDG_CMD   TO ACTIVE_RWY_HDG.
   SET TELEM_AA_FPA_CMD   TO gamma_cmd.
@@ -562,7 +602,9 @@ FUNCTION _RUN_FLARE {
     flare_min_throttle,
     flare_min_throttle_agl_blend,
     flare_tecs_climb_vs_gate,
-    flare_authority_recovery_gain
+    flare_authority_recovery_gain,
+    e_total_dot_err,
+    flare_tecs_et_kd
   ).
 
   IF _RUN_FLARE_TOUCHDOWN_GATE(flare_h, vs_now, touchdown_confirm_s, touchdown_confirm_max_abs_vs) {

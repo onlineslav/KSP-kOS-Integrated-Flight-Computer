@@ -170,6 +170,9 @@ GLOBAL MAX_CLIMB_FPA IS 5.0.  // deg  steepest climb allowed enroute
 // TRUE:            AA_SET_DIRECTOR adds current AoA (pitch_cmd = fpa_cmd + AoA).
 // Keep FALSE unless flight-test evidence shows a specific aircraft needs AoA add.
 GLOBAL AA_DIR_ADD_AOA_COMP IS FALSE.
+// Absolute pitch cap for low-height tailstrike protection.
+// Intended to be overridden per-aircraft by tailstrike_pitch_max_deg.
+GLOBAL TAILSTRIKE_PITCH_MAX_DEG IS 20.0. // deg
 // Approach phase pitch cap.
 // With AA_DIR_ADD_AOA_COMP = FALSE, cap fpa_cmd <= MAX_APP_PITCH_CMD.
 // With AA_DIR_ADD_AOA_COMP = TRUE, cap fpa_cmd <= MAX_APP_PITCH_CMD - AOA.
@@ -229,14 +232,20 @@ GLOBAL FLARE_AUTH_RECOVERY_GAIN IS 0.20. // additive throttle-floor and roundout
 // - pitch/gamma controls energy-balance error (Eb)
 GLOBAL FLARE_TECS_ET_KP IS 0.00008. // throttle per (m^2/s^2) total-energy error
 GLOBAL FLARE_TECS_ET_KI IS 0.00002. // throttle/(m^2/s^2*s) total-energy integral gain
-GLOBAL FLARE_TECS_EB_KP IS 0.00075. // deg per (m^2/s^2) energy-balance error
-GLOBAL FLARE_TECS_EB_KI IS 0.00008. // deg/(m^2/s^2*s) energy-balance integral gain
+// EB gains are V*g-normalized: output = (eb_kp * Eb_err + ...) / (ias * g)
+// At 80 m/s these are equivalent to the old 0.00075 / 0.00008 deg/(m^2/s^2) values.
+// Per-aircraft overrides must also use the normalized scale.
+GLOBAL FLARE_TECS_EB_KP IS 0.59.    // V*g-normalized pitch gain on energy-balance error
+GLOBAL FLARE_TECS_EB_KI IS 0.063.   // V*g-normalized pitch integral gain (per s)
 GLOBAL FLARE_TECS_ET_INT_LIM IS 8000. // integral clamp for Et loop
 GLOBAL FLARE_TECS_EB_INT_LIM IS 5000. // integral clamp for Eb loop
 GLOBAL FLARE_TECS_THR_TRIM IS 0.18. // nominal flare throttle trim
 GLOBAL FLARE_TECS_THR_BAL_K IS 0.00008. // throttle bias from energy-balance error (reduces thrust when high on path)
 GLOBAL FLARE_TECS_THR_SLEW_PER_S IS 1.2. // /s max flare throttle command slew
 GLOBAL FLARE_TECS_CLIMB_VS_GATE IS 0.2. // m/s if VS exceeds this in flare, throttle forced to floor
+GLOBAL FLARE_TECS_EDOT_ALPHA IS 0.30. // EMA smoothing factor for IAS derivative filter (0=max smooth, 1=raw)
+GLOBAL FLARE_TECS_ET_KD IS 0.0.       // throttle damping on total-energy rate error (0 = disabled until tuned)
+GLOBAL FLARE_TECS_EB_KD IS 0.0.       // pitch damping on energy-balance rate error (0 = disabled until tuned)
 
 
 // ----------------------------

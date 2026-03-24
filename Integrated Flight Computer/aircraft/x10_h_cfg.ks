@@ -20,7 +20,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
   RETURN LEXICON(
 
     // ── Identity ──────────────────────────────────────────
-    "name",         "X10-F Bigboi",           // shown in telemetry
+    "name",         "X10-H Bigboi",           // shown in telemetry
 
     // ── Approach speeds (m/s IAS) ─────────────────────────
     // Vapp: target speed from FAF to flare.
@@ -214,7 +214,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
 
     // ── Notes ─────────────────────────────────────────────
     // Free-text, shown at startup for crew awareness.
-    "notes",        "X10-F Spaceplane"
+    "notes",        "X10-H Spaceplane"
   ).
 }
 
