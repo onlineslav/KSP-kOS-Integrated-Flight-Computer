@@ -167,6 +167,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Override the global constants for this specific aircraft.
     // Set to -1 to use the global default from ifc_constants.ks.
     "flare_gear_tag",          "ifc_maingear", // tag on parts used as main-gear flare/touchdown reference
+    "flare_gear_h_offset_m",   4.84, // m positive bias so flare logic treats gear as 4.84 m higher
     "flare_agl",               45,   // m runway-relative main-gear height to begin flare
     "flare_touchdown_vs",      -0.25,// m/s target sink rate at wheel contact
     "flare_vs_kp",               -1, // gamma correction per m/s sink-rate error (-1 = global)

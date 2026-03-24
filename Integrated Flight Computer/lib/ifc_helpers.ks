@@ -189,6 +189,15 @@ FUNCTION _GET_MAIN_GEAR_TAG {
   RETURN tag.
 }
 
+FUNCTION _GET_MAIN_GEAR_H_OFFSET {
+  LOCAL h_offset IS FLARE_GEAR_H_OFFSET_M.
+  IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("flare_gear_h_offset_m") {
+    LOCAL ac_offset IS ACTIVE_AIRCRAFT["flare_gear_h_offset_m"].
+    IF ac_offset <> -1 { SET h_offset TO ac_offset. }
+  }
+  RETURN h_offset.
+}
+
 FUNCTION _GET_RUNWAY_REF_ALT_ASL {
   IF ACTIVE_ILS_ID <> "" {
     LOCAL ils IS GET_BEACON(ACTIVE_ILS_ID).
@@ -240,7 +249,8 @@ FUNCTION _GET_GEAR_BOTTOM_RUNWAY_HEIGHT {
 // Falls back to vessel runway-relative height if no tagged gear parts exist.
 FUNCTION GET_MAIN_GEAR_RUNWAY_HEIGHT_MIN {
   _DISCOVER_MAIN_GEAR_PARTS().
-  IF FLARE_GEAR_PARTS:LENGTH <= 0 { RETURN GET_RUNWAY_REL_HEIGHT(). }
+  LOCAL h_offset IS _GET_MAIN_GEAR_H_OFFSET().
+  IF FLARE_GEAR_PARTS:LENGTH <= 0 { RETURN GET_RUNWAY_REL_HEIGHT() + h_offset. }
 
   LOCAL runway_ref_alt_asl IS _GET_RUNWAY_REF_ALT_ASL().
   LOCAL min_h IS 999999.
@@ -250,8 +260,8 @@ FUNCTION GET_MAIN_GEAR_RUNWAY_HEIGHT_MIN {
     IF h < min_h { SET min_h TO h. }
     SET i TO i + 1.
   }
-  IF min_h < 999998 { RETURN min_h. }
-  RETURN GET_RUNWAY_REL_HEIGHT().
+  IF min_h < 999998 { RETURN min_h + h_offset. }
+  RETURN GET_RUNWAY_REL_HEIGHT() + h_offset.
 }
 
 // Counts tagged main-gear parts currently at or below the given
@@ -259,9 +269,10 @@ FUNCTION GET_MAIN_GEAR_RUNWAY_HEIGHT_MIN {
 FUNCTION COUNT_MAIN_GEAR_BELOW {
   PARAMETER height_m.
   _DISCOVER_MAIN_GEAR_PARTS().
+  LOCAL h_offset IS _GET_MAIN_GEAR_H_OFFSET().
 
   IF FLARE_GEAR_PARTS:LENGTH <= 0 {
-    IF GET_RUNWAY_REL_HEIGHT() <= height_m { RETURN 1. }
+    IF GET_RUNWAY_REL_HEIGHT() + h_offset <= height_m { RETURN 1. }
     RETURN 0.
   }
 
@@ -270,7 +281,7 @@ FUNCTION COUNT_MAIN_GEAR_BELOW {
   LOCAL i IS 0.
   UNTIL i >= FLARE_GEAR_PARTS:LENGTH {
     LOCAL h IS _GET_GEAR_BOTTOM_RUNWAY_HEIGHT(FLARE_GEAR_PARTS[i], runway_ref_alt_asl).
-    IF h <= height_m { SET count TO count + 1. }
+    IF h + h_offset <= height_m { SET count TO count + 1. }
     SET i TO i + 1.
   }
   RETURN count.

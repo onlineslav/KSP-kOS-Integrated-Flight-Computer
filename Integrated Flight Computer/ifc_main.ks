@@ -177,6 +177,7 @@ LOCAL _DEFAULT_AIRCRAFT IS LEXICON(
   "aa_max_side_g",       -1,
   "aa_max_bank",         -1,
   "flare_gear_tag",      "",
+  "flare_gear_h_offset_m",-1,
   "flare_agl",           -1,
   "flare_touchdown_vs",  -1,
   "flare_vs_kp",         -1,

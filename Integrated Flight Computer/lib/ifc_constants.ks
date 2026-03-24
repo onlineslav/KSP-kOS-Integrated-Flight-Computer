@@ -191,6 +191,7 @@ GLOBAL GEAR_MAX_EXTEND_IAS IS 120. // m/s max IAS allowed for automatic gear ext
 // Flare
 // ----------------------------
 GLOBAL FLARE_MAIN_GEAR_TAG_DEFAULT IS "ifc_maingear". // part tag used to identify main-gear contact sensors for flare/touchdown height logic
+GLOBAL FLARE_GEAR_H_OFFSET_M IS 0.0. // m additive bias applied to runway-relative main-gear height (+ raises perceived gear height)
 GLOBAL FLARE_AGL_M      IS 25.   // m runway-relative height to trigger flare
 GLOBAL FLARE_TRIGGER_HYST_M IS 1.0. // m hysteresis for flare trigger re-arm
 GLOBAL FLARE_TRIGGER_CONFIRM_S IS 0.12. // s runway-relative height must remain below trigger to enter flare
