@@ -58,9 +58,13 @@
 //   flare_frac     progress: 0=entry AGL, 1=ground
 //   flare_mode     FLARE_CAPTURE / FLARE_TRACK / ROUNDOUT / TOUCHDOWN_CONFIRM
 //   flare_auth_limited 1 when authority-limited recovery branch is active, else 0
+//   flare_auth_reason authority-limited reason (NONE/TRACK/SIGN/TAILSTRIKE/BALLOON)
 //   flare_vs_err   target sink minus actual VS (m/s)
 //   flare_fpa_err  commanded FPA minus actual FPA (deg)
 //   flare_pitch_err commanded AA direction pitch minus actual pitch (deg)
+//   flare_theta_cmd_raw director pitch command before tailstrike clamp (deg)
+//   flare_theta_cmd_clamped director pitch command after tailstrike clamp (deg)
+//   flare_theta_clamp_active 1 when tailstrike clamp was active this sample, else 0
 //   flare_pitch_in_cmd SHIP:CONTROL:PITCH input command (unitless, -1..1)
 //   elev_defl_avg_deg average absolute pitch-surface deflection seen this sample (deg)
 //   elev_defl_max_deg max absolute pitch-surface deflection seen this sample (deg)
@@ -336,7 +340,7 @@ FUNCTION LOGGER_INIT {
   SET LOG_CFG_FILE   TO IFC_ACTIVE_CFG_PATH:REPLACE(",", "_").
   IF LOG_CFG_FILE = "" { SET LOG_CFG_FILE TO "UNKNOWN". }
 
-  LOG "t_s,phase,subphase,ias_ms,vapp_ms,spd_err_ms,agl_m,gear_h_m,vs_ms,pitch_deg,aoa_deg,hdg_deg,bank_deg,thr_cmd,thr_cur,thr_intg,at_gain,at_tau_s,at_a_up,at_a_dn,at_kp_thr,at_ki_spd,at_thr_slew,as_cmd_deg,as_cap_deg,as_raw_deg,as_spd_err_ms,as_active,aa_hdg_cmd_deg,aa_fpa_cmd_deg,aa_fbw,aa_dir,actual_fpa_deg,ftf_hdg_err_deg,ftf_fix_idx,kos_steer_pit_deg,kos_steer_hdg_deg,aa_dir_vx,aa_dir_vy,aa_dir_vz,aa_dir_pitch_deg,aa_dir_hdg_deg,ils_loc_m,ils_gs_m,ils_dist_km,loc_corr_deg,gs_corr_deg,gs_latched,active_gs_ang_deg,ils_intercept_alt_m,d_gs_ms,fpa_preclamped_deg,gs_nom_alt_m,flare_fpa_cmd,flare_tgt_vs,flare_frac,flare_mode,flare_auth_limited,flare_vs_err,flare_fpa_err,flare_pitch_err,flare_pitch_in_cmd,elev_defl_avg_deg,elev_defl_max_deg,elev_defl_n,flare_ctrl_h_m,flare_req_up_a,flare_thr_floor,flare_tecs_et_err,flare_tecs_eb_err,flare_tecs_h_ref,flare_tecs_v_ref,flare_gamma_ref,flare_gamma_eb_term,flare_gamma_unsat,steer_hdg_deg,steer_blend,ro_loc_corr_deg,ro_hdg_err_deg,ro_yaw_tgt,ro_yaw_scale,ro_yaw_gate,yaw_cmd,roll_cmd,pitch_cmd,ro_pitch_tgt_deg,ro_pitch_err_deg,ro_pitch_ff,ro_roll_assist,flaps_cur,flaps_tgt,asc_j_ab,asc_j_rk,asc_validity,asc_q_pa,asc_q_raw_pa,asc_mach,asc_apo_m,asc_drag_n,asc_w_prop,asc_edot_aero,asc_edot_orb,asc_pitch_bias,asc_blend,asc_spooling,asc_ab_thr_ratio,asc_ab_t_now,asc_ab_t_avail,asc_ab_ign_on,asc_ab_flameouts,asc_rk_t_now,asc_rk_t_avail,asc_rk_ign_on,asc_rk_flameouts,ship_thrust,ship_avail_thrust,ship_ign_on,ship_flameouts,ifc_raw_dt_s,ifc_dt_s,ifc_loop_n,ifc_hz_est,ifc_raw_dt_max_s,ifc_raw_dt_min_s,phase_el_s,status,craft_name,cfg_file" TO LOG_FILE.
+  LOG "t_s,phase,subphase,ias_ms,vapp_ms,spd_err_ms,agl_m,gear_h_m,vs_ms,pitch_deg,aoa_deg,hdg_deg,bank_deg,thr_cmd,thr_cur,thr_intg,at_gain,at_tau_s,at_a_up,at_a_dn,at_kp_thr,at_ki_spd,at_thr_slew,as_cmd_deg,as_cap_deg,as_raw_deg,as_spd_err_ms,as_active,aa_hdg_cmd_deg,aa_fpa_cmd_deg,aa_fbw,aa_dir,actual_fpa_deg,ftf_hdg_err_deg,ftf_fix_idx,kos_steer_pit_deg,kos_steer_hdg_deg,aa_dir_vx,aa_dir_vy,aa_dir_vz,aa_dir_pitch_deg,aa_dir_hdg_deg,ils_loc_m,ils_gs_m,ils_dist_km,loc_corr_deg,gs_corr_deg,gs_latched,active_gs_ang_deg,ils_intercept_alt_m,d_gs_ms,fpa_preclamped_deg,gs_nom_alt_m,flare_fpa_cmd,flare_tgt_vs,flare_frac,flare_mode,flare_auth_limited,flare_auth_reason,flare_vs_err,flare_fpa_err,flare_pitch_err,flare_theta_cmd_raw,flare_theta_cmd_clamped,flare_theta_clamp_active,flare_pitch_in_cmd,elev_defl_avg_deg,elev_defl_max_deg,elev_defl_n,flare_ctrl_h_m,flare_req_up_a,flare_thr_floor,flare_tecs_et_err,flare_tecs_eb_err,flare_tecs_h_ref,flare_tecs_v_ref,flare_gamma_ref,flare_gamma_eb_term,flare_gamma_unsat,steer_hdg_deg,steer_blend,ro_loc_corr_deg,ro_hdg_err_deg,ro_yaw_tgt,ro_yaw_scale,ro_yaw_gate,yaw_cmd,roll_cmd,pitch_cmd,ro_pitch_tgt_deg,ro_pitch_err_deg,ro_pitch_ff,ro_roll_assist,flaps_cur,flaps_tgt,asc_j_ab,asc_j_rk,asc_validity,asc_q_pa,asc_q_raw_pa,asc_mach,asc_apo_m,asc_drag_n,asc_w_prop,asc_edot_aero,asc_edot_orb,asc_pitch_bias,asc_blend,asc_spooling,asc_ab_thr_ratio,asc_ab_t_now,asc_ab_t_avail,asc_ab_ign_on,asc_ab_flameouts,asc_rk_t_now,asc_rk_t_avail,asc_rk_ign_on,asc_rk_flameouts,ship_thrust,ship_avail_thrust,ship_ign_on,ship_flameouts,ifc_raw_dt_s,ifc_dt_s,ifc_loop_n,ifc_hz_est,ifc_raw_dt_max_s,ifc_raw_dt_min_s,phase_el_s,status,craft_name,cfg_file" TO LOG_FILE.
 
   SET LOG_ACTIVE TO TRUE.
   SET LOG_LAST_WRITE_UT TO TIME:SECONDS - IFC_CSV_LOG_PERIOD.
@@ -371,12 +375,20 @@ FUNCTION LOGGER_WRITE {
   LOCAL flare_thr_floor IS 0.
   LOCAL flare_mode IS "".
   LOCAL flare_auth_limited IS 0.
+  LOCAL flare_auth_reason IS "NONE".
+  LOCAL flare_theta_cmd_raw IS 0.
+  LOCAL flare_theta_cmd_clamped IS 0.
+  LOCAL flare_theta_clamp_active IS 0.
   IF IFC_PHASE = PHASE_FLARE OR IFC_PHASE = PHASE_TOUCHDOWN {
     SET flare_mode TO FLARE_SUBMODE.
     IF FLARE_AUTH_LIMITED { SET flare_auth_limited TO 1. }
+    SET flare_auth_reason TO TELEM_FLARE_AUTH_REASON.
     SET flare_vs_err TO TELEM_FLARE_TGT_VS - vs_now.
     SET flare_fpa_err TO TELEM_AA_FPA_CMD - TELEM_ACTUAL_FPA_DEG.
     SET flare_pitch_err TO TELEM_AA_DIR_PITCH_DEG - TELEM_PITCH_DEG.
+    SET flare_theta_cmd_raw TO TELEM_FLARE_THETA_CMD_RAW.
+    SET flare_theta_cmd_clamped TO TELEM_FLARE_THETA_CMD_CLAMPED.
+    SET flare_theta_clamp_active TO TELEM_FLARE_THETA_CLAMP_ACTIVE.
     IF flare_ctrl_h_m > 0.5 {
       // Required average upward acceleration to move from current VS to target VS
       // over remaining control-height. Positive = need to arrest descent.
@@ -477,9 +489,13 @@ FUNCTION LOGGER_WRITE {
     ROUND(TELEM_FLARE_FRAC,           3),
     flare_mode,
     flare_auth_limited,
+    flare_auth_reason,
     ROUND(flare_vs_err,               3),
     ROUND(flare_fpa_err,              3),
     ROUND(flare_pitch_err,            3),
+    ROUND(flare_theta_cmd_raw,        3),
+    ROUND(flare_theta_cmd_clamped,    3),
+    ROUND(flare_theta_clamp_active,   0),
     ROUND(flare_pitch_in_cmd,         4),
     ROUND(elev_defl_avg_deg,          3),
     ROUND(elev_defl_max_deg,          3),

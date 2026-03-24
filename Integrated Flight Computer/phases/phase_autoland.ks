@@ -80,9 +80,8 @@ FUNCTION _CHECK_BOUNCE_RECOVERY {
       SET FLARE_ENTRY_VS  TO CLAMP(SHIP:VERTICALSPEED, flare_entry_vs_min, -0.05).
       SET FLARE_ENTRY_AGL TO MAX(flare_h + FLARE_CTRL_H_OFFSET, 1).
       SET FLARE_SUBMODE TO FLARE_MODE_CAPTURE.
-      SET FLARE_AUTH_LIMITED TO FALSE.
+      _FLARE_AUTH_CLEAR().
       SET FLARE_BALLOON_ACTIVE TO FALSE.
-      SET FLARE_AUTH_START_UT TO -1.
       SET FLARE_TECS_ET_INT TO 0.
       SET FLARE_TECS_EB_INT TO 0.
       SET FLARE_TECS_H_REF TO FLARE_ENTRY_AGL.
@@ -124,6 +123,23 @@ FUNCTION _GET_FLARE_TOUCHDOWN_VS {
     SET td_vs TO ACTIVE_AIRCRAFT["flare_touchdown_vs"].
   }
   RETURN td_vs.
+}
+
+FUNCTION _FLARE_AUTH_LATCH {
+  PARAMETER reason.
+  LOCAL reason_code IS reason.
+  IF reason_code = "" { SET reason_code TO "TRACK". }
+  IF FLARE_AUTH_START_UT < 0 { SET FLARE_AUTH_START_UT TO TIME:SECONDS. }
+  SET FLARE_AUTH_LIMITED TO TRUE.
+  SET FLARE_AUTH_CLEAR_START_UT TO -1.
+  SET TELEM_FLARE_AUTH_REASON TO reason_code.
+}
+
+FUNCTION _FLARE_AUTH_CLEAR {
+  SET FLARE_AUTH_LIMITED TO FALSE.
+  SET FLARE_AUTH_START_UT TO -1.
+  SET FLARE_AUTH_CLEAR_START_UT TO -1.
+  SET TELEM_FLARE_AUTH_REASON TO "NONE".
 }
 
 FUNCTION _COMPUTE_FLARE_SUBMODE {
@@ -210,11 +226,29 @@ FUNCTION _UPDATE_FLARE_AUTHORITY_STATE {
   IF candidate {
     IF FLARE_AUTH_START_UT < 0 { SET FLARE_AUTH_START_UT TO TIME:SECONDS. }
     IF TIME:SECONDS - FLARE_AUTH_START_UT >= detect_s {
-      SET FLARE_AUTH_LIMITED TO TRUE.
+      _FLARE_AUTH_LATCH("TRACK").
     }
   } ELSE {
-    SET FLARE_AUTH_START_UT TO -1.
-    SET FLARE_AUTH_LIMITED TO FALSE.
+    IF NOT FLARE_AUTH_LIMITED { SET FLARE_AUTH_START_UT TO -1. }
+  }
+
+  IF FLARE_AUTH_LIMITED {
+    LOCAL clear_vs_trigger IS MAX(ABS(vs_err_trigger) * 0.5, 0.2).
+    LOCAL clear_pitch_trigger IS MAX(ABS(pitch_err_trigger) * 0.7, 0.5).
+    LOCAL clear_fpa_trigger IS MAX(ABS(fpa_err_trigger) * 0.7, 0.3).
+    LOCAL clear_hold_s IS MAX(detect_s * 2, 0.6).
+    LOCAL clear_candidate IS NOT ctrl_limited AND
+                            ABS(vs_err) <= clear_vs_trigger AND
+                            ABS(pitch_err) <= clear_pitch_trigger AND
+                            ABS(fpa_err) <= clear_fpa_trigger.
+    IF clear_candidate {
+      IF FLARE_AUTH_CLEAR_START_UT < 0 { SET FLARE_AUTH_CLEAR_START_UT TO TIME:SECONDS. }
+      IF TIME:SECONDS - FLARE_AUTH_CLEAR_START_UT >= clear_hold_s {
+        _FLARE_AUTH_CLEAR().
+      }
+    } ELSE {
+      SET FLARE_AUTH_CLEAR_START_UT TO -1.
+    }
   }
 }
 
@@ -360,9 +394,8 @@ FUNCTION _CHECK_FLARE_CLIMBAWAY {
   SET FLARE_TRIGGER_START_UT TO -1.
   SET TOUCHDOWN_CANDIDATE_UT TO -1.
   SET FLARE_SUBMODE          TO FLARE_MODE_CAPTURE.
-  SET FLARE_AUTH_LIMITED     TO FALSE.
+  _FLARE_AUTH_CLEAR().
   SET FLARE_BALLOON_ACTIVE   TO FALSE.
-  SET FLARE_AUTH_START_UT    TO -1.
   SET FLARE_TECS_ET_INT      TO 0.
   SET FLARE_TECS_EB_INT      TO 0.
   SET FLARE_TECS_H_REF       TO flare_agl.
@@ -391,9 +424,8 @@ FUNCTION _RUN_FLARE_TOUCHDOWN_GATE {
     SET TOUCHDOWN_INIT_DONE         TO FALSE.
     SET TOUCHDOWN_CANDIDATE_UT      TO -1.
     SET BOUNCE_RECOVERY_START_UT    TO -1.
-    SET FLARE_AUTH_LIMITED          TO FALSE.
+    _FLARE_AUTH_CLEAR().
     SET FLARE_BALLOON_ACTIVE        TO FALSE.
-    SET FLARE_AUTH_START_UT         TO -1.
     SET FLARE_TECS_ET_INT           TO 0.
     SET FLARE_TECS_EB_INT           TO 0.
     SET FLARE_SUBMODE               TO FLARE_MODE_TOUCHDOWN_CONFIRM.
@@ -420,9 +452,8 @@ FUNCTION _RUN_FLARE_TOUCHDOWN_GATE {
       SET TOUCHDOWN_INIT_DONE         TO FALSE.
       SET TOUCHDOWN_CANDIDATE_UT      TO -1.
       SET BOUNCE_RECOVERY_START_UT    TO -1.
-      SET FLARE_AUTH_LIMITED          TO FALSE.
+      _FLARE_AUTH_CLEAR().
       SET FLARE_BALLOON_ACTIVE        TO FALSE.
-      SET FLARE_AUTH_START_UT         TO -1.
       SET FLARE_TECS_ET_INT           TO 0.
       SET FLARE_TECS_EB_INT           TO 0.
       SET_PHASE(PHASE_TOUCHDOWN).
@@ -593,6 +624,9 @@ FUNCTION _RUN_FLARE {
   // an authority limit so flare recovery can shift toward throttle support.
   LOCAL tailstrike_limited_prev IS TELEM_AA_DIR_PITCH_DEG >= tailstrike_pitch_max - 0.25 AND
                                    pitch_err > 0 AND vs_err > 0.
+  IF tailstrike_limited_prev AND vs_err > 0 {
+    _FLARE_AUTH_LATCH("TAILSTRIKE").
+  }
   LOCAL ctrl_limited IS thr_at_floor OR thr_at_ceiling OR aoa_near_lim OR tailstrike_limited_prev OR FLARE_BALLOON_ACTIVE.
   SET TELEM_FLARE_ET_ERR TO e_total_err.
   SET TELEM_FLARE_EB_ERR TO e_balance_err.
@@ -632,16 +666,21 @@ FUNCTION _RUN_FLARE {
   }
   IF FLARE_BALLOON_ACTIVE {
     SET gamma_cmd TO MIN(gamma_cmd, flare_balloon_gamma_down_deg).
-    SET FLARE_AUTH_LIMITED TO TRUE.
-    IF FLARE_AUTH_START_UT < 0 { SET FLARE_AUTH_START_UT TO TIME:SECONDS. }
+    _FLARE_AUTH_LATCH("BALLOON").
+  }
+  LOCAL sign_mismatch IS gamma_cmd * TELEM_ACTUAL_FPA_DEG < -0.25.
+  IF sign_mismatch AND ABS(vs_err) > 0.3 {
+    _FLARE_AUTH_LATCH("SIGN").
   }
 
   LOCAL theta_cmd_raw IS _COMPUTE_THETA_CMD(gamma_cmd).
   LOCAL theta_cmd IS CLAMP_TAILSTRIKE_DIRECTOR_CMD(theta_cmd_raw).
   LOCAL tailstrike_limited_now IS theta_cmd < theta_cmd_raw - 0.001.
+  SET TELEM_FLARE_THETA_CMD_RAW TO theta_cmd_raw.
+  SET TELEM_FLARE_THETA_CMD_CLAMPED TO theta_cmd.
+  SET TELEM_FLARE_THETA_CLAMP_ACTIVE TO CHOOSE 1 IF tailstrike_limited_now ELSE 0.
   IF tailstrike_limited_now AND vs_err > 0 {
-    SET FLARE_AUTH_LIMITED TO TRUE.
-    IF FLARE_AUTH_START_UT < 0 { SET FLARE_AUTH_START_UT TO TIME:SECONDS. }
+    _FLARE_AUTH_LATCH("TAILSTRIKE").
   }
   AA_SET_DIRECTOR(ACTIVE_RWY_HDG, theta_cmd).
   SET TELEM_AA_HDG_CMD   TO ACTIVE_RWY_HDG.

@@ -178,6 +178,10 @@ GLOBAL TELEM_FLARE_GAMMA_CMD_UNSAT IS 0. // flare TECS gamma command before clam
 GLOBAL TELEM_FLARE_ETDOT_ERR IS 0. // flare TECS total-energy rate error (m^2/s^3)
 GLOBAL TELEM_FLARE_EBDOT_ERR IS 0. // flare TECS energy-balance rate error (m^2/s^3)
 GLOBAL TELEM_FLARE_IAS_DOT   IS 0. // flare filtered IAS derivative (m/s^2)
+GLOBAL TELEM_FLARE_THETA_CMD_RAW IS 0. // flare director pitch command before tailstrike clamp (deg)
+GLOBAL TELEM_FLARE_THETA_CMD_CLAMPED IS 0. // flare director pitch command after tailstrike clamp (deg)
+GLOBAL TELEM_FLARE_THETA_CLAMP_ACTIVE IS 0. // 1 when tailstrike clamp is active this cycle, else 0
+GLOBAL TELEM_FLARE_AUTH_REASON IS "NONE". // flare authority-limited reason code (NONE/TRACK/SIGN/TAILSTRIKE/BALLOON)
 GLOBAL TELEM_STEER_BLEND   IS 0.  // rollout wheelsteering blend factor (0-1)
 GLOBAL TELEM_RO_HDG_ERR    IS 0.  // rollout: actual hdg minus steer target (deg)
 GLOBAL TELEM_RO_YAW_TGT    IS 0.  // rollout: yaw command target before slew rate
@@ -299,6 +303,7 @@ GLOBAL FLARE_SUBMODE IS FLARE_MODE_CAPTURE. // FLARE_CAPTURE/FLARE_TRACK/ROUNDOU
 GLOBAL FLARE_AUTH_LIMITED IS FALSE. // TRUE when flare authority monitor is latched
 GLOBAL FLARE_BALLOON_ACTIVE IS FALSE. // TRUE when anti-balloon supervision is latched during flare
 GLOBAL FLARE_AUTH_START_UT IS -1. // persistence timer for authority-limited detection
+GLOBAL FLARE_AUTH_CLEAR_START_UT IS -1. // persistence timer for clearing authority-limited latch
 GLOBAL FLARE_TECS_ET_INT IS 0. // flare TECS total-energy integrator
 GLOBAL FLARE_TECS_EB_INT IS 0. // flare TECS energy-balance integrator
 GLOBAL FLARE_TECS_H_REF IS 0. // flare TECS runway-relative reference height (m)
@@ -595,6 +600,7 @@ FUNCTION IFC_INIT_STATE {
   SET FLARE_AUTH_LIMITED TO FALSE.
   SET FLARE_BALLOON_ACTIVE TO FALSE.
   SET FLARE_AUTH_START_UT TO -1.
+  SET FLARE_AUTH_CLEAR_START_UT TO -1.
   SET FLARE_TECS_ET_INT TO 0.
   SET FLARE_TECS_EB_INT TO 0.
   SET FLARE_TECS_H_REF TO FLARE_AGL_M.
@@ -650,6 +656,10 @@ FUNCTION IFC_INIT_STATE {
   SET TELEM_FLARE_ETDOT_ERR TO 0.
   SET TELEM_FLARE_EBDOT_ERR TO 0.
   SET TELEM_FLARE_IAS_DOT   TO 0.
+  SET TELEM_FLARE_THETA_CMD_RAW TO 0.
+  SET TELEM_FLARE_THETA_CMD_CLAMPED TO 0.
+  SET TELEM_FLARE_THETA_CLAMP_ACTIVE TO 0.
+  SET TELEM_FLARE_AUTH_REASON TO "NONE".
   SET TELEM_STEER_BLEND  TO 0.
   SET TELEM_RO_HDG_ERR   TO 0.
   SET TELEM_RO_YAW_TGT   TO 0.
