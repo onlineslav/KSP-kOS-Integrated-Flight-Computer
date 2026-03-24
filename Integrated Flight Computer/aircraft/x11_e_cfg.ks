@@ -1,7 +1,7 @@
-@LAZYGLOBAL OFF.
+﻿@LAZYGLOBAL OFF.
 
 // ============================================================
-// x10_h_cfg.ks  -  Integrated Flight Computer aircraft config
+// x11_e_cfg.ks  -  Integrated Flight Computer aircraft config
 //
 // Comment format (standardized):
 //   // [unit]   Description   (global)
@@ -16,7 +16,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // ========================================================
     // 1) Identity + Airframe Envelope
     // ========================================================
-    "name", "X10-H Bigboi",                   // [string]          Aircraft display name shown in IFC status and logs.                              
+    "name", "X11-E",                   // [string]          Aircraft display name shown in IFC status and logs.                              
 //  "notes", "X10-H Spaceplane",              // [string]          Free-text note shown at IFC startup for quick context.                           UNUSED
 
 //  "vs0", 92.0,                              // [m/s]             Landing-configuration stall speed estimate used for protection/scheduling logic. UNUSED
@@ -24,7 +24,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "tailstrike_pitch_max_deg", 15.5,         // [deg]             Absolute pitch cap near runway to protect tail.                                  (20.0)
 
     // AtmosphereAutopilot moderator limits (per-aircraft overrides).
-    "aa_max_aoa", 18,                         // [deg]             Max commanded AoA in FBW director.                                               (12)
+    "aa_max_aoa", 20,                         // [deg]             Max commanded AoA in FBW director.                                               (12)
     "aa_max_g", -1,                           // [g]               Max normal load factor in FBW.                                                   (3.5)
     "aa_max_sideslip", -1,                    // [deg]             Max allowable sideslip in FBW.                                                   (5)
     "aa_max_side_g", -1,                      // [g]               Max lateral load factor in FBW.                                                  (1.5)
@@ -33,7 +33,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // ========================================================
     // 2) Hardware / Action-Group Mapping
     // ========================================================
-    "has_nws", TRUE,                          // [bool]            TRUE when the aircraft has usable nose-wheel steering.                           
+    "has_nws", FALSE,                          // [bool]            TRUE when the aircraft has usable nose-wheel steering.                           
     "ag_flaps_step_up", 9,                    // [AG#]             FAR flap detent step-up action group (1..10, 0 disables).                        
     "ag_flaps_step_down", 10,                 // [AG#]             FAR flap detent step-down action group (1..10, 0 disables).                      
     "ag_spoilers", 8,                         // [AG#]             Touchdown spoiler/airbrake deploy action group (1..10, 0 disables).              
@@ -44,9 +44,9 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // ========================================================
     // 3) Takeoff
     // ========================================================
-    "v_r", 160.0,                             // [m/s]             Rotation speed target.                                                           (70)
-    "v2", 176.0,                              // [m/s]             Climb safety speed target after liftoff.                                         (80)
-    "takeoff_pitch_tgt", 11.5,                // [deg]             Initial pitch target used through rotation.                                      (12)
+    "v_r", 120.0,                             // [m/s]             Rotation speed target.                                                           (70)
+    "v2", 150.0,                              // [m/s]             Climb safety speed target after liftoff.                                         (80)
+    "takeoff_pitch_tgt", 10,                // [deg]             Initial pitch target used through rotation.                                      (12)
     "takeoff_pitch_slew_dps", 3.6,            // [deg/s]           Slew limit applied to rotation pitch target changes.                             (3.0)
 
     // On-wheels rotation control shaping.
@@ -102,8 +102,8 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // ========================================================
     // 4) Approach
     // ========================================================
-    "v_app", 152.0,                           // [m/s]             Target IAS from intercept through stabilized approach.                           
-    "v_ref", 142.0,                           // [m/s]             Reference IAS near threshold crossing.                                           
+    "v_app", 150.0,                           // [m/s]             Target IAS from intercept through stabilized approach.                           
+    "v_ref", 130.0,                           // [m/s]             Reference IAS near threshold crossing.                                           
 
     // Intercept and short-final speed scheduler.
     "app_spd_intercept_gain", 0.45,           // [unitless]        Intercept add gain: Vint = Vapp + clamp((Vapp-Vref)*gain, min, max).             (0.60)
@@ -129,9 +129,9 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "vfe_climb", 250,                         // [m/s]             Max IAS permitted in climb flap detent.                                          
     "vfe_approach", 220,                      // [m/s]             Max IAS permitted in approach flap detent.                                       
     "vfe_landing", 210,                       // [m/s]             Max IAS permitted in landing flap detent.                                        
-    "flaps_climb_km", 60,                     // [km]              Distance cue for climb-detent selection.                                         
-    "flaps_approach_km", 50,                  // [km]              Distance cue for approach-detent selection.                                      
-    "flaps_landing_km", 30,                   // [km]              Distance cue for landing-detent selection.                                       
+    "flaps_climb_km", 45,                     // [km]              Distance cue for climb-detent selection.                                         
+    "flaps_approach_km", 30,                  // [km]              Distance cue for approach-detent selection.                                      
+    "flaps_landing_km", 8,                   // [km]              Distance cue for landing-detent selection.                                       
 
     // ========================================================
     // 5) Landing (Flare / Touchdown / Rollout)
@@ -139,7 +139,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Flare geometry and command shaping.
     "flare_gear_tag", "ifc_maingear",         // [string]          Part tag used as main-gear height reference.                                     ("ifc_maingear")
     "flare_ctrl_h_offset_max_m", 20.0,        // [m]               Max captured control-height offset (runway height minus gear height).            (30.0)
-    "flare_agl", 36,                          // [m]               Runway-relative trigger height to enter flare phase.                             (25)
+    "flare_agl", 43,                          // [m]               Runway-relative trigger height to enter flare phase.                             (25)
     "flare_entry_vs_min", -9.0,               // [m/s]             Minimum flare-entry sink retained from approach.                                  (-6.0)
     "flare_touchdown_vs", -0.75,              // [m/s]             Target sink rate at touchdown.                                                   (-0.3)
     "flare_cmd_fpa_min", -0.5,                // [deg]             Lower clamp on flare FPA command.                                                (-6.0)
@@ -192,13 +192,13 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "rollout_yaw_slew_per_s", 1.0,            // [cmd/s]           Slew limit for rollout yaw command.                                              (2.5)
     "rollout_yaw_fade_ias", 35,               // [m/s]             IAS where yaw-assist output fades toward zero.                                   (20)
     "rollout_yaw_max_cmd", 0.22,              // [cmd]             Max magnitude of rollout yaw command.                                            (0.50)
-    "rollout_touchdown_settle_s", 0.85,       // [s]               Post-touchdown settle delay before full rollout logic.                           (0.20)
+    "rollout_touchdown_settle_s", 0.55,       // [s]               Post-touchdown settle delay before full rollout logic.                           (0.20)
     "touchdown_nose_hold_s", 0.25,            // [s]               Hold main-gear touchdown pitch before commanded nose-lowering begins.            (0.15)
     "touchdown_nose_lower_rate_dps", 1.5,     // [deg/s]           Max commanded de-rotation rate toward rollout_nose_target_pitch_deg.             (2.0)
-    "bounce_recovery_agl_m", 2.2,             // [m]               Max AGL for bounce-recovery logic to engage.                                     (2.5)
-    "bounce_recovery_min_vs", 1.2,            // [m/s]             Minimum positive VS that flags a bounce condition.                               (0.6)
-    "bounce_recovery_confirm_s", 0.45,        // [s]               Required bounce persistence before recovery mode latches.                        (0.30)
-    "bounce_recovery_max_s", 1.8,             // [s]               Max time bounce recovery remains active before fallback.                         (6.0)
+    "bounce_recovery_agl_m", 3.5,             // [m]               Max AGL for bounce-recovery logic to engage.                                     (2.5)
+    "bounce_recovery_min_vs", 0.8,            // [m/s]             Minimum positive VS that flags a bounce condition.                               (0.6)
+    "bounce_recovery_confirm_s", 0.35,        // [s]               Required bounce persistence before recovery mode latches.                        (0.30)
+    "bounce_recovery_max_s", 4.0,             // [s]               Max time bounce recovery remains active before fallback.                         (6.0)
     "rollout_nose_hold_cmd", 0.14,            // [cmd]             Initial nose-up hold command during early rollout.                               (0.0)
     "rollout_nose_release_ias", 60,           // [m/s]             IAS where nose-hold behavior is released.                                        (35)
     "rollout_nose_hold_min_s", 2.4,           // [s]               Minimum hold time before allowing nose-release logic.                            (1.0)
@@ -221,6 +221,6 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "ascent_aoa_limit", -1,                   // [deg]             Ascent AoA clamp.                                                                (12)
     "ascent_regime_mach", -1,                 // [Mach]            Transition Mach between ascent thermal/prop regimes.                             (4.5)
     "ascent_zoom_target_m", -1,               // [m]               Apoapsis target for zoom/climb transition.                                       (45000)
-    "ascent_apoapsis_target_m", -1            // [m]               Final apoapsis target before coast/circularize.                                  (80000)
+    "ascent_apoapsis_target_m", -1
   ).
 }
