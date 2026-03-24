@@ -166,10 +166,11 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // ── Flare ─────────────────────────────────────────────
     // Override the global constants for this specific aircraft.
     // Set to -1 to use the global default from ifc_constants.ks.
-    "flare_agl",               50,   // m runway-relative height to begin flare (conservative while retuning)
+    "flare_gear_tag",          "ifc_maingear", // tag on parts used as main-gear flare/touchdown reference
+    "flare_agl",               50,   // m runway-relative main-gear height to begin flare (conservative while retuning)
     "flare_touchdown_vs",      -0.25,// m/s target sink rate at wheel contact
     "flare_ias_to_vs_gain",    0.001,// extra sink per m/s above Vref during flare (kept very small)
-    "flare_roundout_agl",      24.0, // m AGL final sink blend zone (earlier sink arrest)
+    "flare_roundout_agl",      24.0, // m runway-relative main-gear final sink blend zone (earlier sink arrest)
     "flare_roundout_strength", 1.0,  // full roundout blend
     "flare_balloon_vs_trigger",0.25, // m/s VS threshold for anti-balloon push
     "flare_balloon_fpa_push",  1.6,  // deg nose-down bias when ballooning

@@ -35,7 +35,7 @@ FUNCTION _DEPLOY_TOUCHDOWN_SPOILERS {
 // Detects a post-touchdown bounce and transitions back to FLARE.
 //
 // Parameters (all resolved by the caller from AC_PARAM or constants):
-//   br_agl_m     - m AGL above which aircraft is considered airborne
+//   br_agl_m     - m runway-relative main-gear height above which aircraft is considered airborne
 //   br_min_vs    - m/s minimum upward VS to count as a real bounce
 //   br_confirm_s - s airborne conditions must persist before recovery triggers
 //   br_max_s     - s after phase entry where bounce recovery is still checked
@@ -46,7 +46,7 @@ FUNCTION _DEPLOY_TOUCHDOWN_SPOILERS {
 // ─────────────────────────────────────────────────────────
 FUNCTION _CHECK_BOUNCE_RECOVERY {
   PARAMETER br_agl_m, br_min_vs, br_confirm_s, br_max_s, reset_init.
-  LOCAL flare_h IS GET_RUNWAY_REL_HEIGHT().
+  LOCAL flare_h IS GET_MAIN_GEAR_RUNWAY_HEIGHT_MIN().
   LOCAL airborne IS PHASE_ELAPSED() < br_max_s AND
                    SHIP:STATUS <> "LANDED" AND
                    flare_h > br_agl_m AND
@@ -99,7 +99,7 @@ FUNCTION _RUN_FLARE {
   SET TELEM_RO_PITCH_TGT   TO 0.
   SET TELEM_RO_PITCH_ERR   TO 0.
   SET TELEM_RO_PITCH_FF    TO 0.
-  LOCAL agl    IS GET_RUNWAY_REL_HEIGHT().
+  LOCAL flare_h IS GET_MAIN_GEAR_RUNWAY_HEIGHT_MIN().
   LOCAL ias    IS MAX(GET_IAS(), 10).  // floor prevents divide-by-zero at very low speed
   LOCAL vs_now IS SHIP:VERTICALSPEED.
 
@@ -126,7 +126,7 @@ FUNCTION _RUN_FLARE {
   IF flare_rate_max < flare_rate_min { SET flare_rate_max TO flare_rate_min. }
 
   // Progress: 0 = just entered flare, 1 = at ground level.
-  LOCAL frac IS CLAMP(1 - agl / FLARE_ENTRY_AGL, 0, 1).
+  LOCAL frac IS CLAMP(1 - flare_h / FLARE_ENTRY_AGL, 0, 1).
 
   // Interpolate target sink rate from entry VS down to touchdown target.
   LOCAL base_vs IS FLARE_ENTRY_VS + (flare_touchdown_vs - FLARE_ENTRY_VS) * frac.
@@ -140,8 +140,8 @@ FUNCTION _RUN_FLARE {
 
   // Final roundout: in the last few meters, blend sink target quickly
   // toward flare_touchdown_vs to reduce hard wheel contact.
-  IF flare_roundout_agl > 0 AND agl < flare_roundout_agl AND flare_roundout_strength > 0 {
-    LOCAL round_frac IS CLAMP(1 - agl / flare_roundout_agl, 0, 1) * flare_roundout_strength.
+  IF flare_roundout_agl > 0 AND flare_h < flare_roundout_agl AND flare_roundout_strength > 0 {
+    LOCAL round_frac IS CLAMP(1 - flare_h / flare_roundout_agl, 0, 1) * flare_roundout_strength.
     SET tgt_vs TO tgt_vs + (flare_touchdown_vs - tgt_vs) * round_frac.
   }
 
@@ -200,7 +200,12 @@ FUNCTION _RUN_FLARE {
   }
 
   // Fallback touchdown path: debounced for low-altitude near-ground cases.
-  LOCAL td_fallback IS agl < TOUCHDOWN_FALLBACK_AGL_M AND vs_now <= TOUCHDOWN_FALLBACK_MAX_VS.
+  LOCAL td_gear_count IS COUNT_MAIN_GEAR_BELOW(TOUCHDOWN_FALLBACK_AGL_M).
+  LOCAL td_gear_need IS 1.
+  IF FLARE_GEAR_PARTS:LENGTH >= 2 { SET td_gear_need TO 2. }
+  LOCAL td_fallback IS flare_h < TOUCHDOWN_FALLBACK_AGL_M AND
+                      vs_now <= TOUCHDOWN_FALLBACK_MAX_VS AND
+                      td_gear_count >= td_gear_need.
   IF td_fallback {
     IF TOUCHDOWN_CANDIDATE_UT < 0 { SET TOUCHDOWN_CANDIDATE_UT TO TIME:SECONDS. }
     IF TIME:SECONDS - TOUCHDOWN_CANDIDATE_UT >= touchdown_confirm_s {

@@ -189,10 +189,11 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // ── Flare ─────────────────────────────────────────────
     // Override the global constants for this specific aircraft.
     // Set to -1 to use the global default from ifc_constants.ks.
-    "flare_agl",    -1,   // m AGL to begin flare  (-1 = use FLARE_AGL_M)
+    "flare_gear_tag",      "", // tagged main-gear parts used for flare/touchdown height ("", use global default tag)
+    "flare_agl",    -1,   // m runway-relative main-gear height to begin flare  (-1 = use FLARE_AGL_M)
     "flare_touchdown_vs",      -1, // m/s  (-1 = use TOUCHDOWN_VS)
     "flare_ias_to_vs_gain",    -1, // sink per m/s above Vref (-1 = global)
-    "flare_roundout_agl",      -1, // m AGL roundout zone (-1 = global)
+    "flare_roundout_agl",      -1, // m runway-relative main-gear roundout zone (-1 = global)
     "flare_roundout_strength", -1, // 0..1 blend in roundout zone (-1 = global)
     "flare_balloon_vs_trigger",-1, // m/s trigger balloon recovery (-1 = global)
     "flare_balloon_fpa_push",  -1, // deg extra nose-down in recovery (-1 = global)

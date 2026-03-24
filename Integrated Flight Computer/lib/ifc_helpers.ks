@@ -180,6 +180,102 @@ FUNCTION GET_RUNWAY_REL_HEIGHT {
   RETURN GET_AGL().
 }
 
+FUNCTION _GET_MAIN_GEAR_TAG {
+  LOCAL tag IS FLARE_MAIN_GEAR_TAG_DEFAULT.
+  IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("flare_gear_tag") {
+    LOCAL ac_tag IS ACTIVE_AIRCRAFT["flare_gear_tag"].
+    IF ac_tag <> "" { SET tag TO ac_tag. }
+  }
+  RETURN tag.
+}
+
+FUNCTION _GET_RUNWAY_REF_ALT_ASL {
+  IF ACTIVE_ILS_ID <> "" {
+    LOCAL ils IS GET_BEACON(ACTIVE_ILS_ID).
+    IF ils:HASKEY("alt_asl") { RETURN ils["alt_asl"]. }
+  }
+  RETURN SHIP:ALTITUDE - GET_AGL().
+}
+
+FUNCTION _DISCOVER_MAIN_GEAR_PARTS {
+  LOCAL tag IS _GET_MAIN_GEAR_TAG().
+  IF FLARE_GEAR_DISCOVERED AND FLARE_GEAR_TAG_ACTIVE = tag { RETURN. }
+
+  FLARE_GEAR_PARTS:CLEAR().
+  SET FLARE_GEAR_TAG_ACTIVE TO tag.
+  SET FLARE_GEAR_DISCOVERED TO TRUE.
+
+  IF tag = "" { RETURN. }
+  IF NOT SHIP:HASSUFFIX("PARTSTAGGED") { RETURN. }
+
+  LOCAL tagged_parts IS SHIP:PARTSTAGGED(tag).
+  LOCAL i IS 0.
+  UNTIL i >= tagged_parts:LENGTH {
+    LOCAL p IS tagged_parts[i].
+    IF p <> 0 AND p:HASSUFFIX("BOUNDS") {
+      LOCAL b IS p:BOUNDS.
+      IF b <> 0 AND (b:HASSUFFIX("BOTTOMALT") OR b:HASSUFFIX("BOTTOMALTRADAR")) {
+        FLARE_GEAR_PARTS:ADD(p).
+      }
+    }
+    SET i TO i + 1.
+  }
+}
+
+FUNCTION PRIME_MAIN_GEAR_CACHE {
+  _DISCOVER_MAIN_GEAR_PARTS().
+}
+
+FUNCTION _GET_GEAR_BOTTOM_RUNWAY_HEIGHT {
+  PARAMETER gear_part, runway_ref_alt_asl.
+  IF gear_part = 0 OR NOT gear_part:HASSUFFIX("BOUNDS") { RETURN 999999. }
+  LOCAL b IS gear_part:BOUNDS.
+  IF b = 0 { RETURN 999999. }
+  IF b:HASSUFFIX("BOTTOMALT") { RETURN b:BOTTOMALT - runway_ref_alt_asl. }
+  IF b:HASSUFFIX("BOTTOMALTRADAR") { RETURN b:BOTTOMALTRADAR. }
+  RETURN 999999.
+}
+
+// Returns minimum runway-relative height (m) among tagged main-gear parts.
+// Falls back to vessel runway-relative height if no tagged gear parts exist.
+FUNCTION GET_MAIN_GEAR_RUNWAY_HEIGHT_MIN {
+  _DISCOVER_MAIN_GEAR_PARTS().
+  IF FLARE_GEAR_PARTS:LENGTH <= 0 { RETURN GET_RUNWAY_REL_HEIGHT(). }
+
+  LOCAL runway_ref_alt_asl IS _GET_RUNWAY_REF_ALT_ASL().
+  LOCAL min_h IS 999999.
+  LOCAL i IS 0.
+  UNTIL i >= FLARE_GEAR_PARTS:LENGTH {
+    LOCAL h IS _GET_GEAR_BOTTOM_RUNWAY_HEIGHT(FLARE_GEAR_PARTS[i], runway_ref_alt_asl).
+    IF h < min_h { SET min_h TO h. }
+    SET i TO i + 1.
+  }
+  IF min_h < 999998 { RETURN min_h. }
+  RETURN GET_RUNWAY_REL_HEIGHT().
+}
+
+// Counts tagged main-gear parts currently at or below the given
+// runway-relative height threshold.
+FUNCTION COUNT_MAIN_GEAR_BELOW {
+  PARAMETER height_m.
+  _DISCOVER_MAIN_GEAR_PARTS().
+
+  IF FLARE_GEAR_PARTS:LENGTH <= 0 {
+    IF GET_RUNWAY_REL_HEIGHT() <= height_m { RETURN 1. }
+    RETURN 0.
+  }
+
+  LOCAL runway_ref_alt_asl IS _GET_RUNWAY_REF_ALT_ASL().
+  LOCAL count IS 0.
+  LOCAL i IS 0.
+  UNTIL i >= FLARE_GEAR_PARTS:LENGTH {
+    LOCAL h IS _GET_GEAR_BOTTOM_RUNWAY_HEIGHT(FLARE_GEAR_PARTS[i], runway_ref_alt_asl).
+    IF h <= height_m { SET count TO count + 1. }
+    SET i TO i + 1.
+  }
+  RETURN count.
+}
+
 FUNCTION GET_AOA {
   IF FAR_AVAILABLE { RETURN ADDONS:FAR:AOA. }
   RETURN 0.

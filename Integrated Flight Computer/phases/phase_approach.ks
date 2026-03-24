@@ -98,6 +98,8 @@ FUNCTION _APP_GS_VIS_SYNC {
 }
 
 FUNCTION RUN_APPROACH {
+  // Ensure main-gear flare sensor cache is ready for approach-only save loads.
+  PRIME_MAIN_GEAR_CACHE().
   _APP_GS_VIS_SYNC().
   _CHECK_FLAP_DEPLOYMENT().
   _CHECK_APPROACH_SPOILERS().
@@ -575,7 +577,7 @@ FUNCTION _RUN_ILS_TRACK {
   // Require descent (or near-level, if tuned) before arming flare.
   // Default 0 => flare only while VS is not climbing.
   LOCAL flare_trigger_max_vs IS AC_PARAM("flare_trigger_max_vs", 0, 0).
-  LOCAL flare_h_now IS GET_RUNWAY_REL_HEIGHT().
+  LOCAL flare_h_now IS GET_MAIN_GEAR_RUNWAY_HEIGHT_MIN().
   LOCAL vs_now IS SHIP:VERTICALSPEED.
 
   IF flare_h_now < flare_arm_agl {

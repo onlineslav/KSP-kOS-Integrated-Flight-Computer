@@ -279,8 +279,11 @@ GLOBAL CRUISE_END_UT      IS -1.          // UT when course_time cruise ends (-1
 // ----------------------------
 GLOBAL FLARE_PITCH_CMD  IS 0.   // current commanded FPA during flare (deg, smoothed)
 GLOBAL FLARE_ENTRY_VS   IS 0.   // vertical speed at flare trigger (m/s, negative)
-GLOBAL FLARE_ENTRY_AGL  IS 15.  // AGL at flare trigger (m)
+GLOBAL FLARE_ENTRY_AGL  IS 15.  // flare-reference height at trigger (m)
 GLOBAL FLARE_TRIGGER_START_UT IS -1. // debounce timer start for entering flare
+GLOBAL FLARE_GEAR_DISCOVERED IS FALSE. // TRUE once tagged main-gear parts are discovered for flare-height reference
+GLOBAL FLARE_GEAR_TAG_ACTIVE IS "". // active tag used for main-gear discovery cache
+GLOBAL FLARE_GEAR_PARTS IS LIST(). // LIST of Part handles tagged as main-gear flare sensors
 GLOBAL TOUCHDOWN_CANDIDATE_UT IS -1. // debounce timer start for entering touchdown
 GLOBAL TOUCHDOWN_INIT_DONE IS FALSE. // one-time touchdown handoff latch
 GLOBAL TOUCHDOWN_CAPTURE_PITCH_DEG IS 0. // pitch snapshot captured at flare->touchdown transition
@@ -556,6 +559,9 @@ FUNCTION IFC_INIT_STATE {
   SET FLARE_ENTRY_VS   TO 0.
   SET FLARE_ENTRY_AGL  TO FLARE_AGL_M.
   SET FLARE_TRIGGER_START_UT TO -1.
+  SET FLARE_GEAR_DISCOVERED TO FALSE.
+  SET FLARE_GEAR_TAG_ACTIVE TO "".
+  FLARE_GEAR_PARTS:CLEAR().
   SET TOUCHDOWN_CANDIDATE_UT TO -1.
   SET TOUCHDOWN_INIT_DONE TO FALSE.
   SET TOUCHDOWN_CAPTURE_PITCH_DEG TO 0.
