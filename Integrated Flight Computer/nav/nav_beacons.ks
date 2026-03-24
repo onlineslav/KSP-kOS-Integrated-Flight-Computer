@@ -101,44 +101,52 @@ LOCAL BELOW_GS_M IS 300.                            // m below GS at each IAF
 LOCAL GS_HGT_15KM IS ROUND(15000 * TAN(GS_ANG), 0). // 787 m above field at FAF
 LOCAL GS_HGT_30KM IS ROUND(30000 * TAN(GS_ANG), 0). // 1571 m above field at IAF-30
 LOCAL GS_HGT_60KM IS ROUND(60000 * TAN(GS_ANG), 0). // 3144 m above field at IAF-60
+LOCAL GS_ANG_STEEP IS 4.0.                               // deg, terrain-clearance approaches
+LOCAL GS4_HGT_15KM IS ROUND(15000 * TAN(GS_ANG_STEEP), 0).
+LOCAL GS4_HGT_30KM IS ROUND(30000 * TAN(GS_ANG_STEEP), 0).
+LOCAL GS4_HGT_60KM IS ROUND(60000 * TAN(GS_ANG_STEEP), 0).
 
 // ----------------------------
 // KSC ILS beacons
 // Coordinates from NavInstruments defaultRunways.cfg (gsLatitude/gsLongitude
 // is the threshold/glideslope antenna position for each runway).
 // Longitudes converted: NavInstruments 285.xxx - 360 = -74.xxx
+// Note: RWY 27L threshold/elevation was updated from in-game sampling
+// for this Van's KSC install.
 // ----------------------------
 LOCAL ksc_rwy09_thr IS LATLNG(-0.04877658, -74.70026463).  // 285.29973537 - 360
-LOCAL ksc_rwy27_thr IS LATLNG(-0.05005861, -74.51751840).  // 285.48248160 - 360
-LOCAL ksc_elev IS 70.  // altMSL from NavInstruments
+LOCAL ksc_rwy09_elev IS 70.  // altMSL from NavInstruments
+LOCAL ksc_rwy27_thr IS LATLNG(0.042795, -74.510267).
+LOCAL ksc_rwy27l_elev IS 74.29.
 
 REGISTER_BEACON(MAKE_BEACON(
   "KSC_ILS_09", BTYPE_ILS,
-  ksc_rwy09_thr, ksc_elev,
+  ksc_rwy09_thr, ksc_rwy09_elev,
   LEXICON("hdg", 90.4, "gs_angle", 3.0, "rwy", "09")
 )).
 
 REGISTER_BEACON(MAKE_BEACON(
-  "KSC_ILS_27", BTYPE_ILS,
-  ksc_rwy27_thr, ksc_elev,
-  LEXICON("hdg", 270.4, "gs_angle", 3.0, "rwy", "27")
+  "KSC_ILS_27L", BTYPE_ILS,
+  ksc_rwy27_thr, ksc_rwy27l_elev,
+  LEXICON("hdg", 270.4, "gs_angle", GS_ANG, "rwy", "27L")
 )).
 
 // Van's KSC long-runway thresholds (09R/27R), derived from local KK statics.
-LOCAL ksc_rwy09r_thr IS LATLNG(0.04285637, -75.31379059).
+LOCAL ksc_rwy09r_thr IS LATLNG(0.042762, -74.948327).
+LOCAL ksc_rwy09r_elev IS 81.27.
 LOCAL ksc_rwy27r_thr IS LATLNG(0.04283534, -74.83633283).
-LOCAL ksc_rwy_r_elev IS 93.
+LOCAL ksc_rwy27r_elev IS 93.
 
 REGISTER_BEACON(MAKE_BEACON(
   "KSC_ILS_09R", BTYPE_ILS,
-  ksc_rwy09r_thr, ksc_rwy_r_elev,
-  LEXICON("hdg", 90.0, "gs_angle", 3.0, "rwy", "09R")
+  ksc_rwy09r_thr, ksc_rwy09r_elev,
+  LEXICON("hdg", 90.0, "gs_angle", GS_ANG_STEEP, "rwy", "09R")
 )).
 
 REGISTER_BEACON(MAKE_BEACON(
   "KSC_ILS_27R", BTYPE_ILS,
-  ksc_rwy27r_thr, ksc_rwy_r_elev,
-  LEXICON("hdg", 270.0, "gs_angle", 3.0, "rwy", "27R")
+  ksc_rwy27r_thr, ksc_rwy27r_elev,
+  LEXICON("hdg", 270.0, "gs_angle", GS_ANG_STEEP, "rwy", "27R")
 )).
 
 // ----------------------------
@@ -309,9 +317,9 @@ LOCAL ksc09_iaf60_ll IS GEO_DESTINATION(ksc_rwy09_thr, 270, 60000).
 LOCAL ksc09_iaf30_ll IS GEO_DESTINATION(ksc_rwy09_thr, 270, 30000).
 LOCAL ksc09_faf_ll   IS GEO_DESTINATION(ksc_rwy09_thr, 270, 15000).
 
-LOCAL ksc_faf_alt   IS ksc_elev + GS_HGT_15KM.              // on GS:    857 m MSL
-LOCAL ksc_iaf30_alt IS ksc_elev + GS_HGT_30KM - BELOW_GS_M. // 300 m below GS: 1341 m MSL
-LOCAL ksc_iaf60_alt IS ksc_elev + GS_HGT_60KM - BELOW_GS_M. // 300 m below GS: 2914 m MSL
+LOCAL ksc_faf_alt   IS ksc_rwy09_elev + GS_HGT_15KM.              // on GS
+LOCAL ksc_iaf30_alt IS ksc_rwy09_elev + GS_HGT_30KM - BELOW_GS_M. // 300 m below GS
+LOCAL ksc_iaf60_alt IS ksc_rwy09_elev + GS_HGT_60KM - BELOW_GS_M. // 300 m below GS
 
 REGISTER_BEACON(MAKE_BEACON(
   "KSC_IAF_09_60", BTYPE_IAF,
@@ -332,28 +340,32 @@ REGISTER_BEACON(MAKE_BEACON(
 )).
 
 // ----------------------------
-// KSC RWY 27 approach fixes
+// KSC RWY 27L approach fixes (3 deg GS)
 // ----------------------------
-LOCAL ksc27_iaf60_ll IS GEO_DESTINATION(ksc_rwy27_thr, 90, 60000).
-LOCAL ksc27_iaf30_ll IS GEO_DESTINATION(ksc_rwy27_thr, 90, 30000).
-LOCAL ksc27_faf_ll   IS GEO_DESTINATION(ksc_rwy27_thr, 90, 15000).
+LOCAL ksc27l_iaf60_ll IS GEO_DESTINATION(ksc_rwy27_thr, 90, 60000).
+LOCAL ksc27l_iaf30_ll IS GEO_DESTINATION(ksc_rwy27_thr, 90, 30000).
+LOCAL ksc27l_faf_ll   IS GEO_DESTINATION(ksc_rwy27_thr, 90, 15000).
+
+LOCAL ksc_27l_faf_alt   IS ksc_rwy27l_elev + GS_HGT_15KM.
+LOCAL ksc_27l_iaf30_alt IS ksc_rwy27l_elev + GS_HGT_30KM - BELOW_GS_M.
+LOCAL ksc_27l_iaf60_alt IS ksc_rwy27l_elev + GS_HGT_60KM - BELOW_GS_M.
 
 REGISTER_BEACON(MAKE_BEACON(
-  "KSC_IAF_27_60", BTYPE_IAF,
-  ksc27_iaf60_ll, ksc_iaf60_alt,
-  LEXICON("name", "KSC RWY27 IAF 60km", "runway", "27")
+  "KSC_IAF_27L_60", BTYPE_IAF,
+  ksc27l_iaf60_ll, ksc_27l_iaf60_alt,
+  LEXICON("name", "KSC RWY27L IAF 60km", "runway", "27L")
 )).
 
 REGISTER_BEACON(MAKE_BEACON(
-  "KSC_IAF_27_30", BTYPE_IAF,
-  ksc27_iaf30_ll, ksc_iaf30_alt,
-  LEXICON("name", "KSC RWY27 IAF 30km", "runway", "27")
+  "KSC_IAF_27L_30", BTYPE_IAF,
+  ksc27l_iaf30_ll, ksc_27l_iaf30_alt,
+  LEXICON("name", "KSC RWY27L IAF 30km", "runway", "27L")
 )).
 
 REGISTER_BEACON(MAKE_BEACON(
-  "KSC_FAF_27", BTYPE_FAF,
-  ksc27_faf_ll, ksc_faf_alt,
-  LEXICON("name", "KSC RWY27 FAF 15km", "runway", "27")
+  "KSC_FAF_27L", BTYPE_FAF,
+  ksc27l_faf_ll, ksc_27l_faf_alt,
+  LEXICON("name", "KSC RWY27L FAF 15km", "runway", "27L")
 )).
 
 // ----------------------------
@@ -366,43 +378,46 @@ LOCAL ksc27r_iaf60_ll IS GEO_DESTINATION(ksc_rwy27r_thr,  90, 60000).
 LOCAL ksc27r_iaf30_ll IS GEO_DESTINATION(ksc_rwy27r_thr,  90, 30000).
 LOCAL ksc27r_faf_ll   IS GEO_DESTINATION(ksc_rwy27r_thr,  90, 15000).
 
-LOCAL ksc_r_faf_alt   IS ksc_rwy_r_elev + GS_HGT_15KM.
-LOCAL ksc_r_iaf30_alt IS ksc_rwy_r_elev + GS_HGT_30KM - BELOW_GS_M.
-LOCAL ksc_r_iaf60_alt IS ksc_rwy_r_elev + GS_HGT_60KM - BELOW_GS_M.
+LOCAL ksc_09r_faf_alt   IS ksc_rwy09r_elev + GS4_HGT_15KM.
+LOCAL ksc_09r_iaf30_alt IS ksc_rwy09r_elev + GS4_HGT_30KM - BELOW_GS_M.
+LOCAL ksc_09r_iaf60_alt IS ksc_rwy09r_elev + GS4_HGT_60KM - BELOW_GS_M.
+LOCAL ksc_27r_faf_alt   IS ksc_rwy27r_elev + GS4_HGT_15KM.
+LOCAL ksc_27r_iaf30_alt IS ksc_rwy27r_elev + GS4_HGT_30KM - BELOW_GS_M.
+LOCAL ksc_27r_iaf60_alt IS ksc_rwy27r_elev + GS4_HGT_60KM - BELOW_GS_M.
 
 REGISTER_BEACON(MAKE_BEACON(
   "KSC_IAF_09R_60", BTYPE_IAF,
-  ksc09r_iaf60_ll, ksc_r_iaf60_alt,
+  ksc09r_iaf60_ll, ksc_09r_iaf60_alt,
   LEXICON("name", "KSC RWY09R IAF 60km", "runway", "09R")
 )).
 
 REGISTER_BEACON(MAKE_BEACON(
   "KSC_IAF_09R_30", BTYPE_IAF,
-  ksc09r_iaf30_ll, ksc_r_iaf30_alt,
+  ksc09r_iaf30_ll, ksc_09r_iaf30_alt,
   LEXICON("name", "KSC RWY09R IAF 30km", "runway", "09R")
 )).
 
 REGISTER_BEACON(MAKE_BEACON(
   "KSC_FAF_09R", BTYPE_FAF,
-  ksc09r_faf_ll, ksc_r_faf_alt,
+  ksc09r_faf_ll, ksc_09r_faf_alt,
   LEXICON("name", "KSC RWY09R FAF 15km", "runway", "09R")
 )).
 
 REGISTER_BEACON(MAKE_BEACON(
   "KSC_IAF_27R_60", BTYPE_IAF,
-  ksc27r_iaf60_ll, ksc_r_iaf60_alt,
+  ksc27r_iaf60_ll, ksc_27r_iaf60_alt,
   LEXICON("name", "KSC RWY27R IAF 60km", "runway", "27R")
 )).
 
 REGISTER_BEACON(MAKE_BEACON(
   "KSC_IAF_27R_30", BTYPE_IAF,
-  ksc27r_iaf30_ll, ksc_r_iaf30_alt,
+  ksc27r_iaf30_ll, ksc_27r_iaf30_alt,
   LEXICON("name", "KSC RWY27R IAF 30km", "runway", "27R")
 )).
 
 REGISTER_BEACON(MAKE_BEACON(
   "KSC_FAF_27R", BTYPE_FAF,
-  ksc27r_faf_ll, ksc_r_faf_alt,
+  ksc27r_faf_ll, ksc_27r_faf_alt,
   LEXICON("name", "KSC RWY27R FAF 15km", "runway", "27R")
 )).
 
@@ -422,15 +437,15 @@ GLOBAL PLATE_KSC_ILS09 IS MAKE_PLATE(
   )
 ).
 
-GLOBAL PLATE_KSC_ILS27 IS MAKE_PLATE(
-  "KSC ILS RWY 27",
-  "KSC_ILS_27",
-  LIST("KSC_IAF_27_60", "KSC_IAF_27_30", "KSC_FAF_27"),
+GLOBAL PLATE_KSC_ILS27L IS MAKE_PLATE(
+  "KSC ILS RWY 27L",
+  "KSC_ILS_27L",
+  LIST("KSC_IAF_27L_60", "KSC_IAF_27L_30", "KSC_FAF_27L"),
   75,
   LEXICON(
-    "KSC_IAF_27_60", ksc_iaf60_alt,
-    "KSC_IAF_27_30", ksc_iaf30_alt,
-    "KSC_FAF_27",    ksc_faf_alt
+    "KSC_IAF_27L_60", ksc_27l_iaf60_alt,
+    "KSC_IAF_27L_30", ksc_27l_iaf30_alt,
+    "KSC_FAF_27L",    ksc_27l_faf_alt
   )
 ).
 
@@ -446,14 +461,14 @@ GLOBAL PLATE_KSC_ILS09_SHORT IS MAKE_PLATE(
   )
 ).
 
-GLOBAL PLATE_KSC_ILS27_SHORT IS MAKE_PLATE(
-  "KSC ILS RWY 27 (short)",
-  "KSC_ILS_27",
-  LIST("KSC_IAF_27_30", "KSC_FAF_27"),
+GLOBAL PLATE_KSC_ILS27L_SHORT IS MAKE_PLATE(
+  "KSC ILS RWY 27L (short)",
+  "KSC_ILS_27L",
+  LIST("KSC_IAF_27L_30", "KSC_FAF_27L"),
   75,
   LEXICON(
-    "KSC_IAF_27_30", ksc_iaf30_alt,
-    "KSC_FAF_27",    ksc_faf_alt
+    "KSC_IAF_27L_30", ksc_27l_iaf30_alt,
+    "KSC_FAF_27L",    ksc_27l_faf_alt
   )
 ).
 
@@ -463,9 +478,9 @@ GLOBAL PLATE_KSC_ILS09R IS MAKE_PLATE(
   LIST("KSC_IAF_09R_60", "KSC_IAF_09R_30", "KSC_FAF_09R"),
   75,
   LEXICON(
-    "KSC_IAF_09R_60", ksc_r_iaf60_alt,
-    "KSC_IAF_09R_30", ksc_r_iaf30_alt,
-    "KSC_FAF_09R",    ksc_r_faf_alt
+    "KSC_IAF_09R_60", ksc_09r_iaf60_alt,
+    "KSC_IAF_09R_30", ksc_09r_iaf30_alt,
+    "KSC_FAF_09R",    ksc_09r_faf_alt
   )
 ).
 
@@ -475,9 +490,9 @@ GLOBAL PLATE_KSC_ILS27R IS MAKE_PLATE(
   LIST("KSC_IAF_27R_60", "KSC_IAF_27R_30", "KSC_FAF_27R"),
   75,
   LEXICON(
-    "KSC_IAF_27R_60", ksc_r_iaf60_alt,
-    "KSC_IAF_27R_30", ksc_r_iaf30_alt,
-    "KSC_FAF_27R",    ksc_r_faf_alt
+    "KSC_IAF_27R_60", ksc_27r_iaf60_alt,
+    "KSC_IAF_27R_30", ksc_27r_iaf30_alt,
+    "KSC_FAF_27R",    ksc_27r_faf_alt
   )
 ).
 
@@ -487,8 +502,8 @@ GLOBAL PLATE_KSC_ILS09R_SHORT IS MAKE_PLATE(
   LIST("KSC_IAF_09R_30", "KSC_FAF_09R"),
   75,
   LEXICON(
-    "KSC_IAF_09R_30", ksc_r_iaf30_alt,
-    "KSC_FAF_09R",    ksc_r_faf_alt
+    "KSC_IAF_09R_30", ksc_09r_iaf30_alt,
+    "KSC_FAF_09R",    ksc_09r_faf_alt
   )
 ).
 
@@ -498,8 +513,8 @@ GLOBAL PLATE_KSC_ILS27R_SHORT IS MAKE_PLATE(
   LIST("KSC_IAF_27R_30", "KSC_FAF_27R"),
   75,
   LEXICON(
-    "KSC_IAF_27R_30", ksc_r_iaf30_alt,
-    "KSC_FAF_27R",    ksc_r_faf_alt
+    "KSC_IAF_27R_30", ksc_27r_iaf30_alt,
+    "KSC_FAF_27R",    ksc_27r_faf_alt
   )
 ).
 
@@ -555,9 +570,9 @@ GLOBAL PLATE_DAF_ILS18_SHORT IS MAKE_PLATE(
 // ----------------------------
 GLOBAL PLATE_REGISTRY IS LEXICON().
 PLATE_REGISTRY:ADD("PLATE_KSC_ILS09",       PLATE_KSC_ILS09).
-PLATE_REGISTRY:ADD("PLATE_KSC_ILS27",       PLATE_KSC_ILS27).
+PLATE_REGISTRY:ADD("PLATE_KSC_ILS27L",      PLATE_KSC_ILS27L).
 PLATE_REGISTRY:ADD("PLATE_KSC_ILS09_SHORT", PLATE_KSC_ILS09_SHORT).
-PLATE_REGISTRY:ADD("PLATE_KSC_ILS27_SHORT", PLATE_KSC_ILS27_SHORT).
+PLATE_REGISTRY:ADD("PLATE_KSC_ILS27L_SHORT", PLATE_KSC_ILS27L_SHORT).
 PLATE_REGISTRY:ADD("PLATE_KSC_ILS09R",       PLATE_KSC_ILS09R).
 PLATE_REGISTRY:ADD("PLATE_KSC_ILS27R",       PLATE_KSC_ILS27R).
 PLATE_REGISTRY:ADD("PLATE_KSC_ILS09R_SHORT", PLATE_KSC_ILS09R_SHORT).
@@ -588,8 +603,8 @@ GLOBAL PLATE_IDS IS LIST(
   "PLATE_KSC_ILS09_SHORT",
   "PLATE_KSC_ILS09R",
   "PLATE_KSC_ILS09R_SHORT",
-  "PLATE_KSC_ILS27",
-  "PLATE_KSC_ILS27_SHORT",
+  "PLATE_KSC_ILS27L",
+  "PLATE_KSC_ILS27L_SHORT",
   "PLATE_KSC_ILS27R",
   "PLATE_KSC_ILS27R_SHORT",
   "PLATE_ISL_ILS09",
@@ -608,12 +623,16 @@ FUNCTION GET_PLATE_FOR_RUNWAY {
   } ELSE IF rwy_id = "09R" {
     IF short_approach { RETURN PLATE_KSC_ILS09R_SHORT. }
     RETURN PLATE_KSC_ILS09R.
-  } ELSE IF rwy_id = "27" {
-    IF short_approach { RETURN PLATE_KSC_ILS27_SHORT. }
-    RETURN PLATE_KSC_ILS27.
+  } ELSE IF rwy_id = "27L" {
+    IF short_approach { RETURN PLATE_KSC_ILS27L_SHORT. }
+    RETURN PLATE_KSC_ILS27L.
   } ELSE IF rwy_id = "27R" {
     IF short_approach { RETURN PLATE_KSC_ILS27R_SHORT. }
     RETURN PLATE_KSC_ILS27R.
+  } ELSE IF rwy_id = "27" {
+    // Compatibility alias: plain "27" now maps to "27L".
+    IF short_approach { RETURN PLATE_KSC_ILS27L_SHORT. }
+    RETURN PLATE_KSC_ILS27L.
   } ELSE IF rwy_id = "36" {
     IF short_approach { RETURN PLATE_DAF_ILS36_SHORT. }
     RETURN PLATE_DAF_ILS36.

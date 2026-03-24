@@ -13,7 +13,66 @@
 // ============================================================
 
 // ── Public entry point ────────────────────────────────────
+FUNCTION _APP_GS_VIS_CLEAR {
+  IF IFC_DEBUG_GS_DRAW_MAIN <> 0 {
+    SET IFC_DEBUG_GS_DRAW_MAIN:SHOW TO FALSE.
+    SET IFC_DEBUG_GS_DRAW_MAIN TO 0.
+  }
+  IF IFC_DEBUG_GS_DRAW_REF <> 0 {
+    SET IFC_DEBUG_GS_DRAW_REF:SHOW TO FALSE.
+    SET IFC_DEBUG_GS_DRAW_REF TO 0.
+  }
+  SET IFC_DEBUG_GS_DRAW_ILS_ID TO "".
+}
+
+FUNCTION _APP_GS_VIS_SYNC {
+  IF NOT IFC_DEBUG_DRAW_GS {
+    IF IFC_DEBUG_GS_DRAW_MAIN <> 0 OR IFC_DEBUG_GS_DRAW_REF <> 0 {
+      _APP_GS_VIS_CLEAR().
+    }
+    RETURN.
+  }
+
+  IF ACTIVE_ILS_ID = "" { RETURN. }
+
+  IF IFC_DEBUG_GS_DRAW_ILS_ID = ACTIVE_ILS_ID AND IFC_DEBUG_GS_DRAW_MAIN <> 0 {
+    RETURN.
+  }
+
+  _APP_GS_VIS_CLEAR().
+
+  LOCAL ils_bcn IS GET_BEACON(ACTIVE_ILS_ID).
+  IF NOT ils_bcn:HASKEY("ll") { RETURN. }
+
+  LOCAL thr_ll IS ils_bcn["ll"].
+  LOCAL thr_alt IS ils_bcn["alt_asl"].
+  LOCAL gs_hdg IS MOD(ils_bcn["hdg"] + 180, 360).
+  LOCAL gs_ang IS ils_bcn["gs_angle"].
+  LOCAL draw_len_m IS IFC_DEBUG_GS_DRAW_LEN_M.
+  LOCAL beam_diam_m IS IFC_DEBUG_GS_BEAM_DIAM_M.
+
+  SET IFC_DEBUG_GS_DRAW_MAIN TO VECDRAW(
+    { RETURN thr_ll:ALTITUDEPOSITION(thr_alt). },
+    {
+      LOCAL thr_pos_now IS thr_ll:ALTITUDEPOSITION(thr_alt).
+      LOCAL up_vec_now IS thr_pos_now:NORMALIZED.
+      LOCAL app_fwd_now IS HEADING(gs_hdg, 0):FOREVECTOR.
+      LOCAL gs_vec_now IS (app_fwd_now + up_vec_now * TAN(gs_ang)):NORMALIZED.
+      RETURN gs_vec_now * draw_len_m.
+    },
+    { RETURN RGBA(255, 255, 0, 0.25). },
+    "",
+    1,
+    TRUE,
+    beam_diam_m,
+    FALSE
+  ).
+
+  SET IFC_DEBUG_GS_DRAW_ILS_ID TO ACTIVE_ILS_ID.
+}
+
 FUNCTION RUN_APPROACH {
+  _APP_GS_VIS_SYNC().
   _CHECK_FLAP_DEPLOYMENT().
   _CHECK_APPROACH_SPOILERS().
   IF IFC_SUBPHASE = SUBPHASE_FLY_TO_FIX {

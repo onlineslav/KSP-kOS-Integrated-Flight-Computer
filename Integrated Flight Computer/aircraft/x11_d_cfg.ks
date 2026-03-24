@@ -95,8 +95,23 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "a_crit",    0.0,   // deg  FAR critical AoA (0 = protection disabled until tuned)
 
     // -- Spoiler arming (approach) -------------------------
-    "ag_spoilers_arm",    0,   // AG to arm spoilers in-flight (0 = not used)
-    "app_spoiler_arm_km", 0,   // km from threshold to arm (0 = disabled)
+    "spoiler_tag",         "", // empty = use global/default IFC spoiler part tag
+    "as_enabled",          -1, // 1 enable autospoiler, 0 disable, -1 = global/default
+    "as_thr_idle_gate",    -1, // deploy assist only when THROTTLE_CMD <= gate (-1 = global/default)
+    "as_err_deadband_mps", -1, // m/s overspeed before spoiler response starts (-1 = global/default)
+    "as_err_full_mps",     -1, // m/s overspeed that commands full capped deflection (-1 = global/default)
+    "as_angle_slew_dps",   -1, // deg/s deploy-angle slew limit (-1 = global/default)
+    "as_max_deflection_deg",-1, // deg written when autospoiler is not actively deploying (-1 = global/default)
+    "as_crz_speed_lo",     -1, // m/s low speed point for cruise cap schedule (-1 = global/default)
+    "as_crz_speed_hi",     -1, // m/s high speed point for cruise cap schedule (-1 = global/default)
+    "as_crz_cap_deg_lo",   -1, // deg cap at/below as_crz_speed_lo (-1 = global/default)
+    "as_crz_cap_deg_hi",   -1, // deg cap at/above as_crz_speed_hi (-1 = global/default)
+    "as_app_speed_lo",     -1, // m/s low speed point for approach cap schedule (-1 = global/default)
+    "as_app_speed_hi",     -1, // m/s high speed point for approach cap schedule (-1 = global/default)
+    "as_app_cap_deg_lo",   -1, // deg cap at/below as_app_speed_lo (-1 = global/default)
+    "as_app_cap_deg_hi",   -1, // deg cap at/above as_app_speed_hi (-1 = global/default)
+    "ag_spoilers_arm",     0,  // AG to arm spoilers in-flight (0 = not used)
+    "app_spoiler_arm_km",  0,  // km from threshold to arm (0 = disabled)
 
     // -- Takeoff --------------------------------------------
     "has_nws",            TRUE,  // TRUE = aircraft has nose wheel steering

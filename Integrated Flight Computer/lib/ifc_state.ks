@@ -124,6 +124,10 @@ GLOBAL LAST_TELEM_UT IS 0.
 // ----------------------------
 GLOBAL UI_W               IS 50.     // terminal width, set by UI_INIT
 GLOBAL IFC_DEBUG_PANEL_ON IS FALSE.  // show secondary debug zone
+GLOBAL IFC_DEBUG_DRAW_GS  IS TRUE.  // TRUE = draw active approach + glideslope vectors in world
+GLOBAL IFC_DEBUG_GS_DRAW_MAIN IS 0.  // VECDRAW handle for glideslope line
+GLOBAL IFC_DEBUG_GS_DRAW_REF  IS 0.  // VECDRAW handle for flat approach reference
+GLOBAL IFC_DEBUG_GS_DRAW_ILS_ID IS "". // ILS id currently represented by debug vectors
 GLOBAL LAST_DISPLAY_UT    IS 0.      // primary zone rate-limiter
 GLOBAL LAST_HEADER_UT     IS 0.      // header rate-limiter
 GLOBAL LAST_SECONDARY_UT  IS 0.      // secondary zone rate-limiter
@@ -490,6 +494,17 @@ FUNCTION IFC_INIT_STATE {
   SET PREV_GS_DEV       TO 0.
   SET ILS_GS_TAN_CACHED TO 0.
   SET ILS_THR_GEO_LL    TO 0.
+
+  // Clear glideslope debug vectors from previous runs.
+  IF IFC_DEBUG_GS_DRAW_MAIN <> 0 {
+    SET IFC_DEBUG_GS_DRAW_MAIN:SHOW TO FALSE.
+    SET IFC_DEBUG_GS_DRAW_MAIN TO 0.
+  }
+  IF IFC_DEBUG_GS_DRAW_REF <> 0 {
+    SET IFC_DEBUG_GS_DRAW_REF:SHOW TO FALSE.
+    SET IFC_DEBUG_GS_DRAW_REF TO 0.
+  }
+  SET IFC_DEBUG_GS_DRAW_ILS_ID TO "".
 
   SET AA_AVAILABLE   TO FALSE.
   SET AA_DIRECTOR_ON TO FALSE.

@@ -10,6 +10,8 @@
 // ----------------------------
 GLOBAL IFC_LOOP_DT         IS 0.02.   // s  (50 Hz)
 GLOBAL IFC_TELEMETRY_PERIOD IS 1.0.   // s  between HUD refreshes
+GLOBAL IFC_DEBUG_GS_DRAW_LEN_M IS 60000. // m length of debug glideslope beam from threshold
+GLOBAL IFC_DEBUG_GS_BEAM_DIAM_M IS 5.0.  // m diameter of debug glideslope beam cylinder
 
 // ----------------------------
 // Phase names  (top-level)

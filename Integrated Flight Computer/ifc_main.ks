@@ -327,8 +327,11 @@ FUNCTION _INIT_LEG {
 
   IF leg_type = LEG_TAKEOFF {
     LOCAL rwy_id IS params["rwy_id"].
+    // Compatibility: plain "27" maps to KSC's left runway beacon.
+    LOCAL lookup_rwy_id IS rwy_id.
+    IF lookup_rwy_id = "27" { SET lookup_rwy_id TO "27L". }
     LOCAL ils_id IS "".
-    LOCAL ksc_ils_id IS "KSC_ILS_" + rwy_id.
+    LOCAL ksc_ils_id IS "KSC_ILS_" + lookup_rwy_id.
     LOCAL daf_ils_id IS "DAF_ILS_" + rwy_id.
     LOCAL isl_ils_id IS "ISL_ILS_" + rwy_id.
     IF NAV_BEACON_DB:HASKEY(ksc_ils_id) {

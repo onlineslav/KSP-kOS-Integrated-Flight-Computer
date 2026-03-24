@@ -23,17 +23,25 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Vapp: target speed from FAF to flare.
     // Vref: threshold crossing speed (used for display/logging).
     // Reduce Vapp toward Vref during the flare by cutting throttle.
-    "v_app",        75.0,
+    "v_app",        70.0,
     "v_ref",        67.0,
     // Optional approach-speed schedule shaping (set to -1 to use globals):
+    // Before stable LOC/GS final capture, IFC flies an intercept speed (Vint)
+    // to keep extra energy while maneuvering and descending to the beam.
+    // Once final is captured, target returns to Vapp (then blends toward Vref
+    // near the runway via app_short_final_agl).
     // Intercept target is derived as:
     //   Vint = Vapp + clamp((Vapp - Vref) * gain, min_add, max_add)
-    "app_spd_intercept_gain",    -1, // -1 = use APP_SPD_INTERCEPT_GAIN
-    "app_spd_intercept_min_add", -1, // m/s, -1 = use APP_SPD_INTERCEPT_MIN_ADD
-    "app_spd_intercept_max_add", -1, // m/s, -1 = use APP_SPD_INTERCEPT_MAX_ADD
-    "app_short_final_agl",       -1, // m AGL where Vapp blends toward Vref (-1 = global)
-    "app_speed_tgt_slew_per_s",  -1, // m/s/s speed target slew limit (-1 = global)
-    "app_short_final_cap",       -1, // 1=cap speed to short-final schedule even without final capture, 0=disable, -1=global
+    // Example:
+    //   Vapp=70, Vref=67, gain=1.5, min_add=2, max_add=6
+    //   raw add = (70-67)*1.5 = 4.5  => clamped add = 4.5
+    //   Vint = 70 + 4.5 = 74.5 m/s
+    "app_spd_intercept_gain",    5.0, // scales pre-capture speed additive: (Vapp - Vref) * gain; -1 = APP_SPD_INTERCEPT_GAIN
+    "app_spd_intercept_min_add", 15.0, // m/s lower clamp for pre-capture additive; -1 = APP_SPD_INTERCEPT_MIN_ADD
+    "app_spd_intercept_max_add", 15.0, // m/s upper clamp for pre-capture additive; -1 = APP_SPD_INTERCEPT_MAX_ADD
+    "app_short_final_agl",       -1, // below this AGL, target blends from Vapp toward Vref; -1 = APP_SHORT_FINAL_AGL_M
+    "app_speed_tgt_slew_per_s",  -1, // m/s/s max rate ACTIVE_V_TGT may change (smooths throttle transitions); -1 = APP_SPEED_TGT_SLEW_PER_S
+    "app_short_final_cap",       -1, // 1=allow short-final cap before final capture, 0=only apply after final capture, -1 = APP_SHORT_FINAL_CAP_WHEN_NOT_FINAL
 
     // ── Action groups ─────────────────────────────────────
     // Set to the action group NUMBER (1-10) that controls each
@@ -191,7 +199,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Override the global constants for this specific aircraft.
     // Set to -1 to use the global default from ifc_constants.ks.
     "flare_agl",    -1,   // m AGL to begin flare  (-1 = use FLARE_AGL_M)
-    "flare_touchdown_vs",      -1, // m/s  (-1 = use TOUCHDOWN_VS)
+    "flare_touchdown_vs",      -0.08, // m/s  (-1 = use TOUCHDOWN_VS)
     "flare_ias_to_vs_gain",    -1, // sink per m/s above Vref (-1 = global)
     "flare_roundout_agl",      -1, // m AGL roundout zone (-1 = global)
     "flare_roundout_strength", -1, // 0..1 blend in roundout zone (-1 = global)

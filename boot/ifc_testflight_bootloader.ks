@@ -77,7 +77,8 @@ FUNCTION _PROMPT_TEST_SELECTION {
   PRINT "Available test scripts:".
   LOCAL i IS 0.
   UNTIL i >= shown {
-    PRINT "  [" + TEST_KEYS[i] + "] " + scripts[i].
+    LOCAL display_name IS scripts[i]:REPLACE(TESTS_ABS_DIR, "").
+    PRINT "  [" + TEST_KEYS[i] + "] " + display_name.
     SET i TO i + 1.
   }
 

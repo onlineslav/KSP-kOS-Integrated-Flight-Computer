@@ -4,7 +4,7 @@
 // ksc_ils27_approach_test.ks  -  IFC approach-only test
 //
 // Sequence:
-//   1. ILS approach KSC RWY 27  (30 km short approach)
+//   1. ILS approach KSC RWY 27L  (30 km short approach)
 //
 // Position the aircraft airborne on approach before running.
 //
@@ -27,11 +27,11 @@ FUNCTION _PROMPT_ARM_APP {
 FUNCTION RUN_KSC_ILS27_APPROACH_TEST {
   CLEARSCREEN.
   PRINT "==============================================".
-  PRINT " IFC TEST: KSC ILS RWY 27  (30 km approach)".
+  PRINT " IFC TEST: KSC ILS RWY 27L  (30 km approach)".
   PRINT "==============================================".
   PRINT " ".
   PRINT "Vessel : " + SHIP:NAME.
-  PRINT "Leg 1  : ILS APP  RWY 27  (30 km short approach)".
+  PRINT "Leg 1  : ILS APP  RWY 27L  (30 km short approach)".
   PRINT " ".
   PRINT "Position the aircraft airborne on the 30 km approach.".
   PRINT " ".
@@ -66,12 +66,12 @@ FUNCTION RUN_KSC_ILS27_APPROACH_TEST {
 
   LOCAL plan IS LIST().
 
-  // Leg 1: ILS approach to KSC RWY 27, entering via the 30 km fix.
-  // short_approach TRUE selects PLATE_KSC_ILS27_SHORT
-  // (fixes: KSC_IAF_27_30 -> KSC_FAF_27 -> ILS track -> autoland).
+  // Leg 1: ILS approach to KSC RWY 27L, entering via the 30 km fix.
+  // short_approach TRUE selects PLATE_KSC_ILS27L_SHORT
+  // (fixes: KSC_IAF_27L_30 -> KSC_FAF_27L -> ILS track -> autoland).
   plan:ADD(LEXICON(
     "type",   LEG_APPROACH,
-    "params", LEXICON("rwy_id", "27", "short_approach", TRUE)
+    "params", LEXICON("rwy_id", "27L", "short_approach", TRUE)
   )).
 
   PRINT "Plan: " + plan:LENGTH + " leg.  Engaging IFC...".
@@ -81,7 +81,7 @@ FUNCTION RUN_KSC_ILS27_APPROACH_TEST {
 
   SET IFC_SKIP_INTERACTIVE TO FALSE.
   PRINT " ".
-  PRINT "KSC ILS 27 approach test complete.".
+  PRINT "KSC ILS 27L approach test complete.".
 }
 
 RUN_KSC_ILS27_APPROACH_TEST().

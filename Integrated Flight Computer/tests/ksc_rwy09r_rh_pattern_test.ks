@@ -1,22 +1,22 @@
 @LAZYGLOBAL OFF.
 
 // ============================================================
-// ksc_rwy09_north2min_west30_ils27_test.ks  -  IFC route test
+// ksc_rwy09r_rh_pattern_test.ks  -  IFC route test
 //
 // Sequence:
 //   1. Takeoff from KSC RWY 09
-//   2. Fly south for 2 minutes (course_time)
-//   3. Turn west and fly 33 km (course_dist)
-//   4. Fly north for 1:20 (course_time)
-//   5. ILS approach KSC RWY 09 (30 km short approach)
+//   2. Fly south for 1:30 (course_time) (crosswind leg)
+//   3. Turn west and fly 33 km (course_dist) (downwind leg)
+//   4. Fly north for 1:00 (course_time) (base leg)
+//   5. ILS approach KSC RWY 09R (30 km short approach)
 //
 // Usage (kOS terminal):
-//   RUNPATH("0:/Integrated Flight Computer/tests/ksc_rwy09_north2min_west30_ils27_test.ks").
+//   RUNPATH("0:/Integrated Flight Computer/tests/ksc_rwy09r_rh_pattern_test.ks").
 // ============================================================
 
 GLOBAL IFC_SKIP_INTERACTIVE IS FALSE.
 
-FUNCTION _PROMPT_ARM_RWY09_NW27 {
+FUNCTION _PROMPT_ARM_RWY09R_RH {
   PRINT "Type A to ARM, or Q to abort.".
   TERMINAL:INPUT:CLEAR().
   LOCAL sel IS "".
@@ -26,31 +26,34 @@ FUNCTION _PROMPT_ARM_RWY09_NW27 {
   RETURN sel.
 }
 
-FUNCTION RUN_KSC_RWY09_NORTH_WEST_ILS27_TEST {
+FUNCTION RUN_KSC_RWY09R_RH_PATTERN_TEST {
   // Tunables for this profile.
   LOCAL cruise_alt_m IS 1500.
-  LOCAL cruise_spd_mps IS 250.
-  LOCAL south_time_min IS 2.
+  LOCAL crosswind_spd_mps IS 150.
+  LOCAL downwind_spd_mps IS 200.
+  LOCAL base_spd_mps IS 150.
+  LOCAL south_time_s IS 90.
+  LOCAL south_time_min IS south_time_s / 60.
   LOCAL west_dist_km IS 33.
   LOCAL west_dist_nm IS west_dist_km / 1.852.
-  LOCAL north_before_app_time_s IS 80.
+  LOCAL north_before_app_time_s IS 60.
   LOCAL north_before_app_time_min IS north_before_app_time_s / 60.
 
   CLEARSCREEN.
   PRINT "==============================================".
-  PRINT " IFC TEST: RWY 09 -> S 2 MIN -> W 33 KM -> N 1:20 -> RWY 09".
+  PRINT " IFC TEST: RWY 09 -> S 1:30 -> W 33 KM -> N 1:00 -> RWY 09R".
   PRINT "==============================================".
   PRINT " ".
   PRINT "Vessel : " + SHIP:NAME.
   PRINT "Leg 1  : TAKEOFF  RWY 09".
-  PRINT "Leg 2  : CRUISE   180 deg / " + south_time_min + " min".
-  PRINT "Leg 3  : CRUISE   270 deg / " + ROUND(west_dist_km, 0) + " km".
-  PRINT "Leg 4  : CRUISE   000 deg / 1:20".
-  PRINT "Leg 5  : ILS APP  RWY 09  (30 km short approach)".
-  PRINT "Cruise : " + ROUND(cruise_alt_m, 0) + " m / " + ROUND(cruise_spd_mps, 0) + " m/s".
+  PRINT "Leg 2  : CRUISE   180 deg / 1:30 / " + ROUND(crosswind_spd_mps, 0) + " m/s".
+  PRINT "Leg 3  : CRUISE   270 deg / " + ROUND(west_dist_km, 0) + " km / " + ROUND(downwind_spd_mps, 0) + " m/s".
+  PRINT "Leg 4  : CRUISE   000 deg / 1:00 / " + ROUND(base_spd_mps, 0) + " m/s".
+  PRINT "Leg 5  : ILS APP  RWY 09R  (30 km short approach)".
+  PRINT "Cruise : " + ROUND(cruise_alt_m, 0) + " m".
   PRINT " ".
 
-  LOCAL arm IS _PROMPT_ARM_RWY09_NW27().
+  LOCAL arm IS _PROMPT_ARM_RWY09R_RH().
   IF arm = "q" OR arm = "Q" {
     PRINT "Test aborted.".
     WAIT 0.
@@ -92,7 +95,7 @@ FUNCTION RUN_KSC_RWY09_NORTH_WEST_ILS27_TEST {
       "course_deg", 180,
       "time_min",   south_time_min,
       "alt_m",      cruise_alt_m,
-      "spd",        cruise_spd_mps
+      "spd",        crosswind_spd_mps
     )
   )).
 
@@ -104,11 +107,11 @@ FUNCTION RUN_KSC_RWY09_NORTH_WEST_ILS27_TEST {
       "course_deg", 270,
       "dist_nm",    west_dist_nm,
       "alt_m",      cruise_alt_m,
-      "spd",        cruise_spd_mps
+      "spd",        downwind_spd_mps
     )
   )).
 
-  // Leg 4: Fly north for 1:20 before approach setup.
+  // Leg 4: Fly north for 1:00 before approach setup.
   plan:ADD(LEXICON(
     "type",   LEG_CRUISE,
     "params", LEXICON(
@@ -116,14 +119,14 @@ FUNCTION RUN_KSC_RWY09_NORTH_WEST_ILS27_TEST {
       "course_deg", 0,
       "time_min",   north_before_app_time_min,
       "alt_m",      cruise_alt_m,
-      "spd",        cruise_spd_mps
+      "spd",        base_spd_mps
     )
   )).
 
-  // Leg 5: ILS approach to KSC RWY 09 from the 30 km fix.
+  // Leg 5: ILS approach to KSC RWY 09R from the 30 km fix.
   plan:ADD(LEXICON(
     "type",   LEG_APPROACH,
-    "params", LEXICON("rwy_id", "09", "short_approach", TRUE)
+    "params", LEXICON("rwy_id", "09R", "short_approach", TRUE)
   )).
 
   PRINT "Plan: " + plan:LENGTH + " legs.  Engaging IFC...".
@@ -133,7 +136,7 @@ FUNCTION RUN_KSC_RWY09_NORTH_WEST_ILS27_TEST {
 
   SET IFC_SKIP_INTERACTIVE TO FALSE.
   PRINT " ".
-  PRINT "RWY 09 south/west into RWY 09 approach test complete.".
+  PRINT "RWY 09R right-hand pattern into RWY 09R approach test complete.".
 }
 
-RUN_KSC_RWY09_NORTH_WEST_ILS27_TEST().
+RUN_KSC_RWY09R_RH_PATTERN_TEST().
