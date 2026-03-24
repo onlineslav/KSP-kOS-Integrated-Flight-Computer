@@ -191,8 +191,9 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Override the global constants for this specific aircraft.
     // Set to -1 to use the global default from ifc_constants.ks.
     "flare_gear_tag",      "", // tagged main-gear parts used for flare/touchdown height ("", use global default tag)
-    "flare_gear_h_offset_m",-1, // m additive bias on runway-relative main-gear height (-1 = global)
+    "flare_ctrl_h_offset_max_m",-1, // m max captured (runway-height - gear-height) used for control-height shaping (-1 = global)
     "flare_agl",    -1,   // m runway-relative main-gear height to begin flare  (-1 = use FLARE_AGL_M)
+    "flare_entry_vs_min", -1, // m/s minimum flare-entry sink retained from approach (more negative = later arrest) (-1 = global)
     "flare_touchdown_vs",      -1, // m/s  (-1 = use TOUCHDOWN_VS)
     "flare_vs_kp",               -1, // gamma correction per m/s sink-rate error (-1 = global)
     "flare_fpa_kp",              -1, // gamma correction per deg FPA error (-1 = global)
@@ -203,6 +204,8 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "flare_roundout_start_h_m",  -1, // m runway-relative height where roundout shaping begins (-1 = global)
     "flare_roundout_end_h_m",    -1, // m runway-relative height where roundout is fully blended (-1 = global)
     "flare_roundout_curve",      -1, // 0 disables roundout; >0 scales roundout blend (-1 = global)
+    "flare_roundout_ttg_start_s",-1, // s time-to-ground where roundout blending begins (-1 = global)
+    "flare_roundout_ttg_end_s",  -1, // s time-to-ground where roundout blending reaches full effect (-1 = global)
     "flare_min_throttle",        -1, // 0..1 flare throttle floor before blend/recovery (-1 = global)
     "flare_min_throttle_agl_blend",-1, // m below this height throttle floor blends down (-1 = global)
     "flare_authority_vs_err_trigger",-1, // m/s trigger for authority-limited detector (-1 = global)
@@ -223,6 +226,10 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "flare_tecs_thr_bal_k",      -1, // throttle bias from energy-balance error (-1 = global)
     "flare_tecs_thr_slew_per_s", -1, // /s throttle command slew in flare (-1 = global)
     "flare_tecs_climb_vs_gate",  -1, // m/s VS above which throttle is forced to floor (-1 = global)
+    "flare_balloon_vs_trigger",  -1, // m/s upward VS that latches anti-balloon supervision above touchdown zone (-1 = global)
+    "flare_balloon_clear_vs",    -1, // m/s VS threshold to clear anti-balloon latch once descending again (-1 = global)
+    "flare_balloon_min_h_m",     -1, // m control-height floor below which anti-balloon latch is ignored (-1 = global)
+    "flare_balloon_gamma_down_deg",-1, // deg minimum nose-down gamma command while anti-balloon is latched (-1 = global)
     "flare_disable_speed_bleed", -1, // 1 disable speed-driven extra sink, 0 enable, -1 use global default
     "touchdown_confirm_s", -1, // s debounce for FLARE->TOUCHDOWN (-1 = global)
     "touchdown_confirm_max_abs_vs", -1, // m/s max |VS| at FLARE->TOUCHDOWN commit (-1 = global)

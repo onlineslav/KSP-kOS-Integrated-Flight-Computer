@@ -130,6 +130,9 @@ GLOBAL IFC_DEBUG_GS_DRAW_REF  IS 0.  // VECDRAW handle for flat approach referen
 GLOBAL IFC_DEBUG_GS_DRAW_TUBE IS LIST(). // LIST of VECDRAW handles for low-poly GS tube edges
 GLOBAL IFC_DEBUG_GS_DRAW_ILS_ID IS "". // ILS id currently represented by debug vectors
 GLOBAL IFC_DEBUG_GS_LAST_LOG_UT IS -1. // last UT glideslope debug line was emitted
+GLOBAL IFC_DEBUG_DRAW_GEAR_HEIGHT IS TRUE. // TRUE = draw CoG->gear-bottom (red) and offset extension (blue)
+GLOBAL IFC_DEBUG_GEAR_DRAW_RED IS 0. // VECDRAW handle for CoG-to-gear-bottom line
+GLOBAL IFC_DEBUG_GEAR_DRAW_BLUE IS 0. // VECDRAW handle for offset extension line
 GLOBAL LAST_DISPLAY_UT    IS 0.      // primary zone rate-limiter
 GLOBAL LAST_HEADER_UT     IS 0.      // header rate-limiter
 GLOBAL LAST_SECONDARY_UT  IS 0.      // secondary zone rate-limiter
@@ -291,8 +294,10 @@ GLOBAL CRUISE_END_UT      IS -1.          // UT when course_time cruise ends (-1
 GLOBAL FLARE_PITCH_CMD  IS 0.   // current commanded FPA during flare (deg, smoothed)
 GLOBAL FLARE_ENTRY_VS   IS 0.   // vertical speed at flare trigger (m/s, negative)
 GLOBAL FLARE_ENTRY_AGL  IS 15.  // flare-reference height at trigger (m)
+GLOBAL FLARE_CTRL_H_OFFSET IS 0. // captured control-height offset: runway-height minus gear-height at flare entry (m)
 GLOBAL FLARE_SUBMODE IS FLARE_MODE_CAPTURE. // FLARE_CAPTURE/FLARE_TRACK/ROUNDOUT/TOUCHDOWN_CONFIRM
 GLOBAL FLARE_AUTH_LIMITED IS FALSE. // TRUE when flare authority monitor is latched
+GLOBAL FLARE_BALLOON_ACTIVE IS FALSE. // TRUE when anti-balloon supervision is latched during flare
 GLOBAL FLARE_AUTH_START_UT IS -1. // persistence timer for authority-limited detection
 GLOBAL FLARE_TECS_ET_INT IS 0. // flare TECS total-energy integrator
 GLOBAL FLARE_TECS_EB_INT IS 0. // flare TECS energy-balance integrator
@@ -539,6 +544,14 @@ FUNCTION IFC_INIT_STATE {
   }
   SET IFC_DEBUG_GS_DRAW_ILS_ID TO "".
   SET IFC_DEBUG_GS_LAST_LOG_UT TO -1.
+  IF IFC_DEBUG_GEAR_DRAW_RED <> 0 {
+    SET IFC_DEBUG_GEAR_DRAW_RED:SHOW TO FALSE.
+    SET IFC_DEBUG_GEAR_DRAW_RED TO 0.
+  }
+  IF IFC_DEBUG_GEAR_DRAW_BLUE <> 0 {
+    SET IFC_DEBUG_GEAR_DRAW_BLUE:SHOW TO FALSE.
+    SET IFC_DEBUG_GEAR_DRAW_BLUE TO 0.
+  }
   // Purge any stale vecdraws that may survive script reloads without a live handle.
   CLEARVECDRAWS().
 
@@ -577,8 +590,10 @@ FUNCTION IFC_INIT_STATE {
   SET FLARE_PITCH_CMD  TO 0.
   SET FLARE_ENTRY_VS   TO 0.
   SET FLARE_ENTRY_AGL  TO FLARE_AGL_M.
+  SET FLARE_CTRL_H_OFFSET TO 0.
   SET FLARE_SUBMODE TO FLARE_MODE_CAPTURE.
   SET FLARE_AUTH_LIMITED TO FALSE.
+  SET FLARE_BALLOON_ACTIVE TO FALSE.
   SET FLARE_AUTH_START_UT TO -1.
   SET FLARE_TECS_ET_INT TO 0.
   SET FLARE_TECS_EB_INT TO 0.

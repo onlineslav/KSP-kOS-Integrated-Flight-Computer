@@ -138,8 +138,9 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // ========================================================
     // Flare geometry and command shaping.
     "flare_gear_tag", "ifc_maingear",         // [string]          Part tag used as main-gear height reference.                                     ("ifc_maingear")
-    "flare_gear_h_offset_m", 1.0,             // [m]               Bias applied to gear reference height for flare timing.                          (0.0)
+    "flare_ctrl_h_offset_max_m", 20.0,        // [m]               Max captured control-height offset (runway height minus gear height).            (30.0)
     "flare_agl", 30,                          // [m]               Runway-relative trigger height to enter flare phase.                             (25)
+    "flare_entry_vs_min", -9.0,               // [m/s]             Minimum flare-entry sink retained from approach.                                  (-6.0)
     "flare_touchdown_vs", -0.35,              // [m/s]             Target sink rate at touchdown.                                                   (-0.3)
     "flare_cmd_fpa_min", -1,                  // [deg]             Lower clamp on flare FPA command.                                                (-6.0)
     "flare_cmd_fpa_max", 4.5,                 // [deg]             Upper clamp on flare FPA command before AoA compensation.                        (4.0)
@@ -148,6 +149,8 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "flare_roundout_start_h_m", 11.0,         // [m]               Height where roundout blend begins.                                              (8.0)
     "flare_roundout_end_h_m", 1.0,            // [m]               Height where roundout blend completes near touchdown.                            (0.8)
     "flare_roundout_curve", 1.0,              // [unitless]        Roundout curve exponent shaping float vs settle behavior.                        (1.0)
+    "flare_roundout_ttg_start_s", -1,         // [s]               Time-to-ground where roundout blend starts.                                       (3.0)
+    "flare_roundout_ttg_end_s", -1,           // [s]               Time-to-ground where roundout blend reaches full effect.                          (0.8)
     "flare_disable_speed_bleed", 1,           // [bool]            TRUE disables extra sink augmentation from speed-above-Vref term.                (TRUE)
     "flare_min_throttle", 0.08,               // [0..1]            Throttle floor in flare prior to low-altitude blend/recovery.                    (0.0)
     "flare_min_throttle_agl_blend", 5.0,      // [m]               Height where throttle floor blends down near touchdown.                          (8.0)
@@ -158,6 +161,10 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "flare_authority_fpa_err_trigger", -1,    // [deg]             FPA tracking error trigger for authority-limited detection.                      (1.0)
     "flare_authority_detect_s", -1,           // [s]               Required persistence before authority-limited latch.                             (0.35)
     "flare_authority_recovery_gain", -1,      // [unitless]        Gain for flare recovery branch after authority-limited latch.                    (0.20)
+    "flare_balloon_vs_trigger", -1,           // [m/s]             Upward VS threshold that latches anti-balloon supervision.                        (0.2)
+    "flare_balloon_clear_vs", -1,             // [m/s]             VS threshold that clears anti-balloon latch once descending.                      (-0.2)
+    "flare_balloon_min_h_m", -1,              // [m]               Control-height floor below which anti-balloon latch is ignored.                   (3.0)
+    "flare_balloon_gamma_down_deg", -1,       // [deg]             Minimum nose-down gamma command while anti-balloon is active.                     (-3.0)
 
     // Flare TECS tuning.
     "flare_tecs_et_kp", -1,                   // [thr/(m^2/s^2)]   Throttle proportional gain on total-energy error.                                (0.00008)

@@ -100,6 +100,7 @@ FUNCTION _APP_GS_VIS_SYNC {
 FUNCTION RUN_APPROACH {
   // Ensure main-gear flare sensor cache is ready for approach-only save loads.
   PRIME_MAIN_GEAR_CACHE().
+  IFC_GEAR_VIS_SYNC().
   _APP_GS_VIS_SYNC().
   _CHECK_FLAP_DEPLOYMENT().
   _CHECK_APPROACH_SPOILERS().
@@ -576,6 +577,8 @@ FUNCTION _RUN_ILS_TRACK {
   // Require descent (or near-level, if tuned) before arming flare.
   // Default 0 => flare only while VS is not climbing.
   LOCAL flare_trigger_max_vs IS AC_PARAM("flare_trigger_max_vs", 0, 0).
+  LOCAL flare_entry_vs_min IS AC_PARAM("flare_entry_vs_min", FLARE_MIN_ENTRY_SINK_VS, -50).
+  LOCAL flare_ctrl_h_offset_max IS AC_PARAM("flare_ctrl_h_offset_max_m", FLARE_CTRL_H_OFFSET_MAX_M, 0.1).
   LOCAL flare_h_now IS GET_MAIN_GEAR_RUNWAY_HEIGHT_MIN().
   LOCAL vs_now IS SHIP:VERTICALSPEED.
 
@@ -584,12 +587,18 @@ FUNCTION _RUN_ILS_TRACK {
       IF FLARE_TRIGGER_START_UT < 0 { SET FLARE_TRIGGER_START_UT TO TIME:SECONDS. }
       IF TIME:SECONDS - FLARE_TRIGGER_START_UT >= FLARE_TRIGGER_CONFIRM_S {
         LOCAL entry_ias IS MAX(GET_IAS(), 10).
+        LOCAL runway_h_now IS GET_RUNWAY_REL_HEIGHT().
+        LOCAL flare_ctrl_h_offset_raw IS runway_h_now - flare_h_now.
+        SET flare_ctrl_h_offset_max TO MAX(flare_ctrl_h_offset_max, 0.1).
+        SET FLARE_CTRL_H_OFFSET TO CLAMP(flare_ctrl_h_offset_raw, 0, flare_ctrl_h_offset_max).
+        IF flare_entry_vs_min > -0.05 { SET flare_entry_vs_min TO -0.05. }
         SET FLARE_PITCH_CMD TO ARCTAN(vs_now / entry_ias). // seed from current flight path angle
-        SET FLARE_ENTRY_VS  TO CLAMP(vs_now, FLARE_MIN_ENTRY_SINK_VS, -0.05). // seed to a shallow descending band
-        // Capture runway-relative flare-entry height (floor 1 to avoid /0).
-        SET FLARE_ENTRY_AGL TO MAX(flare_h_now, 1).
+        SET FLARE_ENTRY_VS  TO CLAMP(vs_now, flare_entry_vs_min, -0.05). // seed to a bounded descending band
+        // Capture control reference height at flare entry (gear height plus entry offset).
+        SET FLARE_ENTRY_AGL TO MAX(flare_h_now + FLARE_CTRL_H_OFFSET, 1).
         SET FLARE_SUBMODE TO FLARE_MODE_CAPTURE.
         SET FLARE_AUTH_LIMITED TO FALSE.
+        SET FLARE_BALLOON_ACTIVE TO FALSE.
         SET FLARE_AUTH_START_UT TO -1.
         SET FLARE_TECS_ET_INT TO 0.
         SET FLARE_TECS_EB_INT TO 0.

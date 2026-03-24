@@ -194,7 +194,7 @@ GLOBAL GEAR_MAX_EXTEND_IAS IS 120. // m/s max IAS allowed for automatic gear ext
 // Flare
 // ----------------------------
 GLOBAL FLARE_MAIN_GEAR_TAG_DEFAULT IS "ifc_maingear". // part tag used to identify main-gear contact sensors for flare/touchdown height logic
-GLOBAL FLARE_GEAR_H_OFFSET_M IS 0.0. // m additive bias applied to runway-relative main-gear height (+ raises perceived gear height)
+GLOBAL FLARE_CTRL_H_OFFSET_MAX_M IS 30.0. // m max allowed body-vs-gear height offset captured at flare entry for control shaping
 GLOBAL FLARE_AGL_M      IS 25.   // m runway-relative height to trigger flare
 GLOBAL FLARE_TRIGGER_HYST_M IS 1.0. // m hysteresis for flare trigger re-arm
 GLOBAL FLARE_TRIGGER_CONFIRM_S IS 0.12. // s runway-relative height must remain below trigger to enter flare
@@ -218,6 +218,8 @@ GLOBAL FLARE_CMD_RATE_MAX_DPS IS 2.2. // deg/s high-speed flare gamma slew
 GLOBAL FLARE_ROUNDOUT_START_H_M IS 8.0. // m runway-relative main-gear height where roundout shaping begins
 GLOBAL FLARE_ROUNDOUT_END_H_M IS 0.8. // m runway-relative main-gear height where roundout shaping reaches full effect
 GLOBAL FLARE_ROUNDOUT_CURVE IS 1.0. // 0 disables roundout; >0 scales roundout blend strength
+GLOBAL FLARE_ROUNDOUT_TTG_START_S IS 3.0. // s time-to-ground where roundout blending starts (speed/sink adaptive path)
+GLOBAL FLARE_ROUNDOUT_TTG_END_S IS 0.8. // s time-to-ground where roundout blending reaches full effect
 GLOBAL FLARE_DISABLE_SPEED_BLEED_DEFAULT IS TRUE. // TRUE disables speed-driven extra sink during flare by default
 GLOBAL FLARE_SPEED_BLEED_GAIN IS 0.02. // extra sink per m/s above Vref when speed bleed is enabled
 GLOBAL FLARE_MIN_THROTTLE IS 0.0. // minimum throttle floor while in flare (before blenddown/recovery)
@@ -246,6 +248,10 @@ GLOBAL FLARE_TECS_CLIMB_VS_GATE IS 0.2. // m/s if VS exceeds this in flare, thro
 GLOBAL FLARE_TECS_EDOT_ALPHA IS 0.30. // EMA smoothing factor for IAS derivative filter (0=max smooth, 1=raw)
 GLOBAL FLARE_TECS_ET_KD IS 0.0.       // throttle damping on total-energy rate error (0 = disabled until tuned)
 GLOBAL FLARE_TECS_EB_KD IS 0.0.       // pitch damping on energy-balance rate error (0 = disabled until tuned)
+GLOBAL FLARE_BALLOON_VS_TRIGGER IS 0.2. // m/s upward VS that latches anti-balloon supervision above touchdown region
+GLOBAL FLARE_BALLOON_CLEAR_VS IS -0.2. // m/s VS threshold that clears anti-balloon latch once descending again
+GLOBAL FLARE_BALLOON_MIN_H_M IS 3.0. // m control-height floor below which anti-balloon latch is no longer enforced
+GLOBAL FLARE_BALLOON_GAMMA_DOWN_DEG IS -3.0. // deg minimum nose-down gamma command applied while anti-balloon latch is active
 
 
 // ----------------------------

@@ -178,8 +178,9 @@ LOCAL _DEFAULT_AIRCRAFT IS LEXICON(
   "aa_max_side_g",       -1,
   "aa_max_bank",         -1,
   "flare_gear_tag",      "",
-  "flare_gear_h_offset_m",-1,
+  "flare_ctrl_h_offset_max_m",-1,
   "flare_agl",           -1,
+  "flare_entry_vs_min",  -1,
   "flare_touchdown_vs",  -1,
   "flare_vs_kp",         -1,
   "flare_fpa_kp",        -1,
@@ -190,6 +191,8 @@ LOCAL _DEFAULT_AIRCRAFT IS LEXICON(
   "flare_roundout_start_h_m",-1,
   "flare_roundout_end_h_m",-1,
   "flare_roundout_curve",-1,
+  "flare_roundout_ttg_start_s",-1,
+  "flare_roundout_ttg_end_s",-1,
   "flare_min_throttle",  -1,
   "flare_min_throttle_agl_blend",-1,
   "flare_authority_vs_err_trigger",-1,
@@ -210,6 +213,10 @@ LOCAL _DEFAULT_AIRCRAFT IS LEXICON(
   "flare_tecs_thr_bal_k", -1,
   "flare_tecs_thr_slew_per_s",-1,
   "flare_tecs_climb_vs_gate",-1,
+  "flare_balloon_vs_trigger",-1,
+  "flare_balloon_clear_vs",-1,
+  "flare_balloon_min_h_m",-1,
+  "flare_balloon_gamma_down_deg",-1,
   "flare_disable_speed_bleed",-1,
   "touchdown_confirm_s", -1,
   "touchdown_confirm_max_abs_vs", -1,
@@ -626,6 +633,7 @@ FUNCTION _RUN_FLIGHT_PLAN {
   UNLOCK WHEELSTEERING.
   AA_RESTORE_FBW().
   BRAKES ON.
+  IFC_GEAR_VIS_CLEAR().
   LOGGER_CLOSE().
   IF DEFINED VR_PROBE_HOOKS_READY AND VR_PROBE_HOOKS_READY {
     VR_PROBE_FINALIZE().

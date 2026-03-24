@@ -49,10 +49,10 @@
 
 # Bugs
 
-- Performance-improvements commit appears to have introduced broad regressions.
+- [x] Performance-improvements commit appears to have introduced broad regressions.
 - Moderate-G mode may deactivate unexpectedly (possibly during kOS director <-> cruise controller handoff).
 - Aircraft does not bank correctly during approach.
-- Autothrottle response appears too slow (roughly 1 Hz behavior).
+- [x] Autothrottle response appears too slow (roughly 1 Hz behavior).
 - Localizer intercept offset: aircraft is about 130 m right of centerline at intercept.
 - On localizer capture/alive, guidance can remain in waypoint mode too long before proper ILS capture.
 - Guidance mode toggling loop/spam observed:
@@ -60,4 +60,4 @@
   - Standard Fly-By-Wire Enabled
   - Standard Fly-By-Wire Disabled
   - kOS Director Enabled
-- During approach/cruise transitions, altitude control sometimes uses FPA hold when altitude-hold behavior is expected.
+- [x] During approach/cruise transitions, altitude control sometimes uses FPA hold when altitude-hold behavior is expected.

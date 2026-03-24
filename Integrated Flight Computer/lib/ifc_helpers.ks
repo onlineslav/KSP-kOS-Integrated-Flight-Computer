@@ -206,15 +206,6 @@ FUNCTION _GET_MAIN_GEAR_TAG {
   RETURN tag.
 }
 
-FUNCTION _GET_MAIN_GEAR_H_OFFSET {
-  LOCAL h_offset IS FLARE_GEAR_H_OFFSET_M.
-  IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("flare_gear_h_offset_m") {
-    LOCAL ac_offset IS ACTIVE_AIRCRAFT["flare_gear_h_offset_m"].
-    IF ac_offset <> -1 { SET h_offset TO ac_offset. }
-  }
-  RETURN h_offset.
-}
-
 FUNCTION _GET_RUNWAY_REF_ALT_ASL {
   IF ACTIVE_ILS_ID <> "" {
     LOCAL ils IS GET_BEACON(ACTIVE_ILS_ID).
@@ -262,12 +253,10 @@ FUNCTION _GET_GEAR_BOTTOM_RUNWAY_HEIGHT {
   RETURN 999999.
 }
 
-// Returns minimum runway-relative height (m) among tagged main-gear parts.
-// Falls back to vessel runway-relative height if no tagged gear parts exist.
-FUNCTION GET_MAIN_GEAR_RUNWAY_HEIGHT_MIN {
+// Returns minimum runway-relative raw height (m) among tagged main-gear parts.
+FUNCTION GET_MAIN_GEAR_RUNWAY_HEIGHT_RAW_MIN {
   _DISCOVER_MAIN_GEAR_PARTS().
-  LOCAL h_offset IS _GET_MAIN_GEAR_H_OFFSET().
-  IF FLARE_GEAR_PARTS:LENGTH <= 0 { RETURN GET_RUNWAY_REL_HEIGHT() + h_offset. }
+  IF FLARE_GEAR_PARTS:LENGTH <= 0 { RETURN GET_RUNWAY_REL_HEIGHT(). }
 
   LOCAL runway_ref_alt_asl IS _GET_RUNWAY_REF_ALT_ASL().
   LOCAL min_h IS 999999.
@@ -277,8 +266,14 @@ FUNCTION GET_MAIN_GEAR_RUNWAY_HEIGHT_MIN {
     IF h < min_h { SET min_h TO h. }
     SET i TO i + 1.
   }
-  IF min_h < 999998 { RETURN min_h + h_offset. }
-  RETURN GET_RUNWAY_REL_HEIGHT() + h_offset.
+  IF min_h < 999998 { RETURN min_h. }
+  RETURN GET_RUNWAY_REL_HEIGHT().
+}
+
+// Returns minimum runway-relative height (m) among tagged main-gear parts.
+// Falls back to vessel runway-relative height if no tagged gear parts exist.
+FUNCTION GET_MAIN_GEAR_RUNWAY_HEIGHT_MIN {
+  RETURN GET_MAIN_GEAR_RUNWAY_HEIGHT_RAW_MIN().
 }
 
 // Counts tagged main-gear parts currently at or below the given
@@ -286,10 +281,9 @@ FUNCTION GET_MAIN_GEAR_RUNWAY_HEIGHT_MIN {
 FUNCTION COUNT_MAIN_GEAR_BELOW {
   PARAMETER height_m.
   _DISCOVER_MAIN_GEAR_PARTS().
-  LOCAL h_offset IS _GET_MAIN_GEAR_H_OFFSET().
 
   IF FLARE_GEAR_PARTS:LENGTH <= 0 {
-    IF GET_RUNWAY_REL_HEIGHT() + h_offset <= height_m { RETURN 1. }
+    IF GET_RUNWAY_REL_HEIGHT() <= height_m { RETURN 1. }
     RETURN 0.
   }
 
@@ -298,7 +292,7 @@ FUNCTION COUNT_MAIN_GEAR_BELOW {
   LOCAL i IS 0.
   UNTIL i >= FLARE_GEAR_PARTS:LENGTH {
     LOCAL h IS _GET_GEAR_BOTTOM_RUNWAY_HEIGHT(FLARE_GEAR_PARTS[i], runway_ref_alt_asl).
-    IF h + h_offset <= height_m { SET count TO count + 1. }
+    IF h <= height_m { SET count TO count + 1. }
     SET i TO i + 1.
   }
   RETURN count.
@@ -328,6 +322,75 @@ FUNCTION GET_CURRENT_THROTTLE {
 // Reads the per-loop cached facing/up vectors (IFC_FACING_FWD, IFC_UP_VEC).
 FUNCTION GET_PITCH {
   RETURN 90 - VECTORANGLE(IFC_FACING_FWD, IFC_UP_VEC).
+}
+
+FUNCTION IFC_GEAR_VIS_CLEAR {
+  IF IFC_DEBUG_GEAR_DRAW_RED <> 0 {
+    SET IFC_DEBUG_GEAR_DRAW_RED:SHOW TO FALSE.
+    SET IFC_DEBUG_GEAR_DRAW_RED TO 0.
+  }
+  IF IFC_DEBUG_GEAR_DRAW_BLUE <> 0 {
+    SET IFC_DEBUG_GEAR_DRAW_BLUE:SHOW TO FALSE.
+    SET IFC_DEBUG_GEAR_DRAW_BLUE TO 0.
+  }
+}
+
+FUNCTION _IFC_GEAR_VIS_ENSURE_HANDLES {
+  IF IFC_DEBUG_GEAR_DRAW_RED = 0 {
+    SET IFC_DEBUG_GEAR_DRAW_RED TO VECDRAW(
+      V(0, 0, 0),
+      V(0, 0, 0),
+      RGBA(1, 0, 0, 0.85),
+      "",
+      1,
+      TRUE,
+      0.12
+    ).
+  }
+  IF IFC_DEBUG_GEAR_DRAW_BLUE = 0 {
+    SET IFC_DEBUG_GEAR_DRAW_BLUE TO VECDRAW(
+      V(0, 0, 0),
+      V(0, 0, 0),
+      RGBA(0.15, 0.45, 1, 0.90),
+      "",
+      1,
+      TRUE,
+      0.12
+    ).
+  }
+}
+
+// Debug visualizer:
+// - Red line: CoG down to minimum tagged main-gear bounds bottom.
+// - Blue line: runway gap from gear-bottom to runway reference altitude.
+FUNCTION IFC_GEAR_VIS_SYNC {
+  IF NOT IFC_DEBUG_DRAW_GEAR_HEIGHT {
+    IFC_GEAR_VIS_CLEAR().
+    RETURN.
+  }
+
+  PRIME_MAIN_GEAR_CACHE().
+  _IFC_GEAR_VIS_ENSURE_HANDLES().
+
+  LOCAL cog_shipraw IS SHIP:GEOPOSITION:ALTITUDEPOSITION(SHIP:ALTITUDE).
+  LOCAL runway_h_now IS GET_RUNWAY_REL_HEIGHT().
+  LOCAL gear_h_raw IS GET_MAIN_GEAR_RUNWAY_HEIGHT_RAW_MIN().
+  LOCAL cog_to_gear_m IS MAX(runway_h_now - gear_h_raw, 0).
+  LOCAL down_vec IS IFC_UP_VEC * -1.
+
+  LOCAL red_vec IS down_vec * cog_to_gear_m.
+  SET IFC_DEBUG_GEAR_DRAW_RED:START TO cog_shipraw.
+  SET IFC_DEBUG_GEAR_DRAW_RED:VEC TO red_vec.
+  SET IFC_DEBUG_GEAR_DRAW_RED:SHOW TO TRUE.
+
+  LOCAL blue_len IS MAX(gear_h_raw, 0).
+  IF blue_len <= 0.001 {
+    SET IFC_DEBUG_GEAR_DRAW_BLUE:SHOW TO FALSE.
+    RETURN.
+  }
+  SET IFC_DEBUG_GEAR_DRAW_BLUE:START TO cog_shipraw + red_vec.
+  SET IFC_DEBUG_GEAR_DRAW_BLUE:VEC TO down_vec * blue_len.
+  SET IFC_DEBUG_GEAR_DRAW_BLUE:SHOW TO TRUE.
 }
 
 // Compass heading of SHIP:FACING (0-360, 0=North, 90=East).
