@@ -257,7 +257,7 @@ FUNCTION _UPDATE_APPROACH_SPEED_TARGET {
 // APPROACH THROTTLE  (shared by FLY_TO_FIX and ILS_TRACK)
 //
 // IFC autothrottle (AT_RUN_SPEED_HOLD) always owns the throttle.
-// AA Cruise / Director manage pitch and heading only.
+// AA Cruise / Director manage heading + vertical guidance; IFC AT owns throttle.
 // AA SPEEDCONTROL is explicitly disabled so it cannot fight AT.
 //
 // Speed target comes from _UPDATE_APPROACH_SPEED_TARGET().
@@ -413,10 +413,9 @@ FUNCTION _RUN_FLY_TO_FIX {
   // WAYPOINT and HEADING are mutually exclusive in AA — setting WAYPOINT
   // deactivates HEADING automatically.
   //
-  // AA Cruise is used instead of AA Director to avoid the positive AOA
-  // feedback in Director's pitch formula (pitch_cmd = fpa_cmd + GET_AOA())
-  // which diverges at AOA > ~12°.  AA Cruise measures actual FPA and adjusts
-  // pitch internally — no AOA term, no positive feedback.
+  // Vertical path in Approach/Cruise uses AA altitude hold at the current leg
+  // target altitude (tgt_alt). This avoids driving pre-capture vertical path
+  // through FPANGLE commands in Cruise mode.
   //
   // Compute hdg_cmd for the fallback Director path and for TELEM only.
   LOCAL hdg_now IS GET_COMPASS_HDG().
@@ -429,12 +428,12 @@ FUNCTION _RUN_FLY_TO_FIX {
     IF aa:HASSUFFIX("CRUISE")   AND NOT aa:CRUISE { SET aa:CRUISE TO TRUE. }
     IF aa:HASSUFFIX("WAYPOINT") { SET aa:WAYPOINT TO fix_ll. }
     ELSE IF aa:HASSUFFIX("HEADING") { SET aa:HEADING TO hdg_cmd. }
-    // Use FPANGLE (not ALTITUDE) so AA Cruise only manages pitch for the FPA
-    // command.  Setting aa:ALTITUDE would give AA Cruise throttle authority for
-    // altitude hold, which conflicts with SPEEDCONTROL's throttle authority and
-    // causes the two controllers to fight, stabilising speed far above Vint.
-    // This mirrors AA_SET_CRUISE() in ifc_aa.ks which also uses FPANGLE.
-    IF aa:HASSUFFIX("FPANGLE") { SET aa:FPANGLE TO fpa_cmd. }
+    IF aa:HASSUFFIX("ALTITUDE") {
+      SET aa:ALTITUDE TO tgt_alt.
+    } ELSE IF aa:HASSUFFIX("FPANGLE") {
+      // Compatibility fallback for AA versions without ALTITUDE in Cruise.
+      SET aa:FPANGLE TO fpa_cmd.
+    }
     SET IFC_DESIRED_STEERING TO HEADING(hdg_cmd, fpa_cmd).
   } ELSE {
     AA_SET_DIRECTOR(hdg_cmd, fpa_cmd).

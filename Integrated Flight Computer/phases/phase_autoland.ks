@@ -174,7 +174,15 @@ FUNCTION _RUN_FLARE {
     flare_rate * IFC_ACTUAL_DT
   ).
 
-  AA_SET_DIRECTOR(ACTIVE_RWY_HDG, FLARE_PITCH_CMD).
+  // Flare guidance is authored in FPA, but AA Director consumes pitch.
+  // When global AoA compensation is disabled (normal IFC setting), convert
+  // flare FPA to an equivalent pitch command here so the aircraft can
+  // actually pull toward the target sink profile.
+  LOCAL flare_dir_cmd IS FLARE_PITCH_CMD.
+  IF NOT AA_DIR_ADD_AOA_COMP {
+    SET flare_dir_cmd TO flare_dir_cmd + GET_AOA().
+  }
+  AA_SET_DIRECTOR(ACTIVE_RWY_HDG, flare_dir_cmd).
   SET TELEM_AA_HDG_CMD   TO ACTIVE_RWY_HDG.
   SET TELEM_AA_FPA_CMD   TO FLARE_PITCH_CMD.
   SET TELEM_FLARE_TGT_VS TO tgt_vs.

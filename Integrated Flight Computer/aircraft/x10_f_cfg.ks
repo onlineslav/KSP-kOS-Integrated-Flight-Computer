@@ -26,8 +26,8 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Vapp: target speed from FAF to flare.
     // Vref: threshold crossing speed (used for display/logging).
     // Reduce Vapp toward Vref during the flare by cutting throttle.
-    "v_app",        146.0,  // prev: 140,175,200  // we want ~10-15deg aoa (150 gives 10deg aoa) (140 gives 13.8deg aoa)
-    "v_ref",        120.0,  // prev: 130,130,150,170
+    "v_app",        152.0,  // prev: 140,175,200  // we want ~10-15deg aoa (150 gives 10deg aoa) (140 gives 13.8deg aoa)
+    "v_ref",        148.0,  // prev: 130,130,150,170
     // Approach speed schedule shaping:
     // Vint = Vapp + clamp((Vapp - Vref) * gain, min_add, max_add)
     "app_spd_intercept_gain",    0.45,
@@ -167,11 +167,11 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // Override the global constants for this specific aircraft.
     // Set to -1 to use the global default from ifc_constants.ks.
     "flare_gear_tag",          "ifc_maingear", // tag on parts used as main-gear flare/touchdown reference
-    "flare_agl",               50,   // m runway-relative main-gear height to begin flare (conservative while retuning)
+    "flare_agl",               90,   // m runway-relative main-gear height to begin flare (conservative while retuning)
     "flare_touchdown_vs",      -0.25,// m/s target sink rate at wheel contact
-    "flare_ias_to_vs_gain",    0.001,// extra sink per m/s above Vref during flare (kept very small)
+    "flare_ias_to_vs_gain",    0.000,// extra sink per m/s above Vref during flare (kept very small)
     "flare_roundout_agl",      24.0, // m runway-relative main-gear final sink blend zone (earlier sink arrest)
-    "flare_roundout_strength", 1.0,  // full roundout blend
+    "flare_roundout_strength", 0.0,  // full roundout blend prev 1
     "flare_balloon_vs_trigger",0.25, // m/s VS threshold for anti-balloon push
     "flare_balloon_fpa_push",  1.6,  // deg nose-down bias when ballooning
     "flare_pitch_rate_min",    1.8,  // deg/s low-speed flare response
