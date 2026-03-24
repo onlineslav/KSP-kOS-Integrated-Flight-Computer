@@ -27,6 +27,9 @@
 - stall protection? if aircraft approaching Vs, disregard commanded speed and increase to safe minimum speed
 - also add minimum flap speeds? like below a certain speed, the aircraft must have a certain degree of flaps (for AoA margin)
 - add what the default values actually are to aircraft cfg template (and all other ones)
+- be able to enable/disable what actually gets logged - I feel like a lot of stuff that gets logged was only useful for debugging the code and useless now that a lot of it is working
+  - furthermore, actual grouping of logged values, so grouping of control surface deflections (rudders, ailerons, etc.)
+  - it would be useful to know what currently has control of the vessel: AA cruise, AA kOS, what AA mode is on, etc.
 
 # Planned
 

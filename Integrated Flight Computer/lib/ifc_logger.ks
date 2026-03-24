@@ -61,6 +61,10 @@
 //   flare_vs_err   target sink minus actual VS (m/s)
 //   flare_fpa_err  commanded FPA minus actual FPA (deg)
 //   flare_pitch_err commanded AA direction pitch minus actual pitch (deg)
+//   flare_pitch_in_cmd SHIP:CONTROL:PITCH input command (unitless, -1..1)
+//   elev_defl_avg_deg average absolute pitch-surface deflection seen this sample (deg)
+//   elev_defl_max_deg max absolute pitch-surface deflection seen this sample (deg)
+//   elev_defl_n number of pitch-surface module samples used in deflection stats
 //   flare_req_up_a estimated upward accel needed to reach target VS by touchdown (m/s^2)
 //   flare_thr_floor active flare throttle floor value (0..1)
 //   flare_tecs_et_err flare TECS total-energy error (m^2/s^2)
@@ -133,6 +137,178 @@ GLOBAL LOG_LAST_WRITE_UT IS -1.
 GLOBAL LOG_CRAFT_NAME IS "".
 GLOBAL LOG_CFG_FILE   IS "".
 
+FUNCTION _LOG_ENTRY_NAME {
+  PARAMETER entry.
+  IF entry = 0 { RETURN "". }
+  IF entry:HASSUFFIX("NAME") { RETURN entry:NAME. }
+  RETURN "" + entry.
+}
+
+FUNCTION _LOG_PART_HAS_MODULE_NAME {
+  PARAMETER p, target_name.
+  IF p = 0 { RETURN FALSE. }
+  IF target_name = "" { RETURN FALSE. }
+  IF NOT p:HASSUFFIX("ALLMODULES") { RETURN FALSE. }
+
+  LOCAL allmods IS p:ALLMODULES.
+  LOCAL i IS 0.
+  UNTIL i >= allmods:LENGTH {
+    LOCAL nm IS _LOG_ENTRY_NAME(allmods[i]).
+    IF nm = target_name { RETURN TRUE. }
+    SET i TO i + 1.
+  }
+  RETURN FALSE.
+}
+
+FUNCTION _LOG_RESOLVE_MODULE_OBJECT {
+  PARAMETER p, module_entry, module_name.
+
+  IF module_entry <> 0 AND module_entry:HASSUFFIX("HASFIELD") { RETURN module_entry. }
+
+  IF p <> 0 AND p:HASSUFFIX("GETMODULE") AND module_name <> "" AND _LOG_PART_HAS_MODULE_NAME(p, module_name) {
+    LOCAL probe_mod IS p:GETMODULE(module_name).
+    IF probe_mod <> 0 { RETURN probe_mod. }
+  }
+
+  RETURN module_entry.
+}
+
+FUNCTION _LOG_IS_CTRL_SURFACE_MODULE {
+  PARAMETER module_name.
+  IF module_name = "" { RETURN FALSE. }
+  LOCAL n IS module_name:TOLOWER().
+  IF n:CONTAINS("controlsurface") { RETURN TRUE. }
+  IF n:CONTAINS("controllablesurface") { RETURN TRUE. }
+  IF n:CONTAINS("elevator") { RETURN TRUE. }
+  RETURN FALSE.
+}
+
+FUNCTION _LOG_IS_TRUE_TEXT {
+  PARAMETER raw_val.
+  LOCAL s IS ("" + raw_val):TOLOWER().
+  SET s TO s:TRIM.
+  RETURN s = "true" OR s = "1" OR s = "yes" OR s = "on".
+}
+
+FUNCTION _LOG_READ_FIELD_NUMBER {
+  PARAMETER module_obj, field_name, fallback.
+  IF module_obj = 0 { RETURN fallback. }
+  IF field_name = "" { RETURN fallback. }
+  IF NOT module_obj:HASSUFFIX("GETFIELD") { RETURN fallback. }
+  IF module_obj:HASSUFFIX("HASFIELD") AND NOT module_obj:HASFIELD(field_name) { RETURN fallback. }
+
+  LOCAL raw_val IS module_obj:GETFIELD(field_name).
+  RETURN ("" + raw_val):TONUMBER(fallback).
+}
+
+FUNCTION _LOG_RESOLVE_CTRL_DEFLECTION_FIELD {
+  PARAMETER module_obj.
+  IF module_obj = 0 { RETURN "". }
+  IF NOT module_obj:HASSUFFIX("HASFIELD") { RETURN "". }
+
+  LOCAL candidates IS LIST(
+    "ctrlSurfaceAngle",
+    "ctrlsurfaceangle",
+    "currentDeflection",
+    "currentdeflection",
+    "deflectionAngle",
+    "deflectionangle",
+    "deflection",
+    "Deflection",
+    "angle",
+    "Angle",
+    "deployAngle",
+    "deployangle"
+  ).
+
+  LOCAL i IS 0.
+  UNTIL i >= candidates:LENGTH {
+    LOCAL f IS candidates[i].
+    IF module_obj:HASFIELD(f) { RETURN f. }
+    SET i TO i + 1.
+  }
+  RETURN "".
+}
+
+FUNCTION _LOG_MODULE_HAS_PITCH_AUTH {
+  PARAMETER module_obj.
+  IF module_obj = 0 { RETURN FALSE. }
+
+  IF module_obj:HASSUFFIX("HASFIELD") AND module_obj:HASSUFFIX("GETFIELD") {
+    IF module_obj:HASFIELD("ignorePitch") {
+      IF _LOG_IS_TRUE_TEXT(module_obj:GETFIELD("ignorePitch")) { RETURN FALSE. }
+    }
+    IF module_obj:HASFIELD("Ignore Pitch") {
+      IF _LOG_IS_TRUE_TEXT(module_obj:GETFIELD("Ignore Pitch")) { RETURN FALSE. }
+    }
+    IF module_obj:HASFIELD("usePitch") {
+      IF NOT _LOG_IS_TRUE_TEXT(module_obj:GETFIELD("usePitch")) { RETURN FALSE. }
+    }
+  }
+
+  LOCAL pitch_axis IS _LOG_READ_FIELD_NUMBER(module_obj, "pitchAxis", 999999).
+  IF pitch_axis = 999999 { SET pitch_axis TO _LOG_READ_FIELD_NUMBER(module_obj, "pitchaxis", 999999). }
+  IF pitch_axis <> 999999 AND ABS(pitch_axis) < 0.01 { RETURN FALSE. }
+
+  RETURN TRUE.
+}
+
+FUNCTION _LOG_SAMPLE_PITCH_SURFACE_DEFLECTION {
+  LOCAL parts IS SHIP:PARTS.
+  LOCAL sum_abs IS 0.
+  LOCAL max_abs IS 0.
+  LOCAL count IS 0.
+
+  LOCAL i IS 0.
+  UNTIL i >= parts:LENGTH {
+    LOCAL p IS parts[i].
+    SET i TO i + 1.
+    IF p <> 0 AND p:HASSUFFIX("MODULES") {
+      LOCAL skip_part IS FALSE.
+      IF p:HASSUFFIX("TAG") {
+        LOCAL tag_lc IS p:TAG:TOLOWER().
+        IF tag_lc:CONTAINS("spoiler") { SET skip_part TO TRUE. }
+      }
+      IF NOT skip_part {
+        LOCAL mods IS p:MODULES.
+        LOCAL j IS 0.
+        UNTIL j >= mods:LENGTH {
+          LOCAL m IS mods[j].
+          SET j TO j + 1.
+          IF m <> 0 {
+            LOCAL module_name IS _LOG_ENTRY_NAME(m).
+            IF _LOG_IS_CTRL_SURFACE_MODULE(module_name) {
+              LOCAL module_obj IS _LOG_RESOLVE_MODULE_OBJECT(p, m, module_name).
+              IF module_obj <> 0 AND module_obj:HASSUFFIX("GETFIELD") {
+                IF _LOG_MODULE_HAS_PITCH_AUTH(module_obj) {
+                  LOCAL field_name IS _LOG_RESOLVE_CTRL_DEFLECTION_FIELD(module_obj).
+                  IF field_name <> "" {
+                    LOCAL defl_deg IS _LOG_READ_FIELD_NUMBER(module_obj, field_name, 999999).
+                    IF defl_deg <> 999999 {
+                      LOCAL abs_defl IS ABS(defl_deg).
+                      SET sum_abs TO sum_abs + abs_defl.
+                      IF abs_defl > max_abs { SET max_abs TO abs_defl. }
+                      SET count TO count + 1.
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  LOCAL avg_abs IS 0.
+  IF count > 0 { SET avg_abs TO sum_abs / count. }
+  RETURN LEXICON(
+    "avg_abs_deg", avg_abs,
+    "max_abs_deg", max_abs,
+    "count", count
+  ).
+}
+
 FUNCTION LOGGER_INIT {
   LOCAL log_dir IS "0:/Integrated Flight Computer/logs".
   IF NOT EXISTS(log_dir) { CREATEDIR(log_dir). }
@@ -159,7 +335,7 @@ FUNCTION LOGGER_INIT {
   SET LOG_CFG_FILE   TO IFC_ACTIVE_CFG_PATH:REPLACE(",", "_").
   IF LOG_CFG_FILE = "" { SET LOG_CFG_FILE TO "UNKNOWN". }
 
-  LOG "t_s,phase,subphase,ias_ms,vapp_ms,spd_err_ms,agl_m,gear_h_m,vs_ms,pitch_deg,aoa_deg,hdg_deg,bank_deg,thr_cmd,thr_cur,thr_intg,at_gain,at_tau_s,at_a_up,at_a_dn,at_kp_thr,at_ki_spd,at_thr_slew,as_cmd_deg,as_cap_deg,as_raw_deg,as_spd_err_ms,as_active,aa_hdg_cmd_deg,aa_fpa_cmd_deg,aa_fbw,aa_dir,actual_fpa_deg,ftf_hdg_err_deg,ftf_fix_idx,kos_steer_pit_deg,kos_steer_hdg_deg,aa_dir_vx,aa_dir_vy,aa_dir_vz,aa_dir_pitch_deg,aa_dir_hdg_deg,ils_loc_m,ils_gs_m,ils_dist_km,loc_corr_deg,gs_corr_deg,gs_latched,active_gs_ang_deg,ils_intercept_alt_m,d_gs_ms,fpa_preclamped_deg,gs_nom_alt_m,flare_fpa_cmd,flare_tgt_vs,flare_frac,flare_mode,flare_auth_limited,flare_vs_err,flare_fpa_err,flare_pitch_err,flare_req_up_a,flare_thr_floor,flare_tecs_et_err,flare_tecs_eb_err,flare_tecs_h_ref,flare_tecs_v_ref,flare_gamma_ref,flare_gamma_eb_term,flare_gamma_unsat,steer_hdg_deg,steer_blend,ro_loc_corr_deg,ro_hdg_err_deg,ro_yaw_tgt,ro_yaw_scale,ro_yaw_gate,yaw_cmd,roll_cmd,pitch_cmd,ro_pitch_tgt_deg,ro_pitch_err_deg,ro_pitch_ff,ro_roll_assist,flaps_cur,flaps_tgt,asc_j_ab,asc_j_rk,asc_validity,asc_q_pa,asc_q_raw_pa,asc_mach,asc_apo_m,asc_drag_n,asc_w_prop,asc_edot_aero,asc_edot_orb,asc_pitch_bias,asc_blend,asc_spooling,asc_ab_thr_ratio,asc_ab_t_now,asc_ab_t_avail,asc_ab_ign_on,asc_ab_flameouts,asc_rk_t_now,asc_rk_t_avail,asc_rk_ign_on,asc_rk_flameouts,ship_thrust,ship_avail_thrust,ship_ign_on,ship_flameouts,ifc_raw_dt_s,ifc_dt_s,ifc_loop_n,ifc_hz_est,ifc_raw_dt_max_s,ifc_raw_dt_min_s,phase_el_s,status,craft_name,cfg_file" TO LOG_FILE.
+  LOG "t_s,phase,subphase,ias_ms,vapp_ms,spd_err_ms,agl_m,gear_h_m,vs_ms,pitch_deg,aoa_deg,hdg_deg,bank_deg,thr_cmd,thr_cur,thr_intg,at_gain,at_tau_s,at_a_up,at_a_dn,at_kp_thr,at_ki_spd,at_thr_slew,as_cmd_deg,as_cap_deg,as_raw_deg,as_spd_err_ms,as_active,aa_hdg_cmd_deg,aa_fpa_cmd_deg,aa_fbw,aa_dir,actual_fpa_deg,ftf_hdg_err_deg,ftf_fix_idx,kos_steer_pit_deg,kos_steer_hdg_deg,aa_dir_vx,aa_dir_vy,aa_dir_vz,aa_dir_pitch_deg,aa_dir_hdg_deg,ils_loc_m,ils_gs_m,ils_dist_km,loc_corr_deg,gs_corr_deg,gs_latched,active_gs_ang_deg,ils_intercept_alt_m,d_gs_ms,fpa_preclamped_deg,gs_nom_alt_m,flare_fpa_cmd,flare_tgt_vs,flare_frac,flare_mode,flare_auth_limited,flare_vs_err,flare_fpa_err,flare_pitch_err,flare_pitch_in_cmd,elev_defl_avg_deg,elev_defl_max_deg,elev_defl_n,flare_req_up_a,flare_thr_floor,flare_tecs_et_err,flare_tecs_eb_err,flare_tecs_h_ref,flare_tecs_v_ref,flare_gamma_ref,flare_gamma_eb_term,flare_gamma_unsat,steer_hdg_deg,steer_blend,ro_loc_corr_deg,ro_hdg_err_deg,ro_yaw_tgt,ro_yaw_scale,ro_yaw_gate,yaw_cmd,roll_cmd,pitch_cmd,ro_pitch_tgt_deg,ro_pitch_err_deg,ro_pitch_ff,ro_roll_assist,flaps_cur,flaps_tgt,asc_j_ab,asc_j_rk,asc_validity,asc_q_pa,asc_q_raw_pa,asc_mach,asc_apo_m,asc_drag_n,asc_w_prop,asc_edot_aero,asc_edot_orb,asc_pitch_bias,asc_blend,asc_spooling,asc_ab_thr_ratio,asc_ab_t_now,asc_ab_t_avail,asc_ab_ign_on,asc_ab_flameouts,asc_rk_t_now,asc_rk_t_avail,asc_rk_ign_on,asc_rk_flameouts,ship_thrust,ship_avail_thrust,ship_ign_on,ship_flameouts,ifc_raw_dt_s,ifc_dt_s,ifc_loop_n,ifc_hz_est,ifc_raw_dt_max_s,ifc_raw_dt_min_s,phase_el_s,status,craft_name,cfg_file" TO LOG_FILE.
 
   SET LOG_ACTIVE TO TRUE.
   SET LOG_LAST_WRITE_UT TO TIME:SECONDS - IFC_CSV_LOG_PERIOD.
@@ -206,6 +382,14 @@ FUNCTION LOGGER_WRITE {
     }
     SET flare_thr_floor TO TELEM_FLARE_THR_FLOOR.
   }
+  LOCAL flare_pitch_in_cmd IS SHIP:CONTROL:PITCH.
+  LOCAL elev_stats IS _LOG_SAMPLE_PITCH_SURFACE_DEFLECTION().
+  LOCAL elev_defl_avg_deg IS 0.
+  LOCAL elev_defl_max_deg IS 0.
+  LOCAL elev_defl_n IS 0.
+  IF elev_stats:HASKEY("avg_abs_deg") { SET elev_defl_avg_deg TO elev_stats["avg_abs_deg"]. }
+  IF elev_stats:HASKEY("max_abs_deg") { SET elev_defl_max_deg TO elev_stats["max_abs_deg"]. }
+  IF elev_stats:HASKEY("count") { SET elev_defl_n TO elev_stats["count"]. }
   LOCAL bank  IS ROUND(TELEM_BANK_DEG, 3).
   LOCAL ship_t_now   IS SHIP:THRUST.
   LOCAL ship_t_avail IS SHIP:AVAILABLETHRUST.
@@ -292,6 +476,10 @@ FUNCTION LOGGER_WRITE {
     ROUND(flare_vs_err,               3),
     ROUND(flare_fpa_err,              3),
     ROUND(flare_pitch_err,            3),
+    ROUND(flare_pitch_in_cmd,         4),
+    ROUND(elev_defl_avg_deg,          3),
+    ROUND(elev_defl_max_deg,          3),
+    ROUND(elev_defl_n,                0),
     ROUND(flare_req_up_a,             3),
     flare_thr_floor,
     ROUND(TELEM_FLARE_ET_ERR,         3),
