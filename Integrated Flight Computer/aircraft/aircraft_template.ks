@@ -72,21 +72,21 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "a_crit",    0.0,   // deg  critical AoA from FAR data (0 = protection disabled)
 
     // ── Spoiler arming (approach) ─────────────────────────
-    "spoiler_tag",        "", // spoiler part tag (blank = use global default "ifc_spoiler")
-    "as_enabled",         -1, // 1 enable autospoiler, 0 disable, -1 use global default
-    "as_thr_idle_gate",   -1, // throttle gate for decel assist (THROTTLE_CMD <= gate), -1 = global
-    "as_err_deadband_mps",-1, // m/s overspeed deadband before spoiler command starts, -1 = global
-    "as_err_full_mps",    -1, // m/s overspeed that reaches full capped command, -1 = global
-    "as_angle_slew_dps",  -1, // deg/s deploy-angle slew rate limit, -1 = global
-    "as_max_deflection_deg",-1, // deg written when autospoiler is not deployed (-1 = global)
-    "as_crz_speed_lo",    -1, // m/s low speed point for cruise cap schedule, -1 = global
-    "as_crz_speed_hi",    -1, // m/s high speed point for cruise cap schedule, -1 = global
-    "as_crz_cap_deg_lo",  -1, // deg cap at/below as_crz_speed_lo, -1 = global
-    "as_crz_cap_deg_hi",  -1, // deg cap at/above as_crz_speed_hi, -1 = global
-    "as_app_speed_lo",    -1, // m/s low speed point for approach cap schedule, -1 = global
-    "as_app_speed_hi",    -1, // m/s high speed point for approach cap schedule, -1 = global
-    "as_app_cap_deg_lo",  -1, // deg cap at/below as_app_speed_lo, -1 = global
-    "as_app_cap_deg_hi",  -1, // deg cap at/above as_app_speed_hi, -1 = global
+    "spoiler_tag",         "ifc_spoiler", // part tag used by autospoiler discovery
+    "as_enabled",          1,    // 1 enable autospoiler, 0 disable
+    "as_thr_idle_gate",    0.08, // deploy assist only when THROTTLE_CMD <= gate
+    "as_err_deadband_mps", 1.5,  // m/s overspeed before spoiler response starts
+    "as_err_full_mps",     18.0, // m/s overspeed that commands full capped deflection
+    "as_angle_slew_dps",   25.0, // deg/s deploy-angle slew limit
+    "as_max_deflection_deg", 70, // deg written when autospoiler is not actively deploying
+    "as_crz_speed_lo",     120,  // m/s low speed point for cruise cap schedule
+    "as_crz_speed_hi",     260,  // m/s high speed point for cruise cap schedule
+    "as_crz_cap_deg_lo",   45,   // deg cap at/below as_crz_speed_lo
+    "as_crz_cap_deg_hi",   25,   // deg cap at/above as_crz_speed_hi
+    "as_app_speed_lo",     70,   // m/s low speed point for approach cap schedule
+    "as_app_speed_hi",     160,  // m/s high speed point for approach cap schedule
+    "as_app_cap_deg_lo",   55,   // deg cap at/below as_app_speed_lo
+    "as_app_cap_deg_hi",   28,   // deg cap at/above as_app_speed_hi
     "ag_spoilers_arm",    0,  // AG to arm spoilers in-flight (0 = not used)
     "app_spoiler_arm_km", 0,  // km from threshold to arm (0 = disabled)
 

@@ -474,6 +474,162 @@ FUNCTION MENU_DISPATCH {
 
 LOCAL _FMS_LEG_TYPES       IS LIST(LEG_TAKEOFF, LEG_CRUISE, LEG_APPROACH).
 LOCAL _FMS_LEG_TYPE_LABELS IS LIST("TAKEOFF", "CRUISE", "APPROACH").
+LOCAL _FMS_AP_CACHE_READY IS FALSE.
+LOCAL _FMS_AP_AIRPORT_IDS IS LIST().
+LOCAL _FMS_AP_AIRPORT_LABELS IS LEXICON().
+LOCAL _FMS_AP_AIRPORT_PLATES IS LEXICON().
+
+FUNCTION _FMS_FIND_IN_LIST {
+  PARAMETER lst, value.
+  LOCAL i IS 0.
+  UNTIL i >= lst:LENGTH {
+    IF lst[i] = value { RETURN i. }
+    SET i TO i + 1.
+  }
+  RETURN -1.
+}
+
+FUNCTION _FMS_AP_AIRPORT_OF_PLATE {
+  PARAMETER pid.
+  IF pid:FIND("PLATE_KSC_") = 0 { RETURN "KSC". }
+  IF pid:FIND("PLATE_ISL_") = 0 { RETURN "ISL". }
+  IF pid:FIND("PLATE_DAF_") = 0 { RETURN "DAF". }
+  IF pid:FIND("PLATE_POL_") = 0 { RETURN "POL". }
+  RETURN "MISC".
+}
+
+FUNCTION _FMS_AP_AIRPORT_LABEL {
+  PARAMETER ap_id.
+  IF ap_id = "KSC" { RETURN "KSC". }
+  IF ap_id = "ISL" { RETURN "ISLAND". }
+  IF ap_id = "DAF" { RETURN "DESERT". }
+  IF ap_id = "POL" { RETURN "POLAR". }
+  RETURN ap_id.
+}
+
+FUNCTION _FMS_AP_BUILD_CACHE {
+  IF _FMS_AP_CACHE_READY { RETURN. }
+  IF NOT (DEFINED PLATE_IDS) { RETURN. }
+  _FMS_AP_AIRPORT_IDS:CLEAR().
+  SET _FMS_AP_AIRPORT_LABELS TO LEXICON().
+  SET _FMS_AP_AIRPORT_PLATES TO LEXICON().
+
+  LOCAL i IS 0.
+  UNTIL i >= PLATE_IDS:LENGTH {
+    LOCAL pid IS PLATE_IDS[i].
+    LOCAL ap_id IS _FMS_AP_AIRPORT_OF_PLATE(pid).
+    IF NOT _FMS_AP_AIRPORT_PLATES:HASKEY(ap_id) {
+      _FMS_AP_AIRPORT_IDS:ADD(ap_id).
+      _FMS_AP_AIRPORT_LABELS:ADD(ap_id, _FMS_AP_AIRPORT_LABEL(ap_id)).
+      _FMS_AP_AIRPORT_PLATES:ADD(ap_id, LIST()).
+    }
+    _FMS_AP_AIRPORT_PLATES[ap_id]:ADD(pid).
+    SET i TO i + 1.
+  }
+  IF PLATE_IDS:LENGTH > 0 { SET _FMS_AP_CACHE_READY TO TRUE. }
+}
+
+FUNCTION _FMS_AP_AIRPORT_COUNT {
+  _FMS_AP_BUILD_CACHE().
+  RETURN _FMS_AP_AIRPORT_IDS:LENGTH.
+}
+
+FUNCTION _FMS_AP_AIRPORT_ID_BY_INDEX {
+  PARAMETER ap_idx.
+  _FMS_AP_BUILD_CACHE().
+  IF _FMS_AP_AIRPORT_IDS:LENGTH = 0 { RETURN "". }
+  SET ap_idx TO CLAMP(ROUND(ap_idx, 0), 0, _FMS_AP_AIRPORT_IDS:LENGTH - 1).
+  RETURN _FMS_AP_AIRPORT_IDS[ap_idx].
+}
+
+FUNCTION _FMS_AP_AIRPORT_LABEL_BY_INDEX {
+  PARAMETER ap_idx.
+  LOCAL ap_id IS _FMS_AP_AIRPORT_ID_BY_INDEX(ap_idx).
+  IF ap_id = "" { RETURN "---". }
+  IF _FMS_AP_AIRPORT_LABELS:HASKEY(ap_id) { RETURN _FMS_AP_AIRPORT_LABELS[ap_id]. }
+  RETURN ap_id.
+}
+
+FUNCTION _FMS_AP_PLATES_FOR_AIRPORT_INDEX {
+  PARAMETER ap_idx.
+  LOCAL ap_id IS _FMS_AP_AIRPORT_ID_BY_INDEX(ap_idx).
+  IF ap_id = "" { RETURN LIST(). }
+  IF _FMS_AP_AIRPORT_PLATES:HASKEY(ap_id) { RETURN _FMS_AP_AIRPORT_PLATES[ap_id]. }
+  RETURN LIST().
+}
+
+FUNCTION _FMS_AP_PLATE_LABEL {
+  PARAMETER pid.
+  IF PLATE_REGISTRY:HASKEY(pid) {
+    LOCAL pl IS PLATE_REGISTRY[pid].
+    IF pl:HASKEY("name") { RETURN pl["name"]. }
+  }
+  RETURN pid.
+}
+
+FUNCTION _FMS_AP_SYNC_PARAMS_FROM_PID {
+  PARAMETER prm, pid.
+  _FMS_AP_BUILD_CACHE().
+  IF NOT (DEFINED PLATE_IDS) {
+    SET prm["plate_idx"] TO 0.
+    SET prm["airport_idx"] TO 0.
+    SET prm["plate_sel_idx"] TO 0.
+    RETURN.
+  }
+
+  IF pid = "" {
+    IF PLATE_IDS:LENGTH > 0 { SET pid TO PLATE_IDS[0]. }
+  }
+  IF pid = "" {
+    SET prm["plate_idx"] TO 0.
+    SET prm["airport_idx"] TO 0.
+    SET prm["plate_sel_idx"] TO 0.
+    RETURN.
+  }
+
+  LOCAL gi IS _FMS_FIND_IN_LIST(PLATE_IDS, pid).
+  IF gi < 0 { SET gi TO 0. }
+  SET prm["plate_idx"] TO gi.
+
+  LOCAL ap_id IS _FMS_AP_AIRPORT_OF_PLATE(pid).
+  LOCAL ai IS _FMS_FIND_IN_LIST(_FMS_AP_AIRPORT_IDS, ap_id).
+  IF ai < 0 { SET ai TO 0. }
+  SET prm["airport_idx"] TO ai.
+
+  LOCAL ap_plates IS _FMS_AP_PLATES_FOR_AIRPORT_INDEX(ai).
+  LOCAL pi IS _FMS_FIND_IN_LIST(ap_plates, pid).
+  IF pi < 0 { SET pi TO 0. }
+  SET prm["plate_sel_idx"] TO pi.
+}
+
+FUNCTION _FMS_AP_SELECTED_PLATE_ID {
+  PARAMETER prm.
+  _FMS_AP_BUILD_CACHE().
+  IF NOT (DEFINED PLATE_IDS) { RETURN "". }
+
+  IF prm:HASKEY("airport_idx") AND prm:HASKEY("plate_sel_idx") {
+    LOCAL ai IS CLAMP(ROUND(prm["airport_idx"], 0), 0, MAX(_FMS_AP_AIRPORT_COUNT() - 1, 0)).
+    LOCAL ap_plates IS _FMS_AP_PLATES_FOR_AIRPORT_INDEX(ai).
+    IF ap_plates:LENGTH > 0 {
+      LOCAL pi IS CLAMP(ROUND(prm["plate_sel_idx"], 0), 0, ap_plates:LENGTH - 1).
+      RETURN ap_plates[pi].
+    }
+  }
+
+  IF prm:HASKEY("plate_idx") {
+    LOCAL pidx IS ROUND(prm["plate_idx"], 0).
+    IF pidx >= 0 AND pidx < PLATE_IDS:LENGTH { RETURN PLATE_IDS[pidx]. }
+  }
+
+  IF PLATE_IDS:LENGTH > 0 { RETURN PLATE_IDS[0]. }
+  RETURN "".
+}
+
+FUNCTION _FMS_AP_NORMALISE_PARAMS {
+  PARAMETER prm.
+  LOCAL pid IS _FMS_AP_SELECTED_PLATE_ID(prm).
+  _FMS_AP_SYNC_PARAMS_FROM_PID(prm, pid).
+}
 
 // Returns a fresh leg LEXICON with default params for the given type string.
 FUNCTION _FMS_DEFAULT_LEG {
@@ -490,8 +646,10 @@ FUNCTION _FMS_DEFAULT_LEG {
                         "wpt0", -1, "wpt1", -1, "wpt2", -1)).
   }
   IF ltype = LEG_APPROACH {
+    LOCAL prm IS LEXICON("plate_idx", 0, "airport_idx", 0, "plate_sel_idx", 0).
+    _FMS_AP_NORMALISE_PARAMS(prm).
     RETURN LEXICON("type", LEG_APPROACH,
-      "params", LEXICON("plate_idx", 0)).
+      "params", prm).
   }
   RETURN LEXICON("type", LEG_TAKEOFF,
     "params", LEXICON("rwy_idx", 0)).
@@ -513,7 +671,7 @@ FUNCTION _FMS_LEG_FIELD_COUNT {
   LOCAL t IS leg["type"].
   IF t = LEG_TAKEOFF  { RETURN 2. }              // type, rwy
   IF t = LEG_CRUISE   { RETURN 3 + FMS_WPT_SLOTS. } // type, alt, spd, wpt0..wptN
-  IF t = LEG_APPROACH { RETURN 2. }              // type, plate
+  IF t = LEG_APPROACH { RETURN 3. }              // type, airport, plate
   RETURN 1.
 }
 
@@ -533,7 +691,8 @@ FUNCTION _FMS_LEG_FIELD_LABEL {
     IF fi = 5 { RETURN "Waypoint 3". }
   }
   IF t = LEG_APPROACH {
-    IF fi = 1 { RETURN "Plate". }
+    IF fi = 1 { RETURN "Airport". }
+    IF fi = 2 { RETURN "Plate". }
   }
   RETURN "---".
 }
@@ -562,9 +721,14 @@ FUNCTION _FMS_LEG_FIELD_VALUE_TEXT {
   }
   IF t = LEG_APPROACH {
     IF fi = 1 {
-      LOCAL pidx IS ROUND(prm["plate_idx"], 0).
-      IF pidx >= 0 AND pidx < PLATE_IDS:LENGTH { RETURN PLATE_IDS[pidx]. }
-      RETURN "---".
+      _FMS_AP_NORMALISE_PARAMS(prm).
+      RETURN _FMS_AP_AIRPORT_LABEL_BY_INDEX(prm["airport_idx"]).
+    }
+    IF fi = 2 {
+      _FMS_AP_NORMALISE_PARAMS(prm).
+      LOCAL pid IS _FMS_AP_SELECTED_PLATE_ID(prm).
+      IF pid = "" { RETURN "---". }
+      RETURN _FMS_AP_PLATE_LABEL(pid).
     }
   }
   RETURN "---".
@@ -601,9 +765,24 @@ FUNCTION _FMS_LEG_CHANGE_FIELD {
   }
   IF t = LEG_APPROACH {
     IF fi = 1 {
-      LOCAL n    IS MAX(PLATE_IDS:LENGTH, 1).
-      LOCAL cur  IS ROUND(prm["plate_idx"], 0).
-      SET prm["plate_idx"] TO ROUND(MOD(cur + dir + n, n), 0).
+      _FMS_AP_NORMALISE_PARAMS(prm).
+      LOCAL an IS MAX(_FMS_AP_AIRPORT_COUNT(), 1).
+      LOCAL ai IS ROUND(prm["airport_idx"], 0).
+      SET ai TO ROUND(MOD(ai + dir + an, an), 0).
+      LOCAL ap_plates IS _FMS_AP_PLATES_FOR_AIRPORT_INDEX(ai).
+      LOCAL pid IS "".
+      IF ap_plates:LENGTH > 0 { SET pid TO ap_plates[0]. }
+      _FMS_AP_SYNC_PARAMS_FROM_PID(prm, pid).
+    } ELSE IF fi = 2 {
+      _FMS_AP_NORMALISE_PARAMS(prm).
+      LOCAL ai IS ROUND(prm["airport_idx"], 0).
+      LOCAL ap_plates IS _FMS_AP_PLATES_FOR_AIRPORT_INDEX(ai).
+      LOCAL pn IS MAX(ap_plates:LENGTH, 1).
+      LOCAL pi IS ROUND(prm["plate_sel_idx"], 0).
+      SET pi TO ROUND(MOD(pi + dir + pn, pn), 0).
+      LOCAL pid IS "".
+      IF ap_plates:LENGTH > 0 { SET pid TO ap_plates[pi]. }
+      _FMS_AP_SYNC_PARAMS_FROM_PID(prm, pid).
     }
   }
 }
@@ -660,9 +839,9 @@ FUNCTION _FMS_LEG_LINE_TEXT {
     RETURN "CRUISE    " + alt_m_r + "m  " + wpts.
   }
   IF t = LEG_APPROACH {
-    LOCAL pidx IS 0.
-    IF p:HASKEY("plate_idx") { SET pidx TO ROUND(p["plate_idx"], 0). }
-    IF pidx >= 0 AND pidx < PLATE_IDS:LENGTH { RETURN "APPROACH  " + PLATE_IDS[pidx]. }
+    _FMS_AP_NORMALISE_PARAMS(p).
+    LOCAL pid IS _FMS_AP_SELECTED_PLATE_ID(p).
+    IF pid <> "" { RETURN "APPROACH  " + _FMS_AP_PLATE_LABEL(pid). }
     RETURN "APPROACH  ---".
   }
   RETURN "??? leg".

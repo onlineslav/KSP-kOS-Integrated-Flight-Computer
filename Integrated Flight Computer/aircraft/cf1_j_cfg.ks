@@ -37,9 +37,27 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "ag_flaps_step_up", 9,                    // [AG#]             FAR flap detent step-up action group (1..10, 0 disables).                        
     "ag_flaps_step_down", 10,                 // [AG#]             FAR flap detent step-down action group (1..10, 0 disables).                      
     "ag_spoilers", 7,                         // [AG#]             Touchdown spoiler/airbrake deploy action group (1..10, 0 disables).              
-    "ag_spoilers_arm", 0,                     // [AG#]             In-flight spoiler arm action group before touchdown (1..10, 0 disables).         
     "ag_thrust_rev", 8,                       // [AG#]             Thrust reverser action group used in rollout (1..10, 0 disables).                
-    "ag_drogue", 0,                           // [AG#]             Drogue chute deploy action group (1..10, 0 disables).                            
+    "ag_drogue", 0,                           // [AG#]             Drogue chute deploy action group (1..10, 0 disables).    
+
+    // Spoiler arming and autospoiler tuning (from X11-D baseline).
+    "spoiler_tag", "ifc_spoiler",             // [string]          Part tag used by autospoiler discovery.
+    "as_enabled", 1,                          // [bool]            1 enables autospoiler, 0 disables.
+    "as_thr_idle_gate", 0.08,                 // [0..1]            Deploy assist only when THROTTLE_CMD <= gate.
+    "as_err_deadband_mps", 1.5,               // [m/s]             Overspeed deadband before spoiler response starts.
+    "as_err_full_mps", 18.0,                  // [m/s]             Overspeed that commands full capped deflection.
+    "as_angle_slew_dps", 25.0,                // [deg/s]           Deploy-angle slew limit.
+    "as_max_deflection_deg", 70,              // [deg]             Deploy angle written when autospoiler is not actively deploying.
+    "as_crz_speed_lo", 120,                   // [m/s]             Low speed point for cruise cap schedule.
+    "as_crz_speed_hi", 250,                   // [m/s]             High speed point for cruise cap schedule.
+    "as_crz_cap_deg_lo", 45,                  // [deg]             Cap at/below as_crz_speed_lo.
+    "as_crz_cap_deg_hi", 25,                  // [deg]             Cap at/above as_crz_speed_hi.
+    "as_app_speed_lo", 75,                    // [m/s]             Low speed point for approach cap schedule.
+    "as_app_speed_hi", 160,                   // [m/s]             High speed point for approach cap schedule.
+    "as_app_cap_deg_lo", 55,                  // [deg]             Cap at/below as_app_speed_lo.
+    "as_app_cap_deg_hi", 28,                  // [deg]             Cap at/above as_app_speed_hi.
+    "ag_spoilers_arm", 0,                     // [AG#]             AG to arm spoilers in-flight (0 disables).
+    "app_spoiler_arm_km", 0,                  // [km]              Distance from threshold to arm spoilers in flight (0 disables).                        
 
     // ========================================================
     // 3) Takeoff
@@ -112,7 +130,6 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "app_short_final_agl", -1,             // [m AGL]           AGL where schedule starts blending toward short-final behavior.                  (60.0)
     "app_speed_tgt_slew_per_s", -1,          // [(m/s)/s]         Slew limit for commanded approach speed target.                                  (0.8)
     "app_short_final_cap", -1,                 // [bool]            Forces short-final cap when capture flags are noisy.                             (TRUE)
-    "app_spoiler_arm_km", 0,                  // [km]              Distance from threshold to arm spoilers in flight (0 disables).                  
 
     // Gear extension policy on approach.
     "gear_down_agl", 300,                     // [m AGL]           Auto-gear deploy trigger height; set 0 for manual gear management.               

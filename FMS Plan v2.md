@@ -3,6 +3,11 @@
 
 defaults to showing whatever information is relevant to the phase of flight you're in (like it does now)
 
+- ability to skip current leg in flight plan (while in flight)
+
+- able to list nearest waypoint to airport
+- should be able to select which type of speed (Mach or IAS)
+
 menu:
 - vessel information page
 - event log page

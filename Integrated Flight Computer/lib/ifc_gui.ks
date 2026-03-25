@@ -265,23 +265,44 @@ FUNCTION _GUI_BUILD_EDIT {
     }
 
   } ELSE IF t = LEG_APPROACH {
-    // [3] Approach plate popup menu
-    LOCAL pidx IS 0.
-    IF p:HASKEY("plate_idx") { SET pidx TO ROUND(p["plate_idx"], 0). }
-    IF PLATE_IDS:LENGTH > 0 {
-      SET pidx TO CLAMP(pidx, 0, PLATE_IDS:LENGTH - 1).
+    // [3] airport popup, [4] plate popup (filtered by airport)
+    _FMS_AP_NORMALISE_PARAMS(p).
+    LOCAL ap_idx IS ROUND(p["airport_idx"], 0).
+    LOCAL pl_idx IS ROUND(p["plate_sel_idx"], 0).
+
+    LOCAL ap_row IS GUI_EDIT_WIN:ADDHBOX().
+    LOCAL ap_lbl IS ap_row:ADDLABEL("Airport:").
+    SET ap_lbl:STYLE:WIDTH TO 80.
+    LOCAL ap_pm IS ap_row:ADDPOPUPMENU().
+    LOCAL ai IS 0.
+    LOCAL ap_count IS _FMS_AP_AIRPORT_COUNT().
+    UNTIL ai >= ap_count {
+      ap_pm:ADDOPTION(_FMS_AP_AIRPORT_LABEL_BY_INDEX(ai)).
+      SET ai TO ai + 1.
     }
-    LOCAL aprow IS GUI_EDIT_WIN:ADDHBOX().
-    LOCAL apl IS aprow:ADDLABEL("Approach:").
-    SET apl:STYLE:WIDTH TO 80.
-    LOCAL pm IS aprow:ADDPOPUPMENU().
-    LOCAL oi IS 0.
-    UNTIL oi >= PLATE_IDS:LENGTH {
-      pm:ADDOPTION(PLATE_IDS[oi]).
-      SET oi TO oi + 1.
+    IF ap_count > 0 {
+      SET ap_idx TO CLAMP(ap_idx, 0, ap_count - 1).
+      SET ap_pm:INDEX TO ap_idx.
     }
-    IF PLATE_IDS:LENGTH > 0 { SET pm:INDEX TO pidx. }
-    GUI_EDIT_HANDLES:ADD(pm).  // [3]
+    SET ap_pm:CHANGED TO FALSE.
+    GUI_EDIT_HANDLES:ADD(ap_pm). // [3]
+
+    LOCAL pl_row IS GUI_EDIT_WIN:ADDHBOX().
+    LOCAL pl_lbl IS pl_row:ADDLABEL("Approach:").
+    SET pl_lbl:STYLE:WIDTH TO 80.
+    LOCAL pl_pm IS pl_row:ADDPOPUPMENU().
+    LOCAL ap_plates IS _FMS_AP_PLATES_FOR_AIRPORT_INDEX(ap_idx).
+    LOCAL pi IS 0.
+    UNTIL pi >= ap_plates:LENGTH {
+      pl_pm:ADDOPTION(_FMS_AP_PLATE_LABEL(ap_plates[pi])).
+      SET pi TO pi + 1.
+    }
+    IF ap_plates:LENGTH > 0 {
+      SET pl_idx TO CLAMP(pl_idx, 0, ap_plates:LENGTH - 1).
+      SET pl_pm:INDEX TO pl_idx.
+    }
+    SET pl_pm:CHANGED TO FALSE.
+    GUI_EDIT_HANDLES:ADD(pl_pm). // [4]
   }
 
   LOCAL ok_row IS GUI_EDIT_WIN:ADDHBOX().
@@ -364,13 +385,23 @@ FUNCTION _GUI_REFRESH_EDIT {
       }
     }
 
-  } ELSE IF t = LEG_APPROACH AND GUI_EDIT_HANDLES:LENGTH >= 4 {
-    LOCAL pidx IS 0.
-    IF p:HASKEY("plate_idx") { SET pidx TO ROUND(p["plate_idx"], 0). }
-    IF PLATE_IDS:LENGTH > 0 {
-      SET pidx TO CLAMP(pidx, 0, PLATE_IDS:LENGTH - 1).
-      SET GUI_EDIT_HANDLES[3]:INDEX TO pidx.
+  } ELSE IF t = LEG_APPROACH AND GUI_EDIT_HANDLES:LENGTH >= 5 {
+    _FMS_AP_NORMALISE_PARAMS(p).
+    LOCAL ap_count IS _FMS_AP_AIRPORT_COUNT().
+    IF ap_count <= 0 { RETURN. }
+    LOCAL ap_idx IS CLAMP(ROUND(p["airport_idx"], 0), 0, ap_count - 1).
+    IF GUI_EDIT_HANDLES[3]:INDEX <> ap_idx {
+      SET GUI_EDIT_HANDLES[3]:INDEX TO ap_idx.
     }
+    SET GUI_EDIT_HANDLES[3]:CHANGED TO FALSE.
+    LOCAL ap_plates IS _FMS_AP_PLATES_FOR_AIRPORT_INDEX(ap_idx).
+    IF ap_plates:LENGTH > 0 {
+      LOCAL pl_idx IS CLAMP(ROUND(p["plate_sel_idx"], 0), 0, ap_plates:LENGTH - 1).
+      IF GUI_EDIT_HANDLES[4]:INDEX <> pl_idx {
+        SET GUI_EDIT_HANDLES[4]:INDEX TO pl_idx.
+      }
+    }
+    SET GUI_EDIT_HANDLES[4]:CHANGED TO FALSE.
   }
 }
 
@@ -441,13 +472,24 @@ FUNCTION _GUI_COMMIT_EDIT_FIELDS {
       SET p["time_min"] TO tmin_new.
       SET GUI_EDIT_HANDLES[9]:TEXT TO "" + tmin_new.
     }
-  } ELSE IF t = LEG_APPROACH AND GUI_EDIT_HANDLES:LENGTH >= 4 {
-    IF PLATE_IDS:LENGTH > 0 {
-      LOCAL ni IS CLAMP(ROUND(GUI_EDIT_HANDLES[3]:INDEX, 0), 0, PLATE_IDS:LENGTH - 1).
-      IF NOT p:HASKEY("plate_idx") OR p["plate_idx"] <> ni { SET changed TO TRUE. }
-      SET p["plate_idx"] TO ni.
-      SET GUI_EDIT_HANDLES[3]:CHANGED TO FALSE.
+  } ELSE IF t = LEG_APPROACH AND GUI_EDIT_HANDLES:LENGTH >= 5 {
+    _FMS_AP_NORMALISE_PARAMS(p).
+    LOCAL old_pid IS _FMS_AP_SELECTED_PLATE_ID(p).
+
+    LOCAL ai IS CLAMP(ROUND(GUI_EDIT_HANDLES[3]:INDEX, 0), 0, MAX(_FMS_AP_AIRPORT_COUNT() - 1, 0)).
+    LOCAL ap_plates IS _FMS_AP_PLATES_FOR_AIRPORT_INDEX(ai).
+    LOCAL pi IS 0.
+    IF ap_plates:LENGTH > 0 {
+      SET pi TO CLAMP(ROUND(GUI_EDIT_HANDLES[4]:INDEX, 0), 0, ap_plates:LENGTH - 1).
     }
+
+    LOCAL pid IS "".
+    IF ap_plates:LENGTH > 0 { SET pid TO ap_plates[pi]. }
+    _FMS_AP_SYNC_PARAMS_FROM_PID(p, pid).
+
+    IF _FMS_AP_SELECTED_PLATE_ID(p) <> old_pid { SET changed TO TRUE. }
+    SET GUI_EDIT_HANDLES[3]:CHANGED TO FALSE.
+    SET GUI_EDIT_HANDLES[4]:CHANGED TO FALSE.
   }
 
   RETURN changed.
@@ -608,13 +650,36 @@ FUNCTION _GUI_TICK_EDIT {
       }
     }
 
-  } ELSE IF t = LEG_APPROACH AND GUI_EDIT_HANDLES:LENGTH >= 4 {
-    IF PLATE_IDS:LENGTH = 0 { RETURN FALSE. }
+  } ELSE IF t = LEG_APPROACH AND GUI_EDIT_HANDLES:LENGTH >= 5 {
+    _FMS_AP_NORMALISE_PARAMS(p).
+    LOCAL cur_ai IS CLAMP(ROUND(p["airport_idx"], 0), 0, MAX(_FMS_AP_AIRPORT_COUNT() - 1, 0)).
+    LOCAL cur_pid IS _FMS_AP_SELECTED_PLATE_ID(p).
+
     IF GUI_EDIT_HANDLES[3]:CHANGED {
       SET GUI_EDIT_HANDLES[3]:CHANGED TO FALSE.
-      LOCAL ni IS GUI_EDIT_HANDLES[3]:INDEX.
-      IF ni >= 0 AND ni < PLATE_IDS:LENGTH {
-        SET p["plate_idx"] TO ni.
+      LOCAL ai IS CLAMP(ROUND(GUI_EDIT_HANDLES[3]:INDEX, 0), 0, MAX(_FMS_AP_AIRPORT_COUNT() - 1, 0)).
+      IF ai <> cur_ai {
+        LOCAL ap_plates IS _FMS_AP_PLATES_FOR_AIRPORT_INDEX(ai).
+        LOCAL pid IS "".
+        IF ap_plates:LENGTH > 0 { SET pid TO ap_plates[0]. }
+        _FMS_AP_SYNC_PARAMS_FROM_PID(p, pid).
+        _GUI_BUILD_EDIT().
+        RETURN TRUE.
+      }
+    }
+
+    IF GUI_EDIT_HANDLES[4]:CHANGED {
+      SET GUI_EDIT_HANDLES[4]:CHANGED TO FALSE.
+      LOCAL ai IS CLAMP(ROUND(GUI_EDIT_HANDLES[3]:INDEX, 0), 0, MAX(_FMS_AP_AIRPORT_COUNT() - 1, 0)).
+      LOCAL ap_plates IS _FMS_AP_PLATES_FOR_AIRPORT_INDEX(ai).
+      LOCAL pi IS 0.
+      IF ap_plates:LENGTH > 0 {
+        SET pi TO CLAMP(ROUND(GUI_EDIT_HANDLES[4]:INDEX, 0), 0, ap_plates:LENGTH - 1).
+      }
+      LOCAL pid IS "".
+      IF ap_plates:LENGTH > 0 { SET pid TO ap_plates[pi]. }
+      IF pid <> cur_pid {
+        _FMS_AP_SYNC_PARAMS_FROM_PID(p, pid).
         RETURN TRUE.
       }
     }

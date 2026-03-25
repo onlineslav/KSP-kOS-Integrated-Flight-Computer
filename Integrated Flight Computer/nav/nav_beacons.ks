@@ -204,6 +204,21 @@ REGISTER_BEACON(MAKE_BEACON(
 )).
 
 // ----------------------------
+// Polar Research Alpha ILS beacon (KerbinSide Remastered via NavInstruments)
+// NavInstruments ModuleManagerCfgs/KerbinSideRemastered.cfg:
+//   Polar 34 shortID POR34 hdg 337
+//   gsLatitude 72.5169754, gsLongitude -78.4949417, altMSL 31.5
+// ----------------------------
+LOCAL pol_rwy34_thr IS LATLNG(72.5169754, -78.4949417).
+LOCAL pol_rwy34_elev IS 31.5.
+
+REGISTER_BEACON(MAKE_BEACON(
+  "POL_ILS_34", BTYPE_ILS,
+  pol_rwy34_thr, pol_rwy34_elev,
+  LEXICON("hdg", 337.0, "gs_angle", 3.0, "rwy", "POR34")
+)).
+
+// ----------------------------
 // KSC Island Airstrip approach fixes
 // Same geometry as KSC: IAF30 at 30 km, FAF at 8 km on extended centreline.
 // Elevation 134 m MSL.
@@ -304,6 +319,34 @@ REGISTER_BEACON(MAKE_BEACON(
   "DAF_FAF_18", BTYPE_FAF,
   daf18_faf_ll, daf_faf_alt,
   LEXICON("name", "DAF RWY18 FAF 15km", "runway", "DA18")
+)).
+
+// ----------------------------
+// Polar RWY 34 approach fixes
+// Inbound course 337, so fixes are placed on reciprocal bearing 157.
+// Geometry mirrors KSC/DAF setup: IAF-60, IAF-30, FAF-15.
+// ----------------------------
+LOCAL pol34_iaf60_ll IS GEO_DESTINATION(pol_rwy34_thr, 157, 60000).
+LOCAL pol34_iaf30_ll IS GEO_DESTINATION(pol_rwy34_thr, 157, 30000).
+LOCAL pol34_faf_ll   IS GEO_DESTINATION(pol_rwy34_thr, 157, 15000).
+LOCAL pol_faf_alt   IS pol_rwy34_elev + GS_HGT_15KM.
+LOCAL pol_iaf30_alt IS pol_rwy34_elev + GS_HGT_30KM - BELOW_GS_M.
+LOCAL pol_iaf60_alt IS pol_rwy34_elev + GS_HGT_60KM - BELOW_GS_M.
+
+REGISTER_BEACON(MAKE_BEACON(
+  "POL_IAF_34_60", BTYPE_IAF,
+  pol34_iaf60_ll, pol_iaf60_alt,
+  LEXICON("name", "POL RWY34 IAF 60km", "runway", "POR34")
+)).
+REGISTER_BEACON(MAKE_BEACON(
+  "POL_IAF_34_30", BTYPE_IAF,
+  pol34_iaf30_ll, pol_iaf30_alt,
+  LEXICON("name", "POL RWY34 IAF 30km", "runway", "POR34")
+)).
+REGISTER_BEACON(MAKE_BEACON(
+  "POL_FAF_34", BTYPE_FAF,
+  pol34_faf_ll, pol_faf_alt,
+  LEXICON("name", "POL RWY34 FAF 15km", "runway", "POR34")
 )).
 
 // ----------------------------
@@ -564,6 +607,29 @@ GLOBAL PLATE_DAF_ILS18_SHORT IS MAKE_PLATE(
   )
 ).
 
+GLOBAL PLATE_POL_ILS34 IS MAKE_PLATE(
+  "POL ILS RWY 34",
+  "POL_ILS_34",
+  LIST("POL_IAF_34_60", "POL_IAF_34_30", "POL_FAF_34"),
+  70,
+  LEXICON(
+    "POL_IAF_34_60", pol_iaf60_alt,
+    "POL_IAF_34_30", pol_iaf30_alt,
+    "POL_FAF_34",    pol_faf_alt
+  )
+).
+
+GLOBAL PLATE_POL_ILS34_SHORT IS MAKE_PLATE(
+  "POL ILS RWY 34 (short)",
+  "POL_ILS_34",
+  LIST("POL_IAF_34_30", "POL_FAF_34"),
+  70,
+  LEXICON(
+    "POL_IAF_34_30", pol_iaf30_alt,
+    "POL_FAF_34",    pol_faf_alt
+  )
+).
+
 // ----------------------------
 // Plate registry  (for serialisable plan save/load)
 // Maps string ID -> plate LEXICON so legs can store plate_id as a string.
@@ -583,6 +649,8 @@ PLATE_REGISTRY:ADD("PLATE_DAF_ILS36",       PLATE_DAF_ILS36).
 PLATE_REGISTRY:ADD("PLATE_DAF_ILS18",       PLATE_DAF_ILS18).
 PLATE_REGISTRY:ADD("PLATE_DAF_ILS36_SHORT", PLATE_DAF_ILS36_SHORT).
 PLATE_REGISTRY:ADD("PLATE_DAF_ILS18_SHORT", PLATE_DAF_ILS18_SHORT).
+PLATE_REGISTRY:ADD("PLATE_POL_ILS34",       PLATE_POL_ILS34).
+PLATE_REGISTRY:ADD("PLATE_POL_ILS34_SHORT", PLATE_POL_ILS34_SHORT).
 
 FUNCTION GET_PLATE {
   PARAMETER id.
@@ -612,7 +680,9 @@ GLOBAL PLATE_IDS IS LIST(
   "PLATE_DAF_ILS36",
   "PLATE_DAF_ILS36_SHORT",
   "PLATE_DAF_ILS18",
-  "PLATE_DAF_ILS18_SHORT"
+  "PLATE_DAF_ILS18_SHORT",
+  "PLATE_POL_ILS34",
+  "PLATE_POL_ILS34_SHORT"
 ).
 
 FUNCTION GET_PLATE_FOR_RUNWAY {
@@ -639,6 +709,9 @@ FUNCTION GET_PLATE_FOR_RUNWAY {
   } ELSE IF rwy_id = "18" {
     IF short_approach { RETURN PLATE_DAF_ILS18_SHORT. }
     RETURN PLATE_DAF_ILS18.
+  } ELSE IF rwy_id = "POR34" OR rwy_id = "POL34" {
+    IF short_approach { RETURN PLATE_POL_ILS34_SHORT. }
+    RETURN PLATE_POL_ILS34.
   }
   SET IFC_ALERT_TEXT TO "NAV: no plate for runway '" + rwy_id + "'".
   SET IFC_ALERT_UT   TO TIME:SECONDS.

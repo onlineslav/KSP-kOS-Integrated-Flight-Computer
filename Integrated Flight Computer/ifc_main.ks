@@ -343,9 +343,9 @@ FUNCTION _BUILD_PLAN_FROM_DRAFT {
         "params", LEXICON("waypoints", wpts, "alt_m", p["alt_m"], "spd", p["spd"]))).
 
     } ELSE IF t = LEG_APPROACH {
-      LOCAL pidx IS ROUND(p["plate_idx"], 0).
-      LOCAL pid  IS "PLATE_KSC_ILS09".
-      IF pidx >= 0 AND pidx < PLATE_IDS:LENGTH { SET pid TO PLATE_IDS[pidx]. }
+      _FMS_AP_NORMALISE_PARAMS(p).
+      LOCAL pid IS _FMS_AP_SELECTED_PLATE_ID(p).
+      IF pid = "" { SET pid TO "PLATE_KSC_ILS09". }
       plan:ADD(LEXICON("type", LEG_APPROACH,
         "params", LEXICON("plate_id", pid))).
     }

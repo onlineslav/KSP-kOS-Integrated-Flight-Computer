@@ -72,10 +72,15 @@ FUNCTION _FMS_DESERIALISE_LEG {
     RETURN LEXICON("type", LEG_CRUISE, "params", cp).
 
   } ELSE IF t = LEG_APPROACH {
-    LOCAL pidx IS 0.
-    IF p:HASKEY("plate_idx") { SET pidx TO ROUND(p["plate_idx"], 0). }
+    LOCAL ap IS LEXICON().
+    IF p:HASKEY("plate_id") { SET ap["plate_id"] TO p["plate_id"]. }
+    IF p:HASKEY("plate_idx") { SET ap["plate_idx"] TO ROUND(p["plate_idx"], 0). }
+    IF p:HASKEY("airport_idx") { SET ap["airport_idx"] TO ROUND(p["airport_idx"], 0). }
+    IF p:HASKEY("plate_sel_idx") { SET ap["plate_sel_idx"] TO ROUND(p["plate_sel_idx"], 0). }
+    IF ap:LENGTH = 0 { SET ap["plate_idx"] TO 0. }
+    _FMS_AP_NORMALISE_PARAMS(ap).
     RETURN LEXICON("type", LEG_APPROACH,
-      "params", LEXICON("plate_idx", CLAMP(pidx, 0, PLATE_IDS:LENGTH - 1))).
+      "params", ap).
   }
 
   RETURN 0.  // Unknown leg type.

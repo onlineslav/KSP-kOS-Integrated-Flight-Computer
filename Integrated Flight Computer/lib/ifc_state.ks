@@ -506,6 +506,8 @@ FUNCTION IFC_INIT_STATE {
 
   SET IFC_DESIRED_STEERING TO HEADING(90, 0).
   SET THROTTLE_CMD  TO 0.
+  // Startup safety: hold brakes whenever IFC re-initializes.
+  BRAKES ON.
   SET THR_INTEGRAL  TO 0.
   SET PREV_IAS      TO GET_IAS().
   SET A_ACTUAL_FILT TO 0.
