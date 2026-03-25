@@ -5,6 +5,7 @@
 core:part:getmodule("kOSProcessor"):doevent("Open Terminal").
 
 set terminal:charheight to 18.
+set terminal:visualbeep to false.
 PRINT "+-----------------------------------------------+".
 PRINT "|       INTEGRATED FLIGHT COMPUTER  v1.0        |".
 PRINT "+-----------------------------------------------+".

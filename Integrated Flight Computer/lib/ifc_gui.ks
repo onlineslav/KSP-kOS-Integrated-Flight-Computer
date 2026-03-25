@@ -54,7 +54,7 @@ FUNCTION _PARSE_NUM {
     }
     SET i TO i + 1.
   }
-  RETURN TONUMBER(txt).
+  RETURN ("" + txt):TONUMBER(fallback).
 }
 
 // ── Leg-type helpers ──────────────────────────────────────
@@ -109,11 +109,15 @@ FUNCTION _GUI_CYCLE_ROW {
 
 FUNCTION _GUI_CLOSE_EDIT {
   IF GUI_EDIT_WIN <> 0 {
+    SET GUI_EDIT_LAST_X TO GUI_EDIT_WIN:X.
+    SET GUI_EDIT_LAST_Y TO GUI_EDIT_WIN:Y.
+    SET GUI_EDIT_POS_VALID TO TRUE.
     GUI_EDIT_WIN:DISPOSE().
     SET GUI_EDIT_WIN TO 0.
   }
   GUI_EDIT_HANDLES:CLEAR().
   SET GUI_EDIT_LEG_TYPE TO -1.
+  SET GUI_EDIT_OK_BTN TO 0.
 }
 
 // Build (or rebuild) the edit window for the current leg.
@@ -128,8 +132,13 @@ FUNCTION _GUI_BUILD_EDIT {
   LOCAL t IS leg["type"].
   LOCAL p IS leg["params"].
   SET GUI_EDIT_LEG_TYPE TO t.
+  SET GUI_EDIT_CLOSED_BY_USER TO FALSE.
 
   SET GUI_EDIT_WIN TO GUI(270).
+  IF GUI_EDIT_POS_VALID {
+    SET GUI_EDIT_WIN:X TO GUI_EDIT_LAST_X.
+    SET GUI_EDIT_WIN:Y TO GUI_EDIT_LAST_Y.
+  }
   LOCAL hdr IS GUI_EDIT_WIN:ADDLABEL("  EDIT LEG " + (cur + 1)).
   SET hdr:STYLE:FONTSIZE TO 11.
 
@@ -275,6 +284,10 @@ FUNCTION _GUI_BUILD_EDIT {
     GUI_EDIT_HANDLES:ADD(pm).  // [3]
   }
 
+  LOCAL ok_row IS GUI_EDIT_WIN:ADDHBOX().
+  SET GUI_EDIT_OK_BTN TO ok_row:ADDBUTTON("      OK      ").
+  SET GUI_EDIT_OK_BTN:STYLE:WIDTH TO 140.
+
   GUI_EDIT_WIN:SHOW().
 }
 
@@ -359,6 +372,85 @@ FUNCTION _GUI_REFRESH_EDIT {
       SET GUI_EDIT_HANDLES[3]:INDEX TO pidx.
     }
   }
+}
+
+// Commit edit-window values even if text fields were not explicitly "confirmed".
+FUNCTION _GUI_COMMIT_EDIT_FIELDS {
+  IF GUI_EDIT_WIN = 0 OR GUI_EDIT_HANDLES:LENGTH = 0 { RETURN FALSE. }
+  IF DRAFT_PLAN:LENGTH = 0 { RETURN FALSE. }
+
+  LOCAL cur IS CLAMP(FMS_LEG_CURSOR, 0, DRAFT_PLAN:LENGTH - 1).
+  LOCAL leg IS DRAFT_PLAN[cur].
+  LOCAL t   IS GUI_EDIT_LEG_TYPE.
+  LOCAL p   IS leg["params"].
+  LOCAL changed IS FALSE.
+
+  IF t = LEG_CRUISE AND GUI_EDIT_HANDLES:LENGTH >= 8 {
+    LOCAL alt_m IS CRUISE_DEFAULT_ALT_M.
+    IF p:HASKEY("alt_m") { SET alt_m TO p["alt_m"]. }
+    LOCAL alt_new IS _PARSE_NUM(GUI_EDIT_HANDLES[3]:TEXT, alt_m).
+    SET alt_new TO CLAMP(alt_new, 100, 25000).
+    IF NOT p:HASKEY("alt_m") OR p["alt_m"] <> alt_new { SET changed TO TRUE. }
+    SET p["alt_m"] TO alt_new.
+    SET GUI_EDIT_HANDLES[3]:TEXT TO "" + ROUND(alt_new, 0).
+
+    LOCAL spd IS CRUISE_DEFAULT_SPD.
+    IF p:HASKEY("spd") { SET spd TO p["spd"]. }
+    LOCAL spd_new IS _PARSE_NUM(GUI_EDIT_HANDLES[4]:TEXT, spd).
+    SET spd_new TO CLAMP(spd_new, 10, 500).
+    IF NOT p:HASKEY("spd") OR p["spd"] <> spd_new { SET changed TO TRUE. }
+    SET p["spd"] TO spd_new.
+    SET GUI_EDIT_HANDLES[4]:TEXT TO "" + ROUND(spd_new, 0).
+
+    LOCAL nt IS "waypoint".
+    IF p:HASKEY("nav_type") { SET nt TO p["nav_type"]. }
+
+    IF nt = "course_dist" AND GUI_EDIT_HANDLES:LENGTH >= 10 {
+      LOCAL cdeg IS 90.
+      LOCAL dnm  IS 100.
+      IF p:HASKEY("course_deg") { SET cdeg TO ROUND(p["course_deg"], 0). }
+      IF p:HASKEY("dist_nm")    { SET dnm  TO ROUND(p["dist_nm"],    0). }
+
+      LOCAL cdeg_new IS _PARSE_NUM(GUI_EDIT_HANDLES[8]:TEXT, cdeg).
+      SET cdeg_new TO MOD(ROUND(cdeg_new, 0) + 360, 360).
+      IF NOT p:HASKEY("course_deg") OR p["course_deg"] <> cdeg_new { SET changed TO TRUE. }
+      SET p["course_deg"] TO cdeg_new.
+      SET GUI_EDIT_HANDLES[8]:TEXT TO "" + cdeg_new.
+
+      LOCAL dnm_new IS _PARSE_NUM(GUI_EDIT_HANDLES[9]:TEXT, dnm).
+      SET dnm_new TO CLAMP(ROUND(dnm_new, 0), 1, 9999).
+      IF NOT p:HASKEY("dist_nm") OR p["dist_nm"] <> dnm_new { SET changed TO TRUE. }
+      SET p["dist_nm"] TO dnm_new.
+      SET GUI_EDIT_HANDLES[9]:TEXT TO "" + dnm_new.
+
+    } ELSE IF nt = "course_time" AND GUI_EDIT_HANDLES:LENGTH >= 10 {
+      LOCAL cdeg IS 90.
+      LOCAL tmin IS 60.
+      IF p:HASKEY("course_deg") { SET cdeg TO ROUND(p["course_deg"], 0). }
+      IF p:HASKEY("time_min")   { SET tmin TO ROUND(p["time_min"],   0). }
+
+      LOCAL cdeg_new IS _PARSE_NUM(GUI_EDIT_HANDLES[8]:TEXT, cdeg).
+      SET cdeg_new TO MOD(ROUND(cdeg_new, 0) + 360, 360).
+      IF NOT p:HASKEY("course_deg") OR p["course_deg"] <> cdeg_new { SET changed TO TRUE. }
+      SET p["course_deg"] TO cdeg_new.
+      SET GUI_EDIT_HANDLES[8]:TEXT TO "" + cdeg_new.
+
+      LOCAL tmin_new IS _PARSE_NUM(GUI_EDIT_HANDLES[9]:TEXT, tmin).
+      SET tmin_new TO CLAMP(ROUND(tmin_new, 0), 1, 9999).
+      IF NOT p:HASKEY("time_min") OR p["time_min"] <> tmin_new { SET changed TO TRUE. }
+      SET p["time_min"] TO tmin_new.
+      SET GUI_EDIT_HANDLES[9]:TEXT TO "" + tmin_new.
+    }
+  } ELSE IF t = LEG_APPROACH AND GUI_EDIT_HANDLES:LENGTH >= 4 {
+    IF PLATE_IDS:LENGTH > 0 {
+      LOCAL ni IS CLAMP(ROUND(GUI_EDIT_HANDLES[3]:INDEX, 0), 0, PLATE_IDS:LENGTH - 1).
+      IF NOT p:HASKEY("plate_idx") OR p["plate_idx"] <> ni { SET changed TO TRUE. }
+      SET p["plate_idx"] TO ni.
+      SET GUI_EDIT_HANDLES[3]:CHANGED TO FALSE.
+    }
+  }
+
+  RETURN changed.
 }
 
 // Poll edit widgets each tick.  Returns TRUE if leg data changed.
@@ -538,6 +630,7 @@ FUNCTION _GUI_TICK_EDIT {
 
 FUNCTION _GUI_CLOSE {
   _GUI_CLOSE_EDIT().
+  SET GUI_EDIT_CLOSED_BY_USER TO FALSE.
   IF GUI_WIN <> 0 {
     GUI_WIN:DISPOSE().
     SET GUI_WIN TO 0.
@@ -685,11 +778,29 @@ FUNCTION _GUI_BUILD {
 // Poll all widgets each loop tick.
 // Returns "" (normal), "ARM", or "QUIT".
 FUNCTION _GUI_TICK {
-  IF GUI_WIN = 0 { RETURN "". }
+  // Guard against focus/z-order hiding: if a GUI window gets hidden
+  // by user interaction, force it visible again on the next tick.
+  IF GUI_WIN = 0 {
+    _GUI_BUILD().
+    RETURN "".
+  }
+  IF NOT GUI_WIN:VISIBLE { GUI_WIN:SHOW(). }
+  IF GUI_EDIT_WIN = 0 AND DRAFT_PLAN:LENGTH > 0 AND NOT GUI_EDIT_CLOSED_BY_USER {
+    _GUI_BUILD_EDIT().
+  } ELSE IF GUI_EDIT_WIN <> 0 AND NOT GUI_EDIT_WIN:VISIBLE {
+    GUI_EDIT_WIN:SHOW().
+  }
 
   // ARM / QUIT.
   IF GUI_ARM_BTN  <> 0 AND GUI_ARM_BTN:TAKEPRESS  { RETURN "ARM".  }
   IF GUI_QUIT_BTN <> 0 AND GUI_QUIT_BTN:TAKEPRESS { RETURN "QUIT". }
+  IF GUI_EDIT_OK_BTN <> 0 AND GUI_EDIT_OK_BTN:TAKEPRESS {
+    _GUI_COMMIT_EDIT_FIELDS().
+    _GUI_CLOSE_EDIT().
+    SET GUI_EDIT_CLOSED_BY_USER TO TRUE.
+    _GUI_REFRESH().
+    RETURN "".
+  }
 
   // Poll edit window.
   IF _GUI_TICK_EDIT() { _GUI_REFRESH(). }
@@ -710,7 +821,8 @@ FUNCTION _GUI_TICK {
   UNTIL li >= GUI_LEG_SEL_BTNS:LENGTH {
     IF GUI_LEG_SEL_BTNS[li]:TAKEPRESS {
       SET FMS_LEG_CURSOR TO li.
-      _GUI_REFRESH_EDIT().
+      IF GUI_EDIT_CLOSED_BY_USER { _GUI_BUILD_EDIT(). }
+      ELSE { _GUI_REFRESH_EDIT(). }
       _GUI_REFRESH().
       RETURN "".
     }
@@ -718,7 +830,8 @@ FUNCTION _GUI_TICK {
       IF li > 0 {
         _GUI_SWAP_LEGS(li, li - 1).
         SET FMS_LEG_CURSOR TO li - 1.
-        _GUI_REFRESH_EDIT().
+        IF GUI_EDIT_CLOSED_BY_USER { _GUI_BUILD_EDIT(). }
+        ELSE { _GUI_REFRESH_EDIT(). }
         _GUI_REFRESH().
       }
       RETURN "".
@@ -727,7 +840,8 @@ FUNCTION _GUI_TICK {
       IF li < DRAFT_PLAN:LENGTH - 1 {
         _GUI_SWAP_LEGS(li, li + 1).
         SET FMS_LEG_CURSOR TO li + 1.
-        _GUI_REFRESH_EDIT().
+        IF GUI_EDIT_CLOSED_BY_USER { _GUI_BUILD_EDIT(). }
+        ELSE { _GUI_REFRESH_EDIT(). }
         _GUI_REFRESH().
       }
       RETURN "".

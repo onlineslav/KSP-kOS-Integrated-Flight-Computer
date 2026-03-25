@@ -5,8 +5,10 @@ defaults to showing whatever information is relevant to the phase of flight you'
 
 menu:
 - vessel information page
+- event log page
 
 keymaps: 
+    - legend at bottom of terminal - says show if not shown and hide if shown
 p - show flight plan
 e - show event log
 m - 

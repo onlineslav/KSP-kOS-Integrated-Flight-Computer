@@ -353,6 +353,11 @@ GLOBAL GUI_EDIT_WIN IS 0.            // edit sub-window handle
 GLOBAL GUI_EDIT_HANDLES IS LIST().   // widget handles in edit sub-window
 GLOBAL GUI_EDIT_LEG_TYPE IS -1.      // leg type currently shown in edit window
 GLOBAL GUI_EDIT_NAV_TYPE IS "".      // cruise nav_type currently shown in edit window
+GLOBAL GUI_EDIT_OK_BTN IS 0.         // [OK] button for closing edit sub-window
+GLOBAL GUI_EDIT_CLOSED_BY_USER IS FALSE. // TRUE when edit sub-window was explicitly closed
+GLOBAL GUI_EDIT_POS_VALID IS FALSE.  // TRUE once we have captured edit-window coordinates
+GLOBAL GUI_EDIT_LAST_X IS 0.         // last edit-window X position (pixels)
+GLOBAL GUI_EDIT_LAST_Y IS 0.         // last edit-window Y position (pixels)
 
 // ----------------------------
 // Ascent phase state
@@ -740,6 +745,11 @@ FUNCTION IFC_INIT_STATE {
   GUI_EDIT_HANDLES:CLEAR().
   SET GUI_EDIT_LEG_TYPE TO -1.
   SET GUI_EDIT_NAV_TYPE TO "".
+  SET GUI_EDIT_OK_BTN TO 0.
+  SET GUI_EDIT_CLOSED_BY_USER TO FALSE.
+  SET GUI_EDIT_POS_VALID TO FALSE.
+  SET GUI_EDIT_LAST_X TO 0.
+  SET GUI_EDIT_LAST_Y TO 0.
 
   SET CRUISE_WAYPOINTS  TO LIST().
   SET CRUISE_WP_INDEX   TO 0.

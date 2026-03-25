@@ -519,6 +519,9 @@ FUNCTION _RUN_FLIGHT_PLAN {
     RETURN.
   }
 
+  // Reboot safety: dispose any lingering GUI windows from a previous run
+  // before state reset clears the stored handles.
+  _GUI_CLOSE().
   IFC_INIT_STATE().
   UI_INIT().
 
@@ -655,6 +658,8 @@ FUNCTION _RUN_FLIGHT_PLAN {
 // Shows the plan editor, waits for the user to ARM or QUIT.
 // On ARM, converts DRAFT_PLAN to an execution plan and runs it.
 FUNCTION _IFC_INTERACTIVE_START {
+  // Reboot safety: always clear stale GUI windows before new pre-arm GUI build.
+  _GUI_CLOSE().
   IFC_INIT_STATE().
   SET IFC_ACTIVE_CFG_PATH TO "".
   SET IFC_MISSION_START_UT TO TIME:SECONDS.
