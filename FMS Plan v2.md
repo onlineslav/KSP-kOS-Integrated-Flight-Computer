@@ -4,7 +4,7 @@
 defaults to showing whatever information is relevant to the phase of flight you're in (like it does now)
 
 menu:
-- vessel information
+- vessel information page
 
 keymaps: 
 p - show flight plan
