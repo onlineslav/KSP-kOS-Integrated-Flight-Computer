@@ -148,6 +148,14 @@ GLOBAL AS_APP_CAP_DEG_HI  IS 14.0.  // deg cap at/above AS_APP_SPEED_HI
 GLOBAL APP_SPD_INTERCEPT_GAIN      IS 0.60. // additive = gain * (Vapp - Vref)
 GLOBAL APP_SPD_INTERCEPT_MIN_ADD   IS 4.0.  // m/s minimum additive for intercept phase
 GLOBAL APP_SPD_INTERCEPT_MAX_ADD   IS 9.0.  // m/s maximum additive for intercept phase
+// Far from the terminal area, hold enroute speed and delay slowing to Vint.
+// Intercept speed is armed when either:
+// - distance to threshold is inside APP_SPD_INTERCEPT_ARM_DIST_M
+// - altitude is below APP_SPD_INTERCEPT_ARM_ALT_M
+GLOBAL APP_SPD_ENROUTE_TARGET      IS -1.0. // m/s <=0 => auto (use CRUISE_SPD_MPS, else current IAS)
+GLOBAL APP_SPD_INTERCEPT_ARM_DIST_M IS 30000.0. // m baseline distance gate for slowing from enroute to intercept speed
+GLOBAL APP_SPD_INTERCEPT_ARM_ALT_M  IS 2600.0.  // m MSL altitude gate for arming intercept speed
+GLOBAL APP_SPD_INTERCEPT_RELEASE_FACTOR IS 1.25. // hysteresis multiplier to keep gate from chattering
 GLOBAL APP_FINAL_CAPTURE_CONFIRM_S IS 1.0.  // s LOC/GS capture must persist before final-speed mode
 GLOBAL APP_FINAL_RELEASE_FACTOR    IS 1.35. // hysteresis factor on LOC/GS capture limits to exit final-speed mode
 GLOBAL APP_SHORT_FINAL_AGL_M       IS 60.0. // m AGL where Vapp -> Vref blend starts

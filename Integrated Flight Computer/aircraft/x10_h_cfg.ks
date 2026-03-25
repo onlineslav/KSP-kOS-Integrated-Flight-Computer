@@ -102,6 +102,12 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // ========================================================
     // 4) Approach
     // ========================================================
+    // Enroute-to-intercept speed-gate overrides.
+    "app_spd_enroute_target", -1,          // [m/s]             Enroute IAS target before intercept gate arms (<=0 uses CRUISE_SPD_MPS/current IAS). (-1.0)
+    "app_spd_intercept_arm_dist_m", 45000.0,  // [m]               Distance-to-threshold gate to arm intercept-speed decel.                         (30000.0)
+    "app_spd_intercept_arm_alt_m", 3200.0,    // [m ASL]           Altitude gate to arm intercept-speed decel regardless of range.                  (2600.0)
+    "app_spd_intercept_release_factor", 1.25, // [unitless]        Hysteresis multiplier for releasing/holding intercept-speed gate state.          (1.25)
+
     "v_app", 152.0,                           // [m/s]             Target IAS from intercept through stabilized approach.                           
     "v_ref", 142.0,                           // [m/s]             Reference IAS near threshold crossing.                                           
 

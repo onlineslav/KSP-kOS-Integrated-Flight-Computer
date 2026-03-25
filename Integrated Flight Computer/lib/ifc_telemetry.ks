@@ -81,6 +81,7 @@ FUNCTION PRINT_TELEMETRY {
     PRINT "CAP L/G " + APP_LOC_CAP_OK + "/" + APP_GS_CAP_OK
       + " arm " + ROUND(arm_left, 2) + "s"
       + " SF " + ROUND(APP_SHORT_FINAL_FRAC, 2)
+      + " D " + ROUND(APP_SPD_DIST_THR_M / 1000, 1) + "km"
       + " ThrI " + ROUND(THR_INTEGRAL, 2) AT (0,5).
   } ELSE IF IFC_PHASE = PHASE_FLARE {
     PRINT "FLARE tgtVS " + ROUND(TELEM_FLARE_TGT_VS, 2)

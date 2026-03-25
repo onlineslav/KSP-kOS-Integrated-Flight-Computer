@@ -117,6 +117,8 @@ FUNCTION RUN_APPROACH {
 // intercept speed from existing Vapp/Vref values.
 //
 // Speed modes:
+// - ENROUTE: FLY_TO_FIX before speed gate, keep cruise/enroute speed.
+// - FIX_INT: FLY_TO_FIX after speed gate, decelerate to derived Vint.
 // - INTERCEPT: before stable LOC/GS capture, target derived Vint.
 // - FINAL: once LOC/GS capture is stable, target Vapp.
 // - SHORT FINAL: blend Vapp -> Vref below APP_SHORT_FINAL_AGL_M.
@@ -136,12 +138,22 @@ FUNCTION _GET_VINTERCEPT_TARGET {
   RETURN vapp + intercept_add.
 }
 
+FUNCTION _APP_GET_DIST_TO_THR_FOR_SPEED_GATE {
+  // Prefer along-track ILS distance when valid; fall back to direct geo range.
+  IF ILS_DIST_M > 0 { RETURN ILS_DIST_M. }
+  IF ILS_THR_GEO_LL <> 0 { RETURN GEO_DISTANCE(SHIP:GEOPOSITION, ILS_THR_GEO_LL). }
+  RETURN 1000000000.
+}
+
 FUNCTION _UPDATE_APPROACH_SPEED_TARGET {
   LOCAL vapp IS ACTIVE_V_APP.
   LOCAL vref IS _GET_VREF_TARGET().
   LOCAL intercept_gain IS AC_PARAM("app_spd_intercept_gain",    APP_SPD_INTERCEPT_GAIN,    0).
   LOCAL intercept_min_add IS AC_PARAM("app_spd_intercept_min_add", APP_SPD_INTERCEPT_MIN_ADD, 0.001).
   LOCAL intercept_max_add IS AC_PARAM("app_spd_intercept_max_add", APP_SPD_INTERCEPT_MAX_ADD, 0.001).
+  LOCAL intercept_arm_dist_m IS AC_PARAM("app_spd_intercept_arm_dist_m", APP_SPD_INTERCEPT_ARM_DIST_M, 0.001).
+  LOCAL intercept_arm_alt_m IS AC_PARAM("app_spd_intercept_arm_alt_m", APP_SPD_INTERCEPT_ARM_ALT_M, 0.001).
+  LOCAL intercept_release_factor IS AC_PARAM("app_spd_intercept_release_factor", APP_SPD_INTERCEPT_RELEASE_FACTOR, 0.001).
   LOCAL short_final_agl IS AC_PARAM("app_short_final_agl",      APP_SHORT_FINAL_AGL_M,     0.001).
   LOCAL speed_tgt_slew_per_s IS AC_PARAM("app_speed_tgt_slew_per_s", APP_SPEED_TGT_SLEW_PER_S, 0.001).
 
@@ -152,15 +164,54 @@ FUNCTION _UPDATE_APPROACH_SPEED_TARGET {
   }
 
   IF intercept_max_add < intercept_min_add { SET intercept_max_add TO intercept_min_add. }
+  IF intercept_release_factor < 1 { SET intercept_release_factor TO 1. }
   LOCAL vint IS _GET_VINTERCEPT_TARGET(vapp, vref, intercept_gain, intercept_min_add, intercept_max_add).
+  LOCAL enroute_tgt IS APP_SPD_ENROUTE_TARGET.
+  IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("app_spd_enroute_target") {
+    SET enroute_tgt TO ACTIVE_AIRCRAFT["app_spd_enroute_target"].
+  }
+  IF enroute_tgt <= 0 {
+    IF CRUISE_SPD_MPS > 0 {
+      SET enroute_tgt TO CRUISE_SPD_MPS.
+    } ELSE {
+      SET enroute_tgt TO GET_IAS().
+    }
+  }
+  IF enroute_tgt < vint { SET enroute_tgt TO vint. }
+
   LOCAL base_tgt IS vint.
   LOCAL short_final_frac IS 0.
   LOCAL short_final_target IS vapp.
   LOCAL short_cap_applied IS FALSE.
   LOCAL agl IS GET_AGL().
+  LOCAL ias_now IS GET_IAS().
   IF short_final_agl > 0 AND agl < short_final_agl {
     SET short_final_frac TO CLAMP((short_final_agl - agl) / short_final_agl, 0, 1).
     SET short_final_target TO vapp + (vref - vapp) * short_final_frac.
+  }
+
+  // In FLY_TO_FIX, keep enroute speed until a distance/altitude gate
+  // says it's time to slow to intercept speed.
+  IF IFC_SUBPHASE = SUBPHASE_FLY_TO_FIX {
+    LOCAL dist_to_thr_m IS _APP_GET_DIST_TO_THR_FOR_SPEED_GATE().
+    LOCAL gate_m IS intercept_arm_dist_m.
+    LOCAL alt_now_m IS SHIP:ALTITUDE.
+    LOCAL arm_now IS FALSE.
+    IF APP_INTERCEPT_ARMED {
+      LOCAL release_gate_m IS gate_m * intercept_release_factor.
+      LOCAL release_alt_m IS intercept_arm_alt_m * intercept_release_factor.
+      SET arm_now TO dist_to_thr_m <= release_gate_m OR alt_now_m <= release_alt_m.
+    } ELSE {
+      SET arm_now TO dist_to_thr_m <= gate_m OR alt_now_m <= intercept_arm_alt_m.
+    }
+    SET APP_INTERCEPT_ARMED TO arm_now.
+    SET APP_SPD_DIST_THR_M TO dist_to_thr_m.
+    IF NOT APP_INTERCEPT_ARMED {
+      SET base_tgt TO enroute_tgt.
+    }
+  } ELSE {
+    SET APP_INTERCEPT_ARMED TO FALSE.
+    SET APP_SPD_DIST_THR_M TO _APP_GET_DIST_TO_THR_FOR_SPEED_GATE().
   }
 
   // Final-speed mode is only available once ILS tracking is active.
@@ -215,7 +266,7 @@ FUNCTION _UPDATE_APPROACH_SPEED_TARGET {
     LOCAL aoa_warn IS a_crit * APP_AOA_PROTECT_FRAC.
     IF aoa_now > aoa_warn {
       LOCAL aoa_excess IS aoa_now - aoa_warn.
-      LOCAL aoa_floor  IS GET_IAS() + aoa_excess * APP_AOA_SPD_GAIN.
+      LOCAL aoa_floor  IS ias_now + aoa_excess * APP_AOA_SPD_GAIN.
       IF aoa_floor > base_tgt { SET base_tgt TO aoa_floor. }
     }
   }
@@ -226,7 +277,11 @@ FUNCTION _UPDATE_APPROACH_SPEED_TARGET {
   SET APP_BASE_V_TGT TO base_tgt.
   SET APP_SHORT_FINAL_FRAC TO short_final_frac.
   IF IFC_SUBPHASE = SUBPHASE_FLY_TO_FIX {
-    SET APP_SPD_MODE TO "FIXES".
+    IF APP_INTERCEPT_ARMED {
+      SET APP_SPD_MODE TO "FIX_INT".
+    } ELSE {
+      SET APP_SPD_MODE TO "ENROUTE".
+    }
   } ELSE IF APP_ON_FINAL {
     IF short_final_frac > 0 {
       SET APP_SPD_MODE TO "SHORT_FINAL".

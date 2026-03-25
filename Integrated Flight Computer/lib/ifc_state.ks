@@ -55,7 +55,7 @@ GLOBAL AT_A_THRUST_MAX_EST IS 0.0.   // estimated max positive accel authority (
 GLOBAL AT_IDLE_DECEL_EST   IS 0.7.   // estimated idle decel authority (m/s², positive magnitude)
 GLOBAL APP_ON_FINAL IS FALSE. // TRUE once LOC/GS capture is stable for final-speed mode
 GLOBAL APP_FINAL_ARM_UT IS -1. // timer used to debounce entry to final-speed mode
-GLOBAL APP_SPD_MODE IS "INIT". // FIXES / INTERCEPT / FINAL / SHORT_FINAL
+GLOBAL APP_SPD_MODE IS "INIT". // ENROUTE / FIX_INT / INTERCEPT / FINAL / SHORT_FINAL
 GLOBAL APP_VREF_TGT IS 0. // current computed Vref used by scheduler (m/s)
 GLOBAL APP_VINT_TGT IS 0. // current computed intercept speed target (m/s)
 GLOBAL APP_BASE_V_TGT IS 0. // current unslewed phase target speed (m/s)
@@ -63,6 +63,8 @@ GLOBAL APP_SHORT_FINAL_FRAC IS 0. // 0..1 short-final blend fraction (Vapp->Vref
 GLOBAL APP_LOC_CAP_OK IS 0. // 1 when |LOC| is inside capture band, else 0
 GLOBAL APP_GS_CAP_OK IS 0.  // 1 when |GS| is inside capture band, else 0
 GLOBAL APP_GS_LATCHED IS FALSE. // TRUE once GS captured; releases only at GS_LATCH_RELEASE_FACTOR * GS_CAPTURE_M
+GLOBAL APP_INTERCEPT_ARMED IS FALSE. // TRUE when distance/altitude gate says decel to intercept speed should be active
+GLOBAL APP_SPD_DIST_THR_M IS 0. // m distance-to-threshold estimate used by speed gate logic
 
 // ----------------------------
 // ILS deviation state  (updated each cycle in ILS_TRACK)
@@ -530,6 +532,8 @@ FUNCTION IFC_INIT_STATE {
   SET APP_LOC_CAP_OK TO 0.
   SET APP_GS_CAP_OK TO 0.
   SET APP_GS_LATCHED TO FALSE.
+  SET APP_INTERCEPT_ARMED TO FALSE.
+  SET APP_SPD_DIST_THR_M TO 0.
 
   SET ILS_LOC_DEV       TO 0.
   SET ILS_GS_DEV        TO 0.
@@ -880,7 +884,7 @@ FUNCTION IFC_LOAD_PLATE {
   SET ACTIVE_V_TGT TO ACTIVE_V_APP.
   SET APP_ON_FINAL TO FALSE.
   SET APP_FINAL_ARM_UT TO -1.
-  SET APP_SPD_MODE TO "FIXES".
+  SET APP_SPD_MODE TO "ENROUTE".
   SET APP_VREF_TGT TO ACTIVE_V_APP - 10.
   SET APP_VINT_TGT TO ACTIVE_V_APP.
   SET APP_BASE_V_TGT TO ACTIVE_V_APP.
@@ -888,6 +892,8 @@ FUNCTION IFC_LOAD_PLATE {
   SET APP_LOC_CAP_OK TO 0.
   SET APP_GS_CAP_OK TO 0.
   SET APP_GS_LATCHED TO FALSE.
+  SET APP_INTERCEPT_ARMED TO FALSE.
+  SET APP_SPD_DIST_THR_M TO 0.
   SET ACTIVE_FIXES    TO ACTIVE_PLATE["fixes"].
   SET ACTIVE_ALT_AT   TO ACTIVE_PLATE["alt_at"].
   SET FIX_INDEX TO 0.
