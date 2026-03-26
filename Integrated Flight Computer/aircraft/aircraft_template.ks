@@ -79,14 +79,10 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "as_err_full_mps",     18.0, // m/s overspeed that commands full capped deflection
     "as_angle_slew_dps",   25.0, // deg/s deploy-angle slew limit
     "as_max_deflection_deg", 70, // deg written when autospoiler is not actively deploying
-    "as_crz_speed_lo",     120,  // m/s low speed point for cruise cap schedule
-    "as_crz_speed_hi",     260,  // m/s high speed point for cruise cap schedule
-    "as_crz_cap_deg_lo",   45,   // deg cap at/below as_crz_speed_lo
-    "as_crz_cap_deg_hi",   25,   // deg cap at/above as_crz_speed_hi
-    "as_app_speed_lo",     70,   // m/s low speed point for approach cap schedule
-    "as_app_speed_hi",     160,  // m/s high speed point for approach cap schedule
-    "as_app_cap_deg_lo",   55,   // deg cap at/below as_app_speed_lo
-    "as_app_cap_deg_hi",   28,   // deg cap at/above as_app_speed_hi
+    "as_speed_lo",         70,   // m/s low speed point for cap schedule
+    "as_speed_hi",         260,  // m/s high speed point for cap schedule
+    "as_cap_deg_lo",       55,   // deg cap at/below as_speed_lo
+    "as_cap_deg_hi",       25,   // deg cap at/above as_speed_hi
     "ag_spoilers_arm",    0,  // AG to arm spoilers in-flight (0 = not used)
     "app_spoiler_arm_km", 0,  // km from threshold to arm (0 = disabled)
 

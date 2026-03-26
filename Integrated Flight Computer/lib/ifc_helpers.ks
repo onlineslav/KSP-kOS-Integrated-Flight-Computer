@@ -159,6 +159,18 @@ FUNCTION GET_TAILSTRIKE_PITCH_MAX {
   RETURN AC_PARAM("tailstrike_pitch_max_deg", TAILSTRIKE_PITCH_MAX_DEG, 0.001).
 }
 
+FUNCTION CRUISE_NORM_SPD_MODE {
+  PARAMETER mode_raw.
+  LOCAL mode_txt IS ("" + mode_raw):TOUPPER.
+  IF mode_txt = CRUISE_SPD_MODE_MACH { RETURN CRUISE_SPD_MODE_MACH. }
+  RETURN CRUISE_SPD_MODE_IAS.
+}
+
+FUNCTION CRUISE_IS_MACH_MODE {
+  PARAMETER mode_raw.
+  RETURN CRUISE_NORM_SPD_MODE(mode_raw) = CRUISE_SPD_MODE_MACH.
+}
+
 // Clamp the pitch command value sent into AA_SET_DIRECTOR_PITCH so the resulting
 // nose pitch never exceeds the configured tailstrike protection limit.
 FUNCTION CLAMP_TAILSTRIKE_DIRECTOR_CMD {

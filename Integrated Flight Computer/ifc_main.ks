@@ -84,14 +84,10 @@ LOCAL _DEFAULT_AIRCRAFT IS LEXICON(
   "as_err_full_mps",    -1,
   "as_angle_slew_dps",  -1,
   "as_max_deflection_deg",-1,
-  "as_crz_speed_lo",    -1,
-  "as_crz_speed_hi",    -1,
-  "as_crz_cap_deg_lo",  -1,
-  "as_crz_cap_deg_hi",  -1,
-  "as_app_speed_lo",    -1,
-  "as_app_speed_hi",    -1,
-  "as_app_cap_deg_lo",  -1,
-  "as_app_cap_deg_hi",  -1,
+  "as_speed_lo",        -1,
+  "as_speed_hi",        -1,
+  "as_cap_deg_lo",      -1,
+  "as_cap_deg_hi",      -1,
   "ag_thrust_rev",      0,
   "ag_drogue",          0,
   "flaps_initial_detent", 0,
@@ -299,6 +295,7 @@ FUNCTION _BUILD_PLAN_FROM_MENU {
         "params", LEXICON(
           "waypoints", route["waypoints"],
           "alt_m",     route["cruise_alt_m"],
+          "spd_mode",  CRUISE_SPD_MODE_IAS,
           "spd",       route["cruise_spd"]
         )
       )).
@@ -330,6 +327,7 @@ FUNCTION _BUILD_PLAN_FROM_DRAFT {
 
     } ELSE IF t = LEG_CRUISE {
       LOCAL wpts IS LIST().
+      LOCAL spd_mode IS CRUISE_SPD_MODE_IAS.
       LOCAL wi IS 0.
       UNTIL wi >= FMS_WPT_SLOTS {
         LOCAL wkey IS "wpt" + wi.
@@ -339,8 +337,9 @@ FUNCTION _BUILD_PLAN_FROM_DRAFT {
         }
         SET wi TO wi + 1.
       }
+      IF p:HASKEY("spd_mode") { SET spd_mode TO CRUISE_NORM_SPD_MODE(p["spd_mode"]). }
       plan:ADD(LEXICON("type", LEG_CRUISE,
-        "params", LEXICON("waypoints", wpts, "alt_m", p["alt_m"], "spd", p["spd"]))).
+        "params", LEXICON("waypoints", wpts, "alt_m", p["alt_m"], "spd_mode", spd_mode, "spd", p["spd"]))).
 
     } ELSE IF t = LEG_APPROACH {
       _FMS_AP_NORMALISE_PARAMS(p).
@@ -397,6 +396,7 @@ FUNCTION _INIT_LEG {
     LOCAL wpts  IS LIST().
     LOCAL alt_m IS CRUISE_DEFAULT_ALT_M.
     LOCAL spd   IS CRUISE_DEFAULT_SPD.
+    LOCAL spd_mode IS CRUISE_SPD_MODE_IAS.
     LOCAL nt    IS "waypoint".
 
     IF params:HASKEY("route") {
@@ -409,6 +409,7 @@ FUNCTION _INIT_LEG {
       // FMS leg format: nav_type + wpt0/1/2 or course params
       SET nt TO params["nav_type"].
       IF params:HASKEY("alt_m") { SET alt_m TO params["alt_m"]. }
+      IF params:HASKEY("spd_mode") { SET spd_mode TO CRUISE_NORM_SPD_MODE(params["spd_mode"]). }
       IF params:HASKEY("spd")   { SET spd   TO params["spd"]. }
 
       IF nt = "course_dist" {
@@ -450,13 +451,22 @@ FUNCTION _INIT_LEG {
       // Old flat format: params["waypoints"] is already a list of beacon IDs
       IF params:HASKEY("waypoints") { SET wpts  TO params["waypoints"]. }
       IF params:HASKEY("alt_m")     { SET alt_m TO params["alt_m"]. }
+      IF params:HASKEY("spd_mode")  { SET spd_mode TO CRUISE_NORM_SPD_MODE(params["spd_mode"]). }
       IF params:HASKEY("spd")       { SET spd   TO params["spd"]. }
     }
 
     SET CRUISE_NAV_TYPE   TO nt.
     SET CRUISE_WAYPOINTS  TO wpts.
     SET CRUISE_ALT_M      TO alt_m.
-    SET CRUISE_SPD_MPS    TO spd.
+    SET CRUISE_SPD_MODE   TO CRUISE_NORM_SPD_MODE(spd_mode).
+    IF CRUISE_SPD_MODE = CRUISE_SPD_MODE_MACH {
+      SET CRUISE_SPD_MACH TO CLAMP(spd, 0.20, 5.00).
+      // Seed IAS command at current speed; phase_cruise_alt updates it each tick from Mach target.
+      SET CRUISE_SPD_MPS TO CLAMP(GET_IAS(), 10, 500).
+    } ELSE {
+      SET CRUISE_SPD_MACH TO CRUISE_DEFAULT_MACH.
+      SET CRUISE_SPD_MPS TO CLAMP(spd, 10, 500).
+    }
     SET CRUISE_DEST_PLATE TO 0.
     SET CRUISE_WP_INDEX   TO 0.
     SET THR_INTEGRAL      TO 0.
@@ -747,6 +757,7 @@ FUNCTION RUN_TAKEOFF_IFC {
       "params", LEXICON(
         "waypoints", route["waypoints"],
         "alt_m",     route["cruise_alt_m"],
+        "spd_mode",  CRUISE_SPD_MODE_IAS,
         "spd",       route["cruise_spd"]
       )
     )).

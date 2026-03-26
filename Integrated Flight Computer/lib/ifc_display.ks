@@ -152,6 +152,10 @@ FUNCTION DISPLAY_PLAN_EDITOR {
 FUNCTION DISPLAY_CRUISE {
   _DISPLAY_AIR_DATA().
   UI_CLR(UI_PRI_TOP + 2).
+  LOCAL spd_txt IS ROUND(CRUISE_SPD_MPS, 0) + " m/s".
+  IF CRUISE_IS_MACH_MODE(CRUISE_SPD_MODE) {
+    SET spd_txt TO "M" + ROUND(CRUISE_SPD_MACH, 2) + "  (" + ROUND(CRUISE_SPD_MPS, 0) + " m/s cmd)".
+  }
 
   IF CRUISE_NAV_TYPE = "course_time" {
     LOCAL sec_left IS MAX(CRUISE_END_UT - TIME:SECONDS, 0).
@@ -162,7 +166,7 @@ FUNCTION DISPLAY_CRUISE {
 
     UI_P("  MODE COURSE_TIME  HDG " + ROUND(CRUISE_COURSE_DEG, 1)
       + " deg  TIME LEFT " + min_left + ":" + sec_str, UI_PRI_TOP + 3).
-    UI_P("  ALT TGT " + ROUND(CRUISE_ALT_M, 0) + " m   SPD TGT " + ROUND(CRUISE_SPD_MPS, 0) + " m/s", UI_PRI_TOP + 4).
+    UI_P("  ALT TGT " + ROUND(CRUISE_ALT_M, 0) + " m   SPD TGT " + spd_txt, UI_PRI_TOP + 4).
   } ELSE IF CRUISE_WP_INDEX < CRUISE_WAYPOINTS:LENGTH {
     LOCAL wp_id IS CRUISE_WAYPOINTS[CRUISE_WP_INDEX].
     LOCAL wp IS GET_BEACON(wp_id).
@@ -170,7 +174,7 @@ FUNCTION DISPLAY_CRUISE {
     LOCAL brg IS ROUND(GEO_BEARING(SHIP:GEOPOSITION, wp["ll"]), 1).
     UI_P("  WPT " + (CRUISE_WP_INDEX + 1) + "/" + CRUISE_WAYPOINTS:LENGTH +
          "  " + STR_PAD(wp_id, 12) + " BRG " + brg + " deg  DIST " + dist_km + " km", UI_PRI_TOP + 3).
-    UI_P("  ALT TGT " + ROUND(CRUISE_ALT_M, 0) + " m   SPD TGT " + ROUND(CRUISE_SPD_MPS, 0) + " m/s", UI_PRI_TOP + 4).
+    UI_P("  ALT TGT " + ROUND(CRUISE_ALT_M, 0) + " m   SPD TGT " + spd_txt, UI_PRI_TOP + 4).
   } ELSE {
     UI_P("  Cruise route complete, awaiting next leg", UI_PRI_TOP + 3).
     UI_CLR(UI_PRI_TOP + 4).

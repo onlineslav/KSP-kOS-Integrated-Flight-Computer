@@ -15,7 +15,7 @@
 - Fix fix-skipping logic: only skip a fix when it is truly behind (10 deg cone).
 
 # Ideas
-
+- Add a bank angle limiter that fights AA - see if it can work
 - Have a "kOS augmented" manual FBW mode
   - Has automatic crash prevention
 - ensure brakes cannot activate until nosegear landed (incl debounce - maybe 0.5s)

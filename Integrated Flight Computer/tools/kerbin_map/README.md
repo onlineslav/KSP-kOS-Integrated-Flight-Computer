@@ -1,5 +1,26 @@
 # Kerbin Map Toolchain (Offline, High-Resolution)
 
+## Quick Start (viewer only)
+
+If beacons/plates CSVs are already exported, just run the viewer:
+
+```powershell
+cd "f:\Kerbal Space Program\Ships\Script\Integrated Flight Computer\tools\kerbin_map\web"
+python -m http.server 8080
+```
+
+Open `http://localhost:8080`.
+
+To re-export nav data from kOS first (e.g. after adding new beacons/plates):
+
+```kerboscript
+RUNPATH("0:/Integrated Flight Computer/tools/kerbin_map/kos/export_ifc_nav_for_web.ks").
+```
+
+Then start the server above.
+
+---
+
 This folder provides an end-to-end local pipeline to build your own Kerbin map
 and overlay IFC waypoints/approach routes in a browser.
 

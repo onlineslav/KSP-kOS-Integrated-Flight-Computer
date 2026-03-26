@@ -292,7 +292,9 @@ GLOBAL IFC_MANUAL_MODE IS FALSE. // TRUE = autopilot suspended, pilot has contro
 GLOBAL CRUISE_WAYPOINTS   IS LIST().      // ordered list of beacon IDs to navigate
 GLOBAL CRUISE_WP_INDEX    IS 0.           // current index into CRUISE_WAYPOINTS
 GLOBAL CRUISE_ALT_M       IS 3000.        // target cruise altitude MSL (m)
-GLOBAL CRUISE_SPD_MPS     IS 150.         // target cruise IAS (m/s)
+GLOBAL CRUISE_SPD_MODE    IS CRUISE_SPD_MODE_IAS. // IAS or MACH speed schedule mode for current cruise leg
+GLOBAL CRUISE_SPD_MACH    IS CRUISE_DEFAULT_MACH. // selected Mach target when CRUISE_SPD_MODE = MACH
+GLOBAL CRUISE_SPD_MPS     IS 150.         // active IAS target commanded to autothrottle (m/s)
 GLOBAL CRUISE_DEST_PLATE  IS 0.           // (legacy) approach plate for destination
 GLOBAL CRUISE_NAV_TYPE    IS "waypoint".  // "waypoint" | "course_dist" | "course_time"
 GLOBAL CRUISE_COURSE_DEG  IS 0.           // compass heading for course-based cruise
@@ -760,6 +762,8 @@ FUNCTION IFC_INIT_STATE {
   SET CRUISE_WAYPOINTS  TO LIST().
   SET CRUISE_WP_INDEX   TO 0.
   SET CRUISE_ALT_M      TO 3000.
+  SET CRUISE_SPD_MODE   TO CRUISE_SPD_MODE_IAS.
+  SET CRUISE_SPD_MACH   TO CRUISE_DEFAULT_MACH.
   SET CRUISE_SPD_MPS    TO CRUISE_DEFAULT_SPD.
   SET CRUISE_DEST_PLATE TO 0.
   SET CRUISE_NAV_TYPE   TO "waypoint".

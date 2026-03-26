@@ -37,16 +37,21 @@ FUNCTION _ENSURE_DIRS {
 FUNCTION _EXPORT_BEACONS {
   PARAMETER out_path.
   IF EXISTS(out_path) { DELETEPATH(out_path). }
-  LOG "id,type,lat,lon,alt_asl,name,runway" TO out_path.
+  LOG "id,type,lat,lon,alt_asl,name,rwy,hdg,gs_angle" TO out_path.
 
   LOCAL count IS 0.
   FOR id IN NAV_BEACON_DB:KEYS {
     LOCAL b IS NAV_BEACON_DB[id].
     LOCAL ll IS b["ll"].
     LOCAL name IS id.
-    LOCAL runway IS "".
-    IF b:HASKEY("name") { SET name TO b["name"]. }
-    IF b:HASKEY("runway") { SET runway TO b["runway"]. }
+    LOCAL rwy IS "".
+    LOCAL hdg IS 0.
+    LOCAL gs_angle IS 0.
+    IF b:HASKEY("name")     { SET name     TO b["name"]. }
+    IF b:HASKEY("runway")   { SET rwy      TO b["runway"]. }
+    IF b:HASKEY("rwy")      { SET rwy      TO b["rwy"]. }
+    IF b:HASKEY("hdg")      { SET hdg      TO b["hdg"]. }
+    IF b:HASKEY("gs_angle") { SET gs_angle TO b["gs_angle"]. }
 
     LOG _CSV_SAN(id) + ","
       + _CSV_SAN(b["type"]) + ","
@@ -54,7 +59,9 @@ FUNCTION _EXPORT_BEACONS {
       + ROUND(ll:LNG, 7) + ","
       + ROUND(b["alt_asl"], 2) + ","
       + _CSV_SAN(name) + ","
-      + _CSV_SAN(runway) TO out_path.
+      + _CSV_SAN(rwy) + ","
+      + ROUND(hdg, 4) + ","
+      + ROUND(gs_angle, 4) TO out_path.
 
     SET count TO count + 1.
   }
@@ -64,20 +71,22 @@ FUNCTION _EXPORT_BEACONS {
 FUNCTION _EXPORT_PLATES {
   PARAMETER out_path.
   IF EXISTS(out_path) { DELETEPATH(out_path). }
-  LOG "plate_id,sequence,beacon_id,vapp" TO out_path.
+  LOG "plate_id,sequence,beacon_id,vapp,ils_id" TO out_path.
 
   LOCAL count IS 0.
   FOR plate_id IN PLATE_IDS {
     LOCAL plate IS GET_PLATE(plate_id).
     IF plate = 0 { CONTINUE. }
 
-    LOCAL fixes IS plate["fixes"].
+    LOCAL fixes  IS plate["fixes"].
+    LOCAL ils_id IS plate["ils_id"].
     LOCAL seq IS 0.
     UNTIL seq >= fixes:LENGTH {
       LOG _CSV_SAN(plate_id) + ","
         + ROUND(seq, 0) + ","
         + _CSV_SAN(fixes[seq]) + ","
-        + ROUND(plate["vapp"], 3) TO out_path.
+        + ROUND(plate["vapp"], 3) + ","
+        + _CSV_SAN(ils_id) TO out_path.
       SET seq TO seq + 1.
       SET count TO count + 1.
     }

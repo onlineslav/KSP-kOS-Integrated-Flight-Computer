@@ -58,9 +58,13 @@ FUNCTION _FMS_DESERIALISE_LEG {
   } ELSE IF t = LEG_CRUISE {
     LOCAL alt_m IS CRUISE_DEFAULT_ALT_M.
     LOCAL spd   IS CRUISE_DEFAULT_SPD.
+    LOCAL spd_mode IS CRUISE_SPD_MODE_IAS.
+    LOCAL nav_type IS "waypoint".
     IF p:HASKEY("alt_m") { SET alt_m TO p["alt_m"]. }
+    IF p:HASKEY("spd_mode") { SET spd_mode TO CRUISE_NORM_SPD_MODE(p["spd_mode"]). }
     IF p:HASKEY("spd")   { SET spd   TO p["spd"]. }
-    LOCAL cp IS LEXICON("alt_m", alt_m, "spd", spd).
+    IF p:HASKEY("nav_type") { SET nav_type TO p["nav_type"]. }
+    LOCAL cp IS LEXICON("alt_m", alt_m, "spd_mode", spd_mode, "spd", spd, "nav_type", nav_type).
     LOCAL wi IS 0.
     UNTIL wi >= FMS_WPT_SLOTS {
       LOCAL wkey IS "wpt" + wi.
@@ -69,6 +73,9 @@ FUNCTION _FMS_DESERIALISE_LEG {
       cp:ADD(wkey, widx).
       SET wi TO wi + 1.
     }
+    IF p:HASKEY("course_deg") { SET cp["course_deg"] TO ROUND(p["course_deg"], 0). }
+    IF p:HASKEY("dist_nm")    { SET cp["dist_nm"] TO ROUND(p["dist_nm"], 0). }
+    IF p:HASKEY("time_min")   { SET cp["time_min"] TO ROUND(p["time_min"], 0). }
     RETURN LEXICON("type", LEG_CRUISE, "params", cp).
 
   } ELSE IF t = LEG_APPROACH {

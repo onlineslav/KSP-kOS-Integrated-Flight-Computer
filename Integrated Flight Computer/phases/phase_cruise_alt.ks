@@ -17,9 +17,32 @@
 // ============================================================
 
 // Legacy throttle path kept for drop-in compatibility and fallback.
+FUNCTION _CRUISE_RESOLVE_AT_SPEED_TARGET_MPS {
+  // IAS mode: command the configured IAS target directly.
+  IF NOT CRUISE_IS_MACH_MODE(CRUISE_SPD_MODE) {
+    RETURN CLAMP(CRUISE_SPD_MPS, 10, 500).
+  }
+
+  // Mach mode: convert target Mach to an IAS command using the current IAS/Mach ratio.
+  LOCAL mach_now IS 0.
+  IF FAR_AVAILABLE AND ADDONS:AVAILABLE("FAR") AND ADDONS:HASSUFFIX("FAR") {
+    SET mach_now TO ADDONS:FAR:MACH.
+  }
+  IF mach_now <= 0.01 {
+    RETURN CLAMP(GET_IAS(), 10, 500).
+  }
+
+  LOCAL ias_now IS MAX(GET_IAS(), 1).
+  LOCAL ias_tgt IS ias_now * CRUISE_SPD_MACH / mach_now.
+  RETURN CLAMP(ias_tgt, 10, 500).
+}
+
 FUNCTION _RUN_CRUISE_THROTTLE {
-  AT_RUN_SPEED_HOLD(CRUISE_SPD_MPS, 0, 1).
-  AS_RUN(CRUISE_SPD_MPS, "CRUISE").
+  LOCAL v_tgt IS _CRUISE_RESOLVE_AT_SPEED_TARGET_MPS().
+  // Export the active IAS command for display/telemetry.
+  SET CRUISE_SPD_MPS TO v_tgt.
+  AT_RUN_SPEED_HOLD(v_tgt, 0, 1).
+  AS_RUN(v_tgt).
 }
 
 FUNCTION _CRUISE_AA_GET_HANDLE {

@@ -380,24 +380,12 @@ FUNCTION AS_DISCOVER_PARTS {
 }
 
 FUNCTION _AS_PHASE_CAP_DEG {
-  PARAMETER ias, phase_key.
+  PARAMETER ias.
 
-  LOCAL s_lo IS 0.
-  LOCAL s_hi IS 1.
-  LOCAL cap_lo IS 0.
-  LOCAL cap_hi IS 0.
-
-  IF phase_key = "CRUISE" {
-    SET s_lo   TO AC_PARAM("as_crz_speed_lo",    AS_CRZ_SPEED_LO,    0).
-    SET s_hi   TO AC_PARAM("as_crz_speed_hi",    AS_CRZ_SPEED_HI,    0.001).
-    SET cap_lo TO AC_PARAM("as_crz_cap_deg_lo",  AS_CRZ_CAP_DEG_LO,  0).
-    SET cap_hi TO AC_PARAM("as_crz_cap_deg_hi",  AS_CRZ_CAP_DEG_HI,  0).
-  } ELSE {
-    SET s_lo   TO AC_PARAM("as_app_speed_lo",    AS_APP_SPEED_LO,    0).
-    SET s_hi   TO AC_PARAM("as_app_speed_hi",    AS_APP_SPEED_HI,    0.001).
-    SET cap_lo TO AC_PARAM("as_app_cap_deg_lo",  AS_APP_CAP_DEG_LO,  0).
-    SET cap_hi TO AC_PARAM("as_app_cap_deg_hi",  AS_APP_CAP_DEG_HI,  0).
-  }
+  LOCAL s_lo   IS AC_PARAM("as_speed_lo",    AS_SPEED_LO,    0).
+  LOCAL s_hi   IS AC_PARAM("as_speed_hi",    AS_SPEED_HI,    0.001).
+  LOCAL cap_lo IS AC_PARAM("as_cap_deg_lo",  AS_CAP_DEG_LO,  0).
+  LOCAL cap_hi IS AC_PARAM("as_cap_deg_hi",  AS_CAP_DEG_HI,  0).
 
   IF s_hi <= s_lo { SET s_hi TO s_lo + 0.001. }
   SET cap_lo TO MAX(cap_lo, 0).
@@ -411,7 +399,7 @@ FUNCTION _AS_PHASE_CAP_DEG {
 }
 
 FUNCTION AS_RUN {
-  PARAMETER v_tgt, phase_key.
+  PARAMETER v_tgt.
 
   IF NOT _AS_ENABLED() {
     AS_RELEASE().
@@ -431,7 +419,7 @@ FUNCTION AS_RUN {
   IF full_err <= deadband { SET full_err TO deadband + 0.001. }
 
   LOCAL thr_gate IS AC_PARAM("as_thr_idle_gate", AS_THR_IDLE_GATE, 0).
-  LOCAL cap_deg IS _AS_PHASE_CAP_DEG(ias, phase_key).
+  LOCAL cap_deg IS _AS_PHASE_CAP_DEG(ias).
 
   LOCAL raw_deg IS 0.
   IF overspeed > deadband AND THROTTLE_CMD <= thr_gate {

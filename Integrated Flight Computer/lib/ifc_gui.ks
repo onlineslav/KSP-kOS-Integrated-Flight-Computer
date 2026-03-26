@@ -19,8 +19,8 @@
 //   TAKEOFF:
 //     [3] rwy_prev   [4] rwy_lbl   [5] rwy_next
 //   CRUISE:
-//     [3] alt_tf                          (TEXTFIELD, ft)
-//     [4] spd_tf                          (TEXTFIELD, m/s)
+//     [3] alt_tf                          (TEXTFIELD, m)
+//     [4] spd_tf                          (TEXTFIELD, IAS m/s or Mx.xx)
 //     [5] nav_prev  [6] nav_lbl  [7] nav_next  (Waypoint/Dist+Course/Time+Course)
 //     -- nav_type-specific (index 8+) --
 //     waypoint:    [8]  wpt0_prev [9]  wpt0_lbl [10] wpt0_next
@@ -55,6 +55,39 @@ FUNCTION _PARSE_NUM {
     SET i TO i + 1.
   }
   RETURN ("" + txt):TONUMBER(fallback).
+}
+
+FUNCTION _GUI_CRUISE_SPD_TEXT {
+  PARAMETER mode_raw, spd_val.
+  LOCAL mode_now IS CRUISE_NORM_SPD_MODE(mode_raw).
+  IF CRUISE_IS_MACH_MODE(mode_now) {
+    RETURN "M" + ROUND(spd_val, 2).
+  }
+  RETURN "" + ROUND(spd_val, 0).
+}
+
+FUNCTION _GUI_CRUISE_PARSE_SPD_INPUT {
+  PARAMETER txt, fallback_spd, fallback_mode.
+  LOCAL mode_now IS CRUISE_NORM_SPD_MODE(fallback_mode).
+  LOCAL clean IS txt:TRIM.
+  IF clean:LENGTH > 0 {
+    LOCAL first IS clean:SUBSTRING(0, 1):TOUPPER.
+    IF first = "M" {
+      SET mode_now TO CRUISE_SPD_MODE_MACH.
+      LOCAL mach_txt IS "".
+      IF clean:LENGTH > 1 { SET mach_txt TO clean:SUBSTRING(1, clean:LENGTH - 1). }
+      LOCAL mach_fb IS fallback_spd.
+      IF NOT CRUISE_IS_MACH_MODE(fallback_mode) { SET mach_fb TO CRUISE_DEFAULT_MACH. }
+      LOCAL mach_val IS _PARSE_NUM(mach_txt, mach_fb).
+      RETURN LEXICON("mode", mode_now, "spd", CLAMP(mach_val, 0.20, 5.00)).
+    }
+  }
+
+  LOCAL parsed IS _PARSE_NUM(clean, fallback_spd).
+  IF CRUISE_IS_MACH_MODE(mode_now) {
+    RETURN LEXICON("mode", mode_now, "spd", CLAMP(parsed, 0.20, 5.00)).
+  }
+  RETURN LEXICON("mode", mode_now, "spd", CLAMP(parsed, 10, 500)).
 }
 
 // ── Leg-type helpers ──────────────────────────────────────
@@ -168,6 +201,8 @@ FUNCTION _GUI_BUILD_EDIT {
     LOCAL spd   IS CRUISE_DEFAULT_SPD.
     IF p:HASKEY("alt_m") { SET alt_m TO p["alt_m"]. }
     IF p:HASKEY("spd")   { SET spd   TO p["spd"]. }
+    LOCAL spd_mode IS CRUISE_SPD_MODE_IAS.
+    IF p:HASKEY("spd_mode") { SET spd_mode TO CRUISE_NORM_SPD_MODE(p["spd_mode"]). }
     LOCAL nt IS "waypoint".
     IF p:HASKEY("nav_type") { SET nt TO p["nav_type"]. }
 
@@ -181,13 +216,13 @@ FUNCTION _GUI_BUILD_EDIT {
     SET alt_tf:STYLE:WIDTH TO 110.
     GUI_EDIT_HANDLES:ADD(alt_tf).  // [3]
 
-    // [4] Speed text field (m/s)
+    // [4] Speed text field (IAS m/s or Mach via Mx.xx)
     LOCAL spd_row IS GUI_EDIT_WIN:ADDHBOX().
-    LOCAL spd_rl  IS spd_row:ADDLABEL("Spd (m/s):").
+    LOCAL spd_rl  IS spd_row:ADDLABEL("Spd:").
     SET spd_rl:STYLE:WIDTH TO 80.
     LOCAL spd_tf IS spd_row:ADDTEXTFIELD().
-    SET spd_tf:TEXT TO "" + ROUND(spd, 0).
-    SET spd_tf:TOOLTIP TO "m/s".
+    SET spd_tf:TEXT TO _GUI_CRUISE_SPD_TEXT(spd_mode, spd).
+    SET spd_tf:TOOLTIP TO "IAS m/s, or prefix with M for Mach (example: M0.78)".
     SET spd_tf:STYLE:WIDTH TO 110.
     GUI_EDIT_HANDLES:ADD(spd_tf).  // [4]
 
@@ -345,8 +380,10 @@ FUNCTION _GUI_REFRESH_EDIT {
     LOCAL spd   IS CRUISE_DEFAULT_SPD.
     IF p:HASKEY("alt_m") { SET alt_m TO p["alt_m"]. }
     IF p:HASKEY("spd")   { SET spd   TO p["spd"]. }
+    LOCAL spd_mode IS CRUISE_SPD_MODE_IAS.
+    IF p:HASKEY("spd_mode") { SET spd_mode TO CRUISE_NORM_SPD_MODE(p["spd_mode"]). }
     SET GUI_EDIT_HANDLES[3]:TEXT TO "" + ROUND(alt_m, 0).
-    SET GUI_EDIT_HANDLES[4]:TEXT TO "" + ROUND(spd, 0).
+    SET GUI_EDIT_HANDLES[4]:TEXT TO _GUI_CRUISE_SPD_TEXT(spd_mode, spd).
     LOCAL nav_names IS LIST("Waypoint", "Dist+Course", "Time+Course").
     LOCAL nav_ni IS 0.
     IF nt = "course_dist" { SET nav_ni TO 1. }
@@ -427,11 +464,16 @@ FUNCTION _GUI_COMMIT_EDIT_FIELDS {
 
     LOCAL spd IS CRUISE_DEFAULT_SPD.
     IF p:HASKEY("spd") { SET spd TO p["spd"]. }
-    LOCAL spd_new IS _PARSE_NUM(GUI_EDIT_HANDLES[4]:TEXT, spd).
-    SET spd_new TO CLAMP(spd_new, 10, 500).
+    LOCAL spd_mode IS CRUISE_SPD_MODE_IAS.
+    IF p:HASKEY("spd_mode") { SET spd_mode TO CRUISE_NORM_SPD_MODE(p["spd_mode"]). }
+    LOCAL spd_parsed IS _GUI_CRUISE_PARSE_SPD_INPUT(GUI_EDIT_HANDLES[4]:TEXT, spd, spd_mode).
+    LOCAL spd_mode_new IS CRUISE_NORM_SPD_MODE(spd_parsed["mode"]).
+    LOCAL spd_new IS spd_parsed["spd"].
+    IF NOT p:HASKEY("spd_mode") OR CRUISE_NORM_SPD_MODE(p["spd_mode"]) <> spd_mode_new { SET changed TO TRUE. }
     IF NOT p:HASKEY("spd") OR p["spd"] <> spd_new { SET changed TO TRUE. }
+    SET p["spd_mode"] TO spd_mode_new.
     SET p["spd"] TO spd_new.
-    SET GUI_EDIT_HANDLES[4]:TEXT TO "" + ROUND(spd_new, 0).
+    SET GUI_EDIT_HANDLES[4]:TEXT TO _GUI_CRUISE_SPD_TEXT(spd_mode_new, spd_new).
 
     LOCAL nt IS "waypoint".
     IF p:HASKEY("nav_type") { SET nt TO p["nav_type"]. }
@@ -545,14 +587,18 @@ FUNCTION _GUI_TICK_EDIT {
       RETURN TRUE.
     }
 
-    // [4] Speed text field (m/s)
+    // [4] Speed text field (IAS m/s or Mach via Mx.xx)
     LOCAL spd IS CRUISE_DEFAULT_SPD.
     IF p:HASKEY("spd") { SET spd TO p["spd"]. }
+    LOCAL spd_mode IS CRUISE_SPD_MODE_IAS.
+    IF p:HASKEY("spd_mode") { SET spd_mode TO CRUISE_NORM_SPD_MODE(p["spd_mode"]). }
     IF GUI_EDIT_HANDLES[4]:CONFIRMED {
-      LOCAL val IS _PARSE_NUM(GUI_EDIT_HANDLES[4]:TEXT, spd).
-      SET val TO CLAMP(val, 10, 500).
+      LOCAL spd_parsed IS _GUI_CRUISE_PARSE_SPD_INPUT(GUI_EDIT_HANDLES[4]:TEXT, spd, spd_mode).
+      LOCAL spd_mode_new IS CRUISE_NORM_SPD_MODE(spd_parsed["mode"]).
+      LOCAL val IS spd_parsed["spd"].
+      SET p["spd_mode"] TO spd_mode_new.
       SET p["spd"] TO val.
-      SET GUI_EDIT_HANDLES[4]:TEXT TO "" + ROUND(val, 0).
+      SET GUI_EDIT_HANDLES[4]:TEXT TO _GUI_CRUISE_SPD_TEXT(spd_mode_new, val).
       RETURN TRUE.
     }
 

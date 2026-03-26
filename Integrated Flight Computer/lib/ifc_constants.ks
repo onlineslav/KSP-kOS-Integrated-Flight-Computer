@@ -129,17 +129,11 @@ GLOBAL AS_ERR_FULL_MPS       IS 20.0.          // m/s overspeed that maps to ful
 GLOBAL AS_ANGLE_SLEW_DPS     IS 25.0.          // deg/s max spoiler deploy-angle command slew
 GLOBAL AS_MAX_DEFLECTION_DEG IS 70.0.          // deg deploy-angle value written while spoilers are not deployed
 
-// Cruise cap: max spoiler deploy angle as a function of IAS.
-GLOBAL AS_CRZ_SPEED_LO    IS 120.0. // m/s
-GLOBAL AS_CRZ_SPEED_HI    IS 320.0. // m/s
-GLOBAL AS_CRZ_CAP_DEG_LO  IS 35.0.  // deg cap at/below AS_CRZ_SPEED_LO
-GLOBAL AS_CRZ_CAP_DEG_HI  IS 6.0.   // deg cap at/above AS_CRZ_SPEED_HI
-
-// Approach cap: max spoiler deploy angle as a function of IAS.
-GLOBAL AS_APP_SPEED_LO    IS 70.0.  // m/s
-GLOBAL AS_APP_SPEED_HI    IS 180.0. // m/s
-GLOBAL AS_APP_CAP_DEG_LO  IS 45.0.  // deg cap at/below AS_APP_SPEED_LO
-GLOBAL AS_APP_CAP_DEG_HI  IS 14.0.  // deg cap at/above AS_APP_SPEED_HI
+// Cap schedule: max spoiler deploy angle as a function of IAS (used in all phases).
+GLOBAL AS_SPEED_LO    IS 70.0.  // m/s
+GLOBAL AS_SPEED_HI    IS 320.0. // m/s
+GLOBAL AS_CAP_DEG_LO  IS 45.0.  // deg cap at/below AS_SPEED_LO
+GLOBAL AS_CAP_DEG_HI  IS 6.0.   // deg cap at/above AS_SPEED_HI
 
 // Derived approach speed schedule (minimal tuning):
 // - Pre-capture/intercept: target Vint = Vapp + derived additive.
@@ -382,7 +376,10 @@ GLOBAL TAKEOFF_CLIMB_FPA_SLEW_DPS IS 1.6.  // deg/s max FPA change rate for rota
 // ----------------------------
 // Cruise phase defaults
 // ----------------------------
+GLOBAL CRUISE_SPD_MODE_IAS   IS "IAS". // speed target interpreted as indicated airspeed
+GLOBAL CRUISE_SPD_MODE_MACH  IS "MACH". // speed target interpreted as Mach number
 GLOBAL CRUISE_DEFAULT_SPD     IS 150.    // m/s  default cruise IAS
+GLOBAL CRUISE_DEFAULT_MACH    IS 0.70.   // Mach default cruise Mach target when Mach mode is selected
 GLOBAL CRUISE_DEFAULT_ALT_M   IS 3000.   // m    default cruise altitude MSL
 GLOBAL CRUISE_DESCENT_START_M IS 15000.  // m    begin blending toward waypoint alt within this range
 GLOBAL FMS_WPT_SLOTS          IS 3.      // cruise waypoint picker slots in plan editor

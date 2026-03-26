@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Kerbin Map Viewer</title>
+  <title>Kerbin Navigation Chart</title>
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
   <aside class="sidebar">
-    <h1>Kerbin Map</h1>
+    <h1>Kerbin Nav Chart</h1>
 
     <section>
       <h2>Data Paths</h2>
@@ -25,8 +25,46 @@
     </section>
 
     <section>
-      <h2>Overlay</h2>
-      <label><input id="showBeacons" type="checkbox" checked> Show beacons</label>
+      <h2>Layers</h2>
+      <div class="layer-row">
+        <input id="layerILS"         type="checkbox" checked>
+        <span class="swatch" style="background:#ffd166"></span>
+        <label for="layerILS">ILS thresholds</label>
+      </div>
+      <div class="layer-row">
+        <input id="layerCenterlines" type="checkbox" checked>
+        <span class="swatch swatch-line" style="border-color:#ffd166"></span>
+        <label for="layerCenterlines">Approach centerlines</label>
+      </div>
+      <div class="layer-row">
+        <input id="layerIAF"         type="checkbox" checked>
+        <span class="swatch swatch-tri" style="border-color:#90be6d"></span>
+        <label for="layerIAF">IAF fixes</label>
+      </div>
+      <div class="layer-row">
+        <input id="layerFAF"         type="checkbox" checked>
+        <span class="swatch" style="background:#ff9f1c"></span>
+        <label for="layerFAF">FAF fixes</label>
+      </div>
+      <div class="layer-row">
+        <input id="layerVOR"         type="checkbox" checked>
+        <span class="swatch swatch-hex" style="border-color:#4cc9f0"></span>
+        <label for="layerVOR">VOR</label>
+      </div>
+      <div class="layer-row">
+        <input id="layerAPT"         type="checkbox" checked>
+        <span class="swatch swatch-tri" style="border-color:#a8ff78; background:rgba(168,255,120,0.25)"></span>
+        <label for="layerAPT">Airports</label>
+      </div>
+      <div class="layer-row">
+        <input id="layerWPT"         type="checkbox" checked>
+        <span class="swatch" style="background:#c9b8ff"></span>
+        <label for="layerWPT">Custom waypoints</label>
+      </div>
+    </section>
+
+    <section>
+      <h2>Display</h2>
       <label><input id="showLabels" type="checkbox" checked> Show labels</label>
       <label>Marker size
         <input id="markerSize" type="range" min="2" max="16" value="6">
@@ -40,19 +78,32 @@
 
     <section>
       <h2>Readout</h2>
-      <div id="cursorReadout">lat ---, lon ---</div>
+      <div id="cursorReadout">--- ---</div>
       <div id="status">Not loaded.</div>
       <p class="hint">
-        Mouse wheel: zoom<br>
-        Drag: pan<br>
-        Double-click: fit
+        Scroll: zoom &nbsp;·&nbsp; Drag: pan<br>
+        Double-click: fit view<br>
+        Hover beacon: details
       </p>
+    </section>
+
+    <section class="legend">
+      <h2>Legend</h2>
+      <div class="legend-row"><span class="swatch" style="background:#ffd166"></span>ILS threshold</div>
+      <div class="legend-row"><span class="swatch swatch-tri" style="border-color:#90be6d"></span>IAF</div>
+      <div class="legend-row"><span class="swatch" style="background:#ff9f1c"></span>FAF</div>
+      <div class="legend-row"><span class="swatch swatch-hex" style="border-color:#4cc9f0"></span>VOR</div>
+      <div class="legend-row"><span class="swatch swatch-tri" style="border-color:#a8ff78; background:rgba(168,255,120,0.25)"></span>Airport</div>
+      <div class="legend-row"><span class="swatch" style="background:#c9b8ff"></span>Waypoint</div>
     </section>
   </aside>
 
   <main class="viewport">
     <canvas id="mapCanvas"></canvas>
   </main>
+
+  <!-- Hover tooltip (positioned by JS) -->
+  <div id="tooltip" style="display:none"></div>
 
   <script src="./app.js"></script>
 </body>

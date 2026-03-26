@@ -640,7 +640,7 @@ FUNCTION _FMS_DEFAULT_LEG {
   }
   IF ltype = LEG_CRUISE {
     RETURN LEXICON("type", LEG_CRUISE,
-      "params", LEXICON("alt_m", CRUISE_DEFAULT_ALT_M, "spd", CRUISE_DEFAULT_SPD,
+      "params", LEXICON("alt_m", CRUISE_DEFAULT_ALT_M, "spd_mode", CRUISE_SPD_MODE_IAS, "spd", CRUISE_DEFAULT_SPD,
                         "nav_type", "waypoint",
                         "course_deg", 90, "dist_nm", 100, "time_min", 60,
                         "wpt0", -1, "wpt1", -1, "wpt2", -1)).
@@ -670,7 +670,7 @@ FUNCTION _FMS_LEG_FIELD_COUNT {
   PARAMETER leg.
   LOCAL t IS leg["type"].
   IF t = LEG_TAKEOFF  { RETURN 2. }              // type, rwy
-  IF t = LEG_CRUISE   { RETURN 3 + FMS_WPT_SLOTS. } // type, alt, spd, wpt0..wptN
+  IF t = LEG_CRUISE   { RETURN 4 + FMS_WPT_SLOTS. } // type, alt, spd_mode, spd, wpt0..wptN
   IF t = LEG_APPROACH { RETURN 3. }              // type, airport, plate
   RETURN 1.
 }
@@ -685,10 +685,11 @@ FUNCTION _FMS_LEG_FIELD_LABEL {
   }
   IF t = LEG_CRUISE {
     IF fi = 1 { RETURN "Alt (m)". }
-    IF fi = 2 { RETURN "Spd (m/s)". }
-    IF fi = 3 { RETURN "Waypoint 1". }
-    IF fi = 4 { RETURN "Waypoint 2". }
-    IF fi = 5 { RETURN "Waypoint 3". }
+    IF fi = 2 { RETURN "Spd Mode". }
+    IF fi = 3 { RETURN "Speed". }
+    IF fi = 4 { RETURN "Waypoint 1". }
+    IF fi = 5 { RETURN "Waypoint 2". }
+    IF fi = 6 { RETURN "Waypoint 3". }
   }
   IF t = LEG_APPROACH {
     IF fi = 1 { RETURN "Airport". }
@@ -711,9 +712,19 @@ FUNCTION _FMS_LEG_FIELD_VALUE_TEXT {
   }
   IF t = LEG_CRUISE {
     IF fi = 1 { RETURN "" + ROUND(prm["alt_m"], 0). }
-    IF fi = 2 { RETURN "" + ROUND(prm["spd"], 0). }
-    IF fi = 3 OR fi = 4 OR fi = 5 {
-      LOCAL wkey IS "wpt" + (fi - 3).
+    IF fi = 2 {
+      LOCAL mode_now IS CRUISE_SPD_MODE_IAS.
+      IF prm:HASKEY("spd_mode") { SET mode_now TO CRUISE_NORM_SPD_MODE(prm["spd_mode"]). }
+      RETURN mode_now.
+    }
+    IF fi = 3 {
+      LOCAL spd_mode IS CRUISE_SPD_MODE_IAS.
+      IF prm:HASKEY("spd_mode") { SET spd_mode TO CRUISE_NORM_SPD_MODE(prm["spd_mode"]). }
+      IF CRUISE_IS_MACH_MODE(spd_mode) { RETURN "M" + ROUND(prm["spd"], 2). }
+      RETURN ROUND(prm["spd"], 0) + " m/s".
+    }
+    IF fi = 4 OR fi = 5 OR fi = 6 {
+      LOCAL wkey IS "wpt" + (fi - 4).
       LOCAL idx  IS ROUND(prm[wkey], 0).
       IF idx < 0 OR idx >= CUSTOM_WPT_IDS:LENGTH { RETURN "- none -". }
       RETURN CUSTOM_WPT_IDS[idx].
@@ -753,9 +764,23 @@ FUNCTION _FMS_LEG_CHANGE_FIELD {
   }
   IF t = LEG_CRUISE {
     IF fi = 1 { SET prm["alt_m"] TO CLAMP(ROUND(prm["alt_m"] + dir * 500, 0), 300, 20000). }
-    IF fi = 2 { SET prm["spd"]   TO CLAMP(ROUND(prm["spd"]   + dir * 10,  0), 50, 500). }
-    IF fi = 3 OR fi = 4 OR fi = 5 {
-      LOCAL wkey IS "wpt" + (fi - 3).
+    IF fi = 2 {
+      LOCAL mode_now IS CRUISE_SPD_MODE_IAS.
+      IF prm:HASKEY("spd_mode") { SET mode_now TO CRUISE_NORM_SPD_MODE(prm["spd_mode"]). }
+      IF CRUISE_IS_MACH_MODE(mode_now) { SET prm["spd_mode"] TO CRUISE_SPD_MODE_IAS. }
+      ELSE { SET prm["spd_mode"] TO CRUISE_SPD_MODE_MACH. }
+    }
+    IF fi = 3 {
+      LOCAL mode_now IS CRUISE_SPD_MODE_IAS.
+      IF prm:HASKEY("spd_mode") { SET mode_now TO CRUISE_NORM_SPD_MODE(prm["spd_mode"]). }
+      IF CRUISE_IS_MACH_MODE(mode_now) {
+        SET prm["spd"] TO CLAMP(ROUND((prm["spd"] + dir * 0.02) * 100, 0) / 100, 0.20, 5.00).
+      } ELSE {
+        SET prm["spd"] TO CLAMP(ROUND(prm["spd"] + dir * 10, 0), 50, 500).
+      }
+    }
+    IF fi = 4 OR fi = 5 OR fi = 6 {
+      LOCAL wkey IS "wpt" + (fi - 4).
       LOCAL n    IS CUSTOM_WPT_IDS:LENGTH.
       LOCAL cur  IS ROUND(prm[wkey], 0) + dir.
       IF cur < -1 { SET cur TO n - 1. }
@@ -804,6 +829,10 @@ FUNCTION _FMS_LEG_LINE_TEXT {
     LOCAL spd_val   IS CRUISE_DEFAULT_SPD.
     IF p:HASKEY("alt_m") { SET alt_m_val TO p["alt_m"]. }
     IF p:HASKEY("spd")   { SET spd_val   TO p["spd"]. }
+    LOCAL spd_mode IS CRUISE_SPD_MODE_IAS.
+    IF p:HASKEY("spd_mode") { SET spd_mode TO CRUISE_NORM_SPD_MODE(p["spd_mode"]). }
+    LOCAL spd_txt IS ROUND(spd_val, 0) + "m/s".
+    IF CRUISE_IS_MACH_MODE(spd_mode) { SET spd_txt TO "M" + ROUND(spd_val, 2). }
     LOCAL alt_m_r IS ROUND(alt_m_val, 0).
     LOCAL nt IS "waypoint".
     IF p:HASKEY("nav_type") { SET nt TO p["nav_type"]. }
@@ -812,14 +841,14 @@ FUNCTION _FMS_LEG_LINE_TEXT {
       LOCAL dnm  IS 100.
       IF p:HASKEY("course_deg") { SET cdeg TO ROUND(p["course_deg"], 0). }
       IF p:HASKEY("dist_nm")    { SET dnm  TO ROUND(p["dist_nm"], 0). }
-      RETURN "CRUISE    " + alt_m_r + "m  " + cdeg + "° " + dnm + "nm".
+      RETURN "CRUISE    " + alt_m_r + "m  " + spd_txt + "  " + cdeg + " deg " + dnm + "nm".
     }
     IF nt = "course_time" {
       LOCAL cdeg IS 90.
       LOCAL tmin IS 60.
       IF p:HASKEY("course_deg") { SET cdeg TO ROUND(p["course_deg"], 0). }
       IF p:HASKEY("time_min")   { SET tmin TO ROUND(p["time_min"], 0). }
-      RETURN "CRUISE    " + alt_m_r + "m  " + cdeg + "° " + tmin + "min".
+      RETURN "CRUISE    " + alt_m_r + "m  " + spd_txt + "  " + cdeg + " deg " + tmin + "min".
     }
     LOCAL wpts IS "".
     LOCAL slot IS 0.
@@ -830,13 +859,13 @@ FUNCTION _FMS_LEG_LINE_TEXT {
         IF widx < CUSTOM_WPT_IDS:LENGTH {
           LOCAL wname IS CUSTOM_WPT_IDS[widx].
           IF wpts = "" { SET wpts TO wname. }
-          ELSE { SET wpts TO wpts + "+". }
+          ELSE { SET wpts TO wpts + "+" + wname. }
         }
       }
       SET slot TO slot + 1.
     }
-    IF wpts = "" { RETURN "CRUISE    " + alt_m_r + "m  " + ROUND(spd_val, 0) + "m/s". }
-    RETURN "CRUISE    " + alt_m_r + "m  " + wpts.
+    IF wpts = "" { RETURN "CRUISE    " + alt_m_r + "m  " + spd_txt. }
+    RETURN "CRUISE    " + alt_m_r + "m  " + spd_txt + "  " + wpts.
   }
   IF t = LEG_APPROACH {
     _FMS_AP_NORMALISE_PARAMS(p).
@@ -1135,3 +1164,4 @@ FUNCTION MENU_TICK {
   }
   RETURN result.
 }
+
