@@ -2,22 +2,23 @@
 
 ## Quick Start (viewer only)
 
-If beacons/plates CSVs are already exported, just run the viewer:
+Run the dev server (no KSP required — exports CSVs from the Python nav database):
 
 ```powershell
-cd "f:\Kerbal Space Program\Ships\Script\Integrated Flight Computer\tools\kerbin_map\web"
-python -m http.server 8080
+cd "f:\Kerbal Space Program\Ships\Script\Integrated Flight Computer\tools\kerbin_map"
+python server.py
 ```
 
-Open `http://localhost:8080`.
+Open `http://localhost:8080`. The **Reload** button in the sidebar re-exports the
+nav CSVs and reloads the map in one click.
 
-To re-export nav data from kOS first (e.g. after adding new beacons/plates):
+To export live in-game nav data from kOS instead (requires KSP running):
 
 ```kerboscript
 RUNPATH("0:/Integrated Flight Computer/tools/kerbin_map/kos/export_ifc_nav_for_web.ks").
 ```
 
-Then start the server above.
+Then click **Reload** in the browser (or restart the server).
 
 ---
 
@@ -95,12 +96,16 @@ Outputs:
 ## Step 4: Run viewer
 
 ```powershell
-cd "f:\Kerbal Space Program\Ships\Script\Integrated Flight Computer\tools\kerbin_map\web"
-python -m http.server 8080
+cd "f:\Kerbal Space Program\Ships\Script\Integrated Flight Computer\tools\kerbin_map"
+python server.py
 ```
 
 Open:
 - `http://localhost:8080`
+
+The **Reload** button re-exports the nav CSVs via `generate_static_nav_csv.py` and
+reloads the map. To export from live in-game data instead, run the kOS script first
+(Step 3), then click Reload.
 
 ## Notes
 

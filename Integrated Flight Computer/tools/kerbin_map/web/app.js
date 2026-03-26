@@ -514,6 +514,19 @@ function showTooltip(b, clientX, clientY) {
 
 // ---- Data load ----
 async function reloadAll() {
+  reloadBtn.disabled = true;
+
+  // Ask the server to re-export the CSVs from generate_static_nav_csv.py.
+  // Falls back silently if served by plain `python -m http.server`.
+  setStatus("Exporting nav data...");
+  try {
+    const resp   = await fetch("/api/export", { method: "POST" });
+    const result = await resp.json();
+    if (!result.ok) setStatus(`Export warning: ${result.message}`);
+  } catch {
+    // Not running server.py — skip export, reload whatever is on disk.
+  }
+
   setStatus("Loading...");
   try {
     // Basemap (optional)
@@ -584,6 +597,8 @@ async function reloadAll() {
     console.error(err);
     setStatus(`Error: ${err.message}`);
     draw();
+  } finally {
+    reloadBtn.disabled = false;
   }
 }
 

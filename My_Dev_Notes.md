@@ -32,6 +32,11 @@
 - be able to enable/disable what actually gets logged - I feel like a lot of stuff that gets logged was only useful for debugging the code and useless now that a lot of it is working
   - furthermore, actual grouping of logged values, so grouping of control surface deflections (rudders, ailerons, etc.)
   - it would be useful to know what currently has control of the vessel: AA cruise, AA kOS, what AA mode is on, etc.
+- - ability to skip current leg in flight plan (while in flight) or edit flight plan while in flight. Should have a way of indicating what is the current active next waypoint.
+- able to list nearest waypoint to airport
+- should be able to select which type of speed (Mach or IAS)
+
+
 
 # Planned
 
@@ -53,6 +58,7 @@
   - Reorder
 
 # Bugs
+- Thrust reverser should throttle zero before disengaging (and wait for spool down) at end of landing so that it doesn't start accelerating the plane fwd when reversers are disengaged
 
 - [x] Performance-improvements commit appears to have introduced broad regressions.
 - Moderate-G mode may deactivate unexpectedly (possibly during kOS director <-> cruise controller handoff).
