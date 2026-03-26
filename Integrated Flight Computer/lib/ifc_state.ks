@@ -299,6 +299,9 @@ GLOBAL CRUISE_DEST_PLATE  IS 0.           // (legacy) approach plate for destina
 GLOBAL CRUISE_NAV_TYPE    IS "waypoint".  // "waypoint" | "course_dist" | "course_time"
 GLOBAL CRUISE_COURSE_DEG  IS 0.           // compass heading for course-based cruise
 GLOBAL CRUISE_END_UT      IS -1.          // UT when course_time cruise ends (-1 = unused)
+GLOBAL CRUISE_VNAV_TGT_LL    IS 0.        // GeoCoordinates of IAF fix for VNAV descent; 0 = VNAV inactive
+GLOBAL CRUISE_VNAV_TGT_ALT_M IS 0.        // m MSL  target crossing altitude at VNAV fix
+GLOBAL CRUISE_VNAV_TOD_M     IS 0.        // m  top-of-descent distance from fix; 0 = VNAV inactive
 
 // ----------------------------
 // Autoland phase state
@@ -769,6 +772,9 @@ FUNCTION IFC_INIT_STATE {
   SET CRUISE_NAV_TYPE   TO "waypoint".
   SET CRUISE_COURSE_DEG TO 0.
   SET CRUISE_END_UT     TO -1.
+  SET CRUISE_VNAV_TGT_LL    TO 0.
+  SET CRUISE_VNAV_TGT_ALT_M TO 0.
+  SET CRUISE_VNAV_TOD_M     TO 0.
 
   SET APP_SPOILERS_ARMED  TO FALSE.
   SET AS_DISCOVERED       TO FALSE.

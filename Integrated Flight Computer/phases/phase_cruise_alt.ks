@@ -174,10 +174,20 @@ FUNCTION RUN_CRUISE {
   LOCAL brg   IS GEO_BEARING(SHIP:GEOPOSITION, wp_ll).
   LOCAL dist  IS GEO_DISTANCE(SHIP:GEOPOSITION, wp_ll).
 
-  // Altitude target: hold cruise altitude while far out; blend down
-  // to waypoint's published altitude within CRUISE_DESCENT_START_M.
+  // Altitude target: use a constant-FPA VNAV profile if top-of-descent was
+  // computed at leg init (next leg is an approach).  The profile guarantees
+  // arrival at the IAF at the correct crossing altitude regardless of the
+  // heading we approach it from.  Fall back to the proximity blend toward
+  // the current waypoint's published altitude when VNAV is not active.
   LOCAL tgt_alt IS CRUISE_ALT_M.
-  IF dist < CRUISE_DESCENT_START_M {
+  IF CRUISE_VNAV_TOD_M > 0 {
+    LOCAL dist_iaf IS GEO_DISTANCE(SHIP:GEOPOSITION, CRUISE_VNAV_TGT_LL).
+    IF dist_iaf < CRUISE_VNAV_TOD_M {
+      // tgt_alt = iaf_alt + dist * tan(fpa): altitude on the constant-FPA path
+      LOCAL vnav_tgt IS CRUISE_VNAV_TGT_ALT_M + dist_iaf * TAN(CRUISE_VNAV_DESCENT_FPA).
+      SET tgt_alt TO MIN(CRUISE_ALT_M, vnav_tgt).
+    }
+  } ELSE IF dist < CRUISE_DESCENT_START_M {
     LOCAL wp_alt IS wp["alt_asl"].
     LOCAL blend  IS CLAMP(1 - dist / CRUISE_DESCENT_START_M, 0, 1).
     SET tgt_alt  TO CRUISE_ALT_M + (wp_alt - CRUISE_ALT_M) * blend.

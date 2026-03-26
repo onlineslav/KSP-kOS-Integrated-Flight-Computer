@@ -474,6 +474,48 @@ FUNCTION _INIT_LEG {
     SET A_ACTUAL_FILT     TO 0.
     AT_RESET().
     AS_RELEASE().
+
+    // VNAV: if the next leg is an approach, compute top-of-descent so
+    // phase_cruise_alt can use a constant-FPA altitude profile referenced
+    // from the IAF fix rather than a fixed-radius proximity blend.
+    SET CRUISE_VNAV_TGT_LL    TO 0.
+    SET CRUISE_VNAV_TGT_ALT_M TO 0.
+    SET CRUISE_VNAV_TOD_M     TO 0.
+    LOCAL vnav_next_idx IS FLIGHT_PLAN_INDEX + 1.
+    IF vnav_next_idx < FLIGHT_PLAN:LENGTH {
+      LOCAL vnav_next IS FLIGHT_PLAN[vnav_next_idx].
+      IF vnav_next["type"] = LEG_APPROACH {
+        LOCAL vnav_p IS vnav_next["params"].
+        LOCAL vnav_plate IS 0.
+        IF vnav_p:HASKEY("plate_id") {
+          SET vnav_plate TO GET_PLATE(vnav_p["plate_id"]).
+        } ELSE IF vnav_p:HASKEY("plate") {
+          SET vnav_plate TO vnav_p["plate"].
+        } ELSE IF vnav_p:HASKEY("rwy_id") {
+          LOCAL vnav_short IS FALSE.
+          IF vnav_p:HASKEY("short_approach") { SET vnav_short TO vnav_p["short_approach"]. }
+          SET vnav_plate TO GET_PLATE_FOR_RUNWAY(vnav_p["rwy_id"], vnav_short).
+        }
+        IF vnav_plate <> 0 AND vnav_plate:HASKEY("fixes") AND vnav_plate["fixes"]:LENGTH > 0 {
+          LOCAL vnav_iaf_id  IS vnav_plate["fixes"][0].
+          LOCAL vnav_iaf_bcn IS GET_BEACON(vnav_iaf_id).
+          IF vnav_iaf_bcn:HASKEY("ll") {
+            LOCAL vnav_iaf_alt IS vnav_iaf_bcn["alt_asl"].
+            IF vnav_plate:HASKEY("alt_at") AND vnav_plate["alt_at"]:HASKEY(vnav_iaf_id) {
+              SET vnav_iaf_alt TO vnav_plate["alt_at"][vnav_iaf_id].
+            }
+            LOCAL vnav_delta IS alt_m - vnav_iaf_alt.
+            IF vnav_delta > 0 {
+              SET CRUISE_VNAV_TGT_LL    TO vnav_iaf_bcn["ll"].
+              SET CRUISE_VNAV_TGT_ALT_M TO vnav_iaf_alt.
+              SET CRUISE_VNAV_TOD_M     TO vnav_delta / TAN(CRUISE_VNAV_DESCENT_FPA).
+              IFC_SET_ALERT("VNAV: ToD " + ROUND(CRUISE_VNAV_TOD_M / 1000, 1) + " km from IAF").
+            }
+          }
+        }
+      }
+    }
+
     SET_PHASE(PHASE_CRUISE).
 
   } ELSE IF leg_type = LEG_APPROACH {

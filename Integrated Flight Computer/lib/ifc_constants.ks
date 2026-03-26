@@ -382,6 +382,7 @@ GLOBAL CRUISE_DEFAULT_SPD     IS 150.    // m/s  default cruise IAS
 GLOBAL CRUISE_DEFAULT_MACH    IS 0.70.   // Mach default cruise Mach target when Mach mode is selected
 GLOBAL CRUISE_DEFAULT_ALT_M   IS 3000.   // m    default cruise altitude MSL
 GLOBAL CRUISE_DESCENT_START_M IS 15000.  // m    begin blending toward waypoint alt within this range
+GLOBAL CRUISE_VNAV_DESCENT_FPA IS 3.0.  // deg  constant-FPA angle for VNAV top-of-descent profile
 GLOBAL FMS_WPT_SLOTS          IS 3.      // cruise waypoint picker slots in plan editor
 
 // ----------------------------

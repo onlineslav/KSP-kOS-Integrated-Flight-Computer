@@ -37,7 +37,10 @@
 - able to list nearest waypoint to airport
 - should be able to select which type of speed (Mach or IAS)
 
+- ground handling mode?
+  - some aircraft don't have steerable nose gear. would be good to use diff braking and/or diff thrust to turn the aircraft on the ground. Note: this would be a feature of the "enhanced manual mode" 
 
+- give autospoilers a decel m/s^2 limit based off of the AA g-limit. Allow them whatever deflection they want (under max deflect angle) as long as it doesn't breach the g-limit.
 
 # Planned
 
