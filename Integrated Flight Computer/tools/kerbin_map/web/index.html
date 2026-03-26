@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Kerbin Navigation Chart</title>
   <link rel="stylesheet" href="./styles.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.167.1/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.167.1/examples/jsm/"
+    }
+  }
+  </script>
 </head>
 <body>
   <aside class="sidebar">
@@ -26,6 +34,7 @@
 
     <section>
       <h2>Layers</h2>
+      <button id="showHideAllBtn" type="button" class="btn-secondary">Hide All</button>
       <div class="layer-row">
         <input id="layerILS"         type="checkbox" checked>
         <span class="swatch" style="background:#ffd166"></span>
@@ -65,14 +74,14 @@
 
     <section>
       <h2>Display</h2>
-      <label><input id="showLabels" type="checkbox" checked> Show labels</label>
-      <label><input id="showPseudo3D" type="checkbox" checked> Enable pseudo-3D altitude</label>
+      <label><input id="showLabels"   type="checkbox" checked> Show labels</label>
+      <label><input id="showAltitude" type="checkbox" checked> Show marker altitudes (3D)</label>
       <label><input id="showAltStems" type="checkbox" checked> Show altitude stems</label>
       <label>Height exaggeration
         <input id="heightExaggeration" type="range" min="1" max="20" value="6">
       </label>
       <label>Marker size
-        <input id="markerSize" type="range" min="2" max="16" value="6">
+        <input id="markerSize" type="range" min="1" max="16" value="6" step="0.5">
       </label>
       <label>Plate route
         <select id="plateSelect">
@@ -82,14 +91,47 @@
     </section>
 
     <section>
+      <h2>Log Replay</h2>
+      <div class="layer-row">
+        <input id="logLayerToggle" type="checkbox" checked>
+        <span class="swatch" style="background:#5dc2ff"></span>
+        <label for="logLayerToggle">Show flight path</label>
+      </div>
+      <label>Load CSV log (requires lat_deg/lon_deg columns)
+        <input id="logFileInput" type="file" accept=".csv" style="margin-top:4px; color:var(--muted); font-size:0.78rem;">
+      </label>
+      <div id="logStatus" class="section-status">No log loaded.</div>
+      <div class="log-legend">
+        <span style="color:#44ff88">■</span> Takeoff &nbsp;
+        <span style="color:#5dc2ff">■</span> Cruise &nbsp;
+        <span style="color:#ffd166">■</span> Approach &nbsp;
+        <span style="color:#ff9f1c">■</span> Flare &nbsp;
+        <span style="color:#ff6b6b">■</span> Rollout
+      </div>
+    </section>
+
+    <section>
+      <h2>Flight Plan</h2>
+      <div class="plan-buttons">
+        <button id="planModeBtn"   type="button" class="btn-secondary">Enter Plan Mode</button>
+        <button id="planClearBtn"  type="button" class="btn-secondary">Clear</button>
+        <button id="planExportBtn" type="button" class="btn-secondary">Export JSON</button>
+      </div>
+      <div id="planStatus" class="section-status"></div>
+      <div id="planList" class="plan-list">
+        <div class="plan-empty">No waypoints. Enter plan mode and click map.</div>
+      </div>
+    </section>
+
+    <section>
       <h2>Readout</h2>
       <div id="cursorReadout">--- ---</div>
       <div id="status">Not loaded.</div>
       <p class="hint">
-        Scroll: zoom &nbsp;·&nbsp; Drag: pan<br>
-        Shift + left-drag: tilt pseudo-3D<br>
-        Double-click: fit view<br>
-        Hover beacon: details
+        Left-drag: orbit &nbsp;·&nbsp; Right-drag / middle-drag: pan<br>
+        Scroll: zoom &nbsp;·&nbsp; Dbl-click: reset view<br>
+        Hover beacon: details<br>
+        Plan mode: click map/beacon to add waypoint
       </p>
     </section>
 
@@ -108,16 +150,15 @@
       <div class="legend-row"><span class="swatch swatch-hex" style="border-color:#4cc9f0"></span>VOR</div>
       <div class="legend-row"><span class="swatch swatch-tri" style="border-color:#a8ff78; background:rgba(168,255,120,0.25)"></span>Airport</div>
       <div class="legend-row"><span class="swatch" style="background:#c9b8ff"></span>Waypoint</div>
+      <div class="legend-row"><span class="swatch swatch-line" style="border-color:#00e6c8"></span>Flight plan</div>
     </section>
   </aside>
 
-  <main class="viewport">
-    <canvas id="mapCanvas"></canvas>
-  </main>
+  <main id="mapContainer" class="viewport"></main>
 
   <!-- Hover tooltip (positioned by JS) -->
   <div id="tooltip" style="display:none"></div>
 
-  <script src="./app.js"></script>
+  <script type="module" src="./app.js"></script>
 </body>
 </html>

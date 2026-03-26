@@ -6,6 +6,7 @@
   --text:         #dbe6ee;
   --muted:        #9bb0c0;
   --accent:       #5dc2ff;
+  --accent2:      #00e6c8;
 }
 
 * { box-sizing: border-box; }
@@ -87,6 +88,22 @@ button {
 }
 button:hover { background: #223850; }
 
+button.btn-secondary {
+  border-color: #4a6070;
+  color: var(--muted);
+  background: #131e28;
+  font-weight: 500;
+  margin-top: 4px;
+}
+button.btn-secondary:hover { background: #1a2a38; color: var(--text); }
+
+button.active {
+  border-color: var(--accent2);
+  color: var(--accent2);
+  background: #0d2820;
+}
+button.active:hover { background: #133328; }
+
 input[type="range"] {
   display: block;
   width: 100%;
@@ -116,7 +133,6 @@ input[type="range"] {
 }
 
 .swatch-tri {
-  /* hollow triangle approximation */
   background: transparent !important;
   border-radius: 0;
   width: 0; height: 0;
@@ -162,6 +178,16 @@ input[type="range"] {
 #status { margin-top: 5px; color: #b7e3ff; }
 .hint { margin: 7px 0 0; color: var(--muted); font-size: 0.74rem; line-height: 1.5; }
 
+/* ---- Section status line ---- */
+.section-status {
+  font-family: Consolas, monospace;
+  font-size: 0.74rem;
+  color: var(--muted);
+  margin: 5px 0 0;
+  line-height: 1.4;
+  min-height: 1em;
+}
+
 /* ---- Plate profile ---- */
 #profileCanvas {
   width: 100%;
@@ -179,9 +205,104 @@ input[type="range"] {
   line-height: 1.4;
 }
 
+/* ---- Log legend ---- */
+.log-legend {
+  margin-top: 6px;
+  font-size: 0.72rem;
+  color: var(--muted);
+  line-height: 1.8;
+}
+
+/* ---- Flight plan ---- */
+.plan-buttons {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.plan-buttons button {
+  flex: 1;
+  min-width: 60px;
+  margin-top: 0;
+  padding: 4px 6px;
+  font-size: 0.76rem;
+}
+
+.plan-list {
+  margin-top: 8px;
+  max-height: 160px;
+  overflow-y: auto;
+  border: 1px solid #2a3c4a;
+  border-radius: 5px;
+  background: #0e1820;
+}
+
+.plan-empty {
+  padding: 8px;
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.plan-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 7px;
+  border-bottom: 1px solid #1e2e3c;
+  font-size: 0.76rem;
+  font-family: Consolas, monospace;
+}
+.plan-row:last-child { border-bottom: none; }
+
+.plan-idx {
+  color: var(--accent2);
+  font-weight: 700;
+  min-width: 16px;
+}
+.plan-id {
+  color: var(--text);
+  min-width: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plan-coord {
+  color: var(--muted);
+  flex: 1;
+  font-size: 0.7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plan-del {
+  background: none;
+  border: none;
+  color: #ff6b6b;
+  cursor: pointer;
+  padding: 0 3px;
+  font-size: 0.8rem;
+  line-height: 1;
+  width: auto;
+  margin: 0;
+  flex-shrink: 0;
+}
+.plan-del:hover { color: #ff4444; background: none; }
+
 /* ---- Viewport + canvas ---- */
-.viewport { position: relative; width: 100%; height: 100%; }
-#mapCanvas { width: 100%; height: 100%; display: block; background: #0d1620; }
+.viewport { position: relative; width: 100%; height: 100%; overflow: hidden; }
+#mapContainer canvas { width: 100% !important; height: 100% !important; display: block; }
+
+/* ---- 3D label overlay ---- */
+.beacon-label {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 11px;
+  color: #dbe6ee;
+  text-shadow: 1px 1px 3px #000, -1px -1px 3px #000, 0 0 6px #000;
+  pointer-events: none;
+  white-space: nowrap;
+  user-select: none;
+  padding-left: 4px;
+}
 
 /* ---- Tooltip ---- */
 #tooltip {

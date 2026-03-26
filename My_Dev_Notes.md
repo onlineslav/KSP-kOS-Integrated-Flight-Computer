@@ -41,22 +41,21 @@
 
 # Planned
 
-- Build FMS/IFC as a central control system for both:
-  - Terrestrial flights
-  - Spaceplane flights to LEO
-- Expand flight plan leg types:
-  - Takeoff
-  - Navigate to marker/waypoint/coordinates
-  - Spaceplane suborbital insertion (user-defined apoapsis and tunables)
-  - Spaceplane re-entry program (guidance to waypoint/marker with controlled lift/drag)
-  - Approach
-  - Land
-- Support full plan lifecycle:
-  - Save
-  - Load
-  - Edit
-  - Delete
-  - Reorder
+## IFC Terminal/GUIs
+
+- Be able to edit flight plan while in flight - add or remove waypoints
+  - Also able to change speeds and altitudes of legs in flightplan.
+- Improve waypoint skip logic:
+  - only allow auto waypoint skip for approach logic, and only allow waypoint skip if...
+- Allow both Mach and IAS in cruise GUI
+- Be able to select initial approach fixes as waypoint for cruise destination
+
+## IFC Behaviour
+- Auto-descent in order to get to next waypoint at correct altitude (including approach plates)
+  - Say you have: Takeoff, Cruise to approach IAF, approach - If the IAF is at a much lower altitude, I want the aircraft to descend early enough so that it reaches the IAF correctly.
+    - Could specify a cruise->descent maximum negative vert speed in cfgs.
+- Handle the case correctly where if waypoint 1->2->3 form an acute triangle (so to say), that 3 won't get skipped once AC gets to waypoint 2 just because 2 is "behind" the aircraft.
+
 
 # Bugs
 - Thrust reverser should throttle zero before disengaging (and wait for spool down) at end of landing so that it doesn't start accelerating the plane fwd when reversers are disengaged
