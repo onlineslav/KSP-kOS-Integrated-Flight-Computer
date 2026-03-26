@@ -629,30 +629,270 @@ GLOBAL PLATE_IDS IS LIST(
   "PLATE_POL_ILS34_SHORT"
 ).
 
+// ----------------------------
+// NavInstruments supplemental runway import
+// ----------------------------
+// Adds missing ILS + IAF/FAF + approach plates from NavInstruments:
+// - PluginData/defaultRunways.cfg
+// - PluginData/makingHistoryRunways.cfg
+// - ModuleManagerCfgs/KerbinSideRemastered.cfg
+//
+// Existing handcrafted IFC approaches above are kept as source-of-truth.
+// This section only registers runways that are not already in NAV_BEACON_DB.
+FUNCTION _LIST_HAS_VALUE {
+  PARAMETER items, target.
+  FOR value IN items {
+    IF value = target { RETURN TRUE. }
+  }
+  RETURN FALSE.
+}
+
+FUNCTION _ADD_DYNAMIC_PLATE {
+  PARAMETER plate_id, plate.
+  IF NOT PLATE_REGISTRY:HASKEY(plate_id) {
+    PLATE_REGISTRY:ADD(plate_id, plate).
+  }
+  IF NOT _LIST_HAS_VALUE(PLATE_IDS, plate_id) {
+    PLATE_IDS:ADD(plate_id).
+  }
+}
+
+FUNCTION REGISTER_NAVUTIL_ILS_SUITE {
+  PARAMETER apt, rwy, hdg, thr_lat, thr_lng, alt_msl, gs_angle, vapp, src_sid.
+
+  LOCAL ils_id IS apt + "_ILS_" + rwy.
+  IF NAV_BEACON_DB:HASKEY(ils_id) { RETURN. }
+
+  LOCAL thr_ll IS LATLNG(thr_lat, thr_lng).
+  REGISTER_BEACON(MAKE_BEACON(
+    ils_id, BTYPE_ILS,
+    thr_ll, alt_msl,
+    LEXICON("hdg", hdg, "gs_angle", gs_angle, "rwy", rwy, "src_sid", src_sid)
+  )).
+
+  LOCAL inbound_recip IS hdg + 180.
+  IF inbound_recip >= 360 { SET inbound_recip TO inbound_recip - 360. }
+
+  LOCAL iaf60_id IS apt + "_IAF_" + rwy + "_60".
+  LOCAL iaf30_id IS apt + "_IAF_" + rwy + "_30".
+  LOCAL faf_id   IS apt + "_FAF_" + rwy.
+
+  LOCAL iaf60_ll IS GEO_DESTINATION(thr_ll, inbound_recip, 60000).
+  LOCAL iaf30_ll IS GEO_DESTINATION(thr_ll, inbound_recip, 30000).
+  LOCAL faf_ll   IS GEO_DESTINATION(thr_ll, inbound_recip, 15000).
+
+  LOCAL gs_hgt_15km IS ROUND(15000 * TAN(gs_angle), 0).
+  LOCAL gs_hgt_30km IS ROUND(30000 * TAN(gs_angle), 0).
+  LOCAL gs_hgt_60km IS ROUND(60000 * TAN(gs_angle), 0).
+
+  LOCAL faf_alt   IS alt_msl + gs_hgt_15km.
+  LOCAL iaf30_alt IS alt_msl + gs_hgt_30km - BELOW_GS_M.
+  LOCAL iaf60_alt IS alt_msl + gs_hgt_60km - BELOW_GS_M.
+
+  REGISTER_BEACON(MAKE_BEACON(
+    iaf60_id, BTYPE_IAF,
+    iaf60_ll, iaf60_alt,
+    LEXICON("name", apt + " RWY" + rwy + " IAF 60km", "runway", rwy)
+  )).
+  REGISTER_BEACON(MAKE_BEACON(
+    iaf30_id, BTYPE_IAF,
+    iaf30_ll, iaf30_alt,
+    LEXICON("name", apt + " RWY" + rwy + " IAF 30km", "runway", rwy)
+  )).
+  REGISTER_BEACON(MAKE_BEACON(
+    faf_id, BTYPE_FAF,
+    faf_ll, faf_alt,
+    LEXICON("name", apt + " RWY" + rwy + " FAF 15km", "runway", rwy)
+  )).
+
+  LOCAL plate_id IS "PLATE_" + apt + "_ILS" + rwy.
+  LOCAL plate_short_id IS plate_id + "_SHORT".
+
+  LOCAL plate_full IS MAKE_PLATE(
+    apt + " ILS RWY " + rwy,
+    ils_id,
+    LIST(iaf60_id, iaf30_id, faf_id),
+    vapp,
+    LEXICON(
+      iaf60_id, iaf60_alt,
+      iaf30_id, iaf30_alt,
+      faf_id,   faf_alt
+    )
+  ).
+
+  LOCAL plate_short IS MAKE_PLATE(
+    apt + " ILS RWY " + rwy + " (short)",
+    ils_id,
+    LIST(iaf30_id, faf_id),
+    vapp,
+    LEXICON(
+      iaf30_id, iaf30_alt,
+      faf_id,   faf_alt
+    )
+  ).
+
+  _ADD_DYNAMIC_PLATE(plate_id, plate_full).
+  _ADD_DYNAMIC_PLATE(plate_short_id, plate_short).
+}
+
+LOCAL NAVUTIL_MISSING_RUNWAYS IS LIST(
+  LEXICON("apt", "KSC", "rwy", "27",  "hdg", 270.4000, "alt",   70.0000, "lat", -0.0500586, "lng",  -74.5175184, "vapp", 75, "sid", "SC27"),
+  LEXICON("apt", "BAI", "rwy", "20",  "hdg", 198.0000, "alt",  414.4000, "lat", 20.6890488, "lng", -146.4836880, "vapp", 70, "sid", "BAI20"),
+  LEXICON("apt", "BAI", "rwy", "02",  "hdg",  18.0000, "alt",  415.8000, "lat", 20.5199947, "lng", -146.5410610, "vapp", 70, "sid", "BAI02"),
+  LEXICON("apt", "CAK", "rwy", "33",  "hdg", 330.0000, "alt",   74.3000, "lat", 24.8293533, "lng",  -83.5805283, "vapp", 70, "sid", "CAK33"),
+  LEXICON("apt", "CAK", "rwy", "15",  "hdg", 150.0000, "alt",   74.4000, "lat", 24.9831390, "lng",  -83.6768723, "vapp", 70, "sid", "CAK15"),
+  LEXICON("apt", "DUA", "rwy", "27",  "hdg", 266.0000, "alt",  455.7000, "lat", -39.2922478, "lng", 116.3527370, "vapp", 70, "sid", "DUA27"),
+  LEXICON("apt", "DUA", "rwy", "09",  "hdg",  87.0000, "alt",  454.9000, "lat", -39.3039322, "lng", 116.1250460, "vapp", 70, "sid", "DUA09"),
+  LEXICON("apt", "DUA", "rwy", "03",  "hdg",  26.0000, "alt",  454.9000, "lat", -39.3772469, "lng", 116.1888120, "vapp", 70, "sid", "DUA03"),
+  LEXICON("apt", "DUA", "rwy", "21",  "hdg", 206.0000, "alt",  455.8000, "lat", -39.2186279, "lng", 116.2897030, "vapp", 70, "sid", "DUA21"),
+  LEXICON("apt", "HAA", "rwy", "08",  "hdg",  79.0000, "alt", 3953.1001, "lat", -56.3064957, "lng",  -11.0708122, "vapp", 70, "sid", "HAA08"),
+  LEXICON("apt", "HAA", "rwy", "26",  "hdg", 259.0000, "alt", 3952.0000, "lat", -56.2874184, "lng",  -10.8933182, "vapp", 70, "sid", "HAA26"),
+  LEXICON("apt", "HAZ", "rwy", "05",  "hdg",  50.0000, "alt",   24.9000, "lat", -14.2588758, "lng",  155.2005160, "vapp", 70, "sid", "HAS05"),
+  LEXICON("apt", "HAZ", "rwy", "23",  "hdg", 230.0000, "alt",   22.3000, "lat", -14.1945810, "lng",  155.2807010, "vapp", 70, "sid", "HAS23"),
+  LEXICON("apt", "JEJ", "rwy", "01",  "hdg",  12.0000, "alt",  758.8000, "lat",   6.8674359, "lng",  -77.9567795, "vapp", 70, "sid", "JEB01"),
+  LEXICON("apt", "JEJ", "rwy", "19",  "hdg", 192.0000, "alt",  759.1000, "lat",   7.0415063, "lng",  -77.9192657, "vapp", 70, "sid", "JEB19"),
+  LEXICON("apt", "KAM", "rwy", "27",  "hdg", 272.0000, "alt",  620.3000, "lat",  36.1776314, "lng",   10.7111731, "vapp", 70, "sid", "KAG27"),
+  LEXICON("apt", "KAM", "rwy", "09",  "hdg",  92.0000, "alt",  619.6000, "lat",  36.1856995, "lng",   10.4924726, "vapp", 70, "sid", "KAG09"),
+  LEXICON("apt", "KAT", "rwy", "11L", "hdg", 111.0000, "alt",  204.9000, "lat", -37.0405540, "lng",  -71.1069031, "vapp", 70, "sid", "KEA11L"),
+  LEXICON("apt", "KAT", "rwy", "11R", "hdg", 111.0000, "alt",  204.5000, "lat", -37.0826569, "lng",  -71.1321030, "vapp", 70, "sid", "KEA11R"),
+  LEXICON("apt", "KAT", "rwy", "29R", "hdg", 291.0000, "alt",  204.9000, "lat", -37.1039238, "lng",  -70.9000702, "vapp", 70, "sid", "KEA29R"),
+  LEXICON("apt", "KAT", "rwy", "29L", "hdg", 291.0000, "alt",  204.6000, "lat", -37.1460075, "lng",  -70.9248199, "vapp", 70, "sid", "KEA29L"),
+  LEXICON("apt", "KER", "rwy", "19",  "hdg", 185.0000, "alt",   34.0000, "lat", -89.8201675, "lng", -170.2836150, "vapp", 70, "sid", "KER19"),
+  LEXICON("apt", "KER", "rwy", "02",  "hdg",  19.0000, "alt",   33.5000, "lat", -89.9244385, "lng", -177.1661680, "vapp", 70, "sid", "KER02"),
+  LEXICON("apt", "KOJ", "rwy", "22L", "hdg", 218.0000, "alt",  764.4000, "lat",   6.1200619, "lng", -141.9233090, "vapp", 70, "sid", "KOS22L"),
+  LEXICON("apt", "KOJ", "rwy", "22R", "hdg", 218.0000, "alt",  763.3000, "lat",   6.1106548, "lng", -141.9902500, "vapp", 70, "sid", "KOS22R"),
+  LEXICON("apt", "KOJ", "rwy", "04R", "hdg",  38.0000, "alt",  763.6000, "lat",   5.9807258, "lng", -142.0324400, "vapp", 70, "sid", "KOS04R"),
+  LEXICON("apt", "KOJ", "rwy", "04L", "hdg",  38.0000, "alt",  763.0000, "lat",   6.0317116, "lng", -142.0523680, "vapp", 70, "sid", "KOS04L"),
+  LEXICON("apt", "KOL", "rwy", "02",  "hdg",  16.0000, "alt",   25.1000, "lat",  -4.2447028, "lng",  -72.1335983, "vapp", 70, "sid", "KOI02"),
+  LEXICON("apt", "KOL", "rwy", "20",  "hdg", 196.0000, "alt",   22.1000, "lat",  -4.0743165, "lng",  -72.0850906, "vapp", 70, "sid", "KOI20"),
+  LEXICON("apt", "MEE", "rwy", "31",  "hdg", 313.0000, "alt",   22.0000, "lat",  37.8082504, "lng", -109.7625890, "vapp", 70, "sid", "MEE31"),
+  LEXICON("apt", "MEE", "rwy", "13",  "hdg", 133.0000, "alt",   20.3000, "lat",  37.9301147, "lng", -109.9253690, "vapp", 70, "sid", "MEE13"),
+  LEXICON("apt", "MEE", "rwy", "07",  "hdg",  73.0000, "alt",   22.0000, "lat",  37.8440514, "lng", -109.9510040, "vapp", 70, "sid", "MEE07"),
+  LEXICON("apt", "MEE", "rwy", "25",  "hdg", 253.0000, "alt",   20.3000, "lat",  37.8942909, "lng", -109.7363430, "vapp", 70, "sid", "MEE25"),
+  LEXICON("apt", "NYE", "rwy", "33",  "hdg", 329.0000, "alt",  320.6000, "lat",   5.7032723, "lng",  108.7760470, "vapp", 70, "sid", "NYI33"),
+  LEXICON("apt", "NYE", "rwy", "15",  "hdg", 149.0000, "alt",  320.2000, "lat",   5.7888746, "lng",  108.7238310, "vapp", 70, "sid", "NYI15"),
+  LEXICON("apt", "POL", "rwy", "16",  "hdg", 157.0000, "alt",   31.6000, "lat",  72.6096497, "lng",  -78.6251831, "vapp", 70, "sid", "POR16"),
+  LEXICON("apt", "RND", "rwy", "28R", "hdg", 282.0000, "alt", 1185.9000, "lat",  -6.0184669, "lng",   99.5971069, "vapp", 70, "sid", "ROR28R"),
+  LEXICON("apt", "RND", "rwy", "28L", "hdg", 282.0000, "alt", 1185.1000, "lat",  -6.0575519, "lng",   99.5562973, "vapp", 70, "sid", "ROR28L"),
+  LEXICON("apt", "RND", "rwy", "10L", "hdg", 102.0000, "alt", 1186.1000, "lat",  -5.9808364, "lng",   99.4235535, "vapp", 70, "sid", "ROR10L"),
+  LEXICON("apt", "RND", "rwy", "10R", "hdg", 102.0000, "alt", 1185.1000, "lat",  -6.0359821, "lng",   99.4573364, "vapp", 70, "sid", "ROR10R"),
+  LEXICON("apt", "SND", "rwy", "04",  "hdg",  44.0000, "alt",   23.1000, "lat",  -8.1883078, "lng",  -42.4340630, "vapp", 70, "sid", "SAI04"),
+  LEXICON("apt", "SND", "rwy", "22",  "hdg", 224.0000, "alt",   26.2000, "lat",  -8.1163788, "lng",  -42.3633995, "vapp", 70, "sid", "SAI22"),
+  LEXICON("apt", "SOF", "rwy", "27",  "hdg", 271.0000, "alt",   79.6000, "lat", -47.0086441, "lng", -140.8494570, "vapp", 70, "sid", "SOF27"),
+  LEXICON("apt", "SOF", "rwy", "09",  "hdg",  91.0000, "alt",   79.6000, "lat", -47.0042114, "lng", -141.1089780, "vapp", 70, "sid", "SOF09"),
+  LEXICON("apt", "SLK", "rwy", "25",  "hdg", 251.0000, "alt",   72.3000, "lat", -37.2554588, "lng",   52.6673737, "vapp", 70, "sid", "SOL25"),
+  LEXICON("apt", "SLK", "rwy", "07",  "hdg",  71.0000, "alt",   70.0000, "lat", -37.3114128, "lng",   52.4563026, "vapp", 70, "sid", "SOL07"),
+  LEXICON("apt", "SLK", "rwy", "04",  "hdg",  41.0000, "alt",   70.3000, "lat", -37.2941704, "lng",   52.3529968, "vapp", 70, "sid", "SOL04"),
+  LEXICON("apt", "SLK", "rwy", "22",  "hdg", 221.0000, "alt",   70.3000, "lat", -37.1608047, "lng",   52.4987793, "vapp", 70, "sid", "SOL22"),
+  LEXICON("apt", "UBD", "rwy", "04",  "hdg",  41.0000, "alt",  503.2000, "lat",  38.4407425, "lng", -149.7023470, "vapp", 70, "sid", "UBA04"),
+  LEXICON("apt", "UBD", "rwy", "22",  "hdg", 221.0000, "alt",  499.2000, "lat",  38.5745163, "lng", -149.5554810, "vapp", 70, "sid", "UBA22"),
+  LEXICON("apt", "TSC", "rwy", "16",  "hdg", 160.0000, "alt",   62.0000, "lat",  17.3383942, "lng",   88.6990891, "vapp", 70, "sid", "sID4"),
+  LEXICON("apt", "TSC", "rwy", "34",  "hdg", 340.0000, "alt",   61.1000, "lat",  17.1416798, "lng",   88.7741318, "vapp", 70, "sid", "sID4"),
+  LEXICON("apt", "XXX", "rwy", "31",  "hdg", 311.0000, "alt", 1373.5000, "lat", -60.5925903, "lng",   39.3401833, "vapp", 70, "sid", "XXX31"),
+  LEXICON("apt", "XXX", "rwy", "13",  "hdg", 131.0000, "alt", 1369.1000, "lat", -60.4769745, "lng",   39.0680542, "vapp", 70, "sid", "XXX13")
+).
+
+FOR nav_rwy IN NAVUTIL_MISSING_RUNWAYS {
+  REGISTER_NAVUTIL_ILS_SUITE(
+    nav_rwy["apt"],
+    nav_rwy["rwy"],
+    nav_rwy["hdg"],
+    nav_rwy["lat"],
+    nav_rwy["lng"],
+    nav_rwy["alt"],
+    3.0,
+    nav_rwy["vapp"],
+    nav_rwy["sid"]
+  ).
+}
+
+// ----------------------------
+// Runway alias lookup
+// ----------------------------
+// Allows direct lookup by runway token (for example: "CAK33", "KAT11L",
+// "SC27", "09", "27L") in addition to cycling PLATE_IDS.
+GLOBAL RUNWAY_ALIAS_TO_PLATE IS LEXICON().
+
+FUNCTION _NORMALIZE_RUNWAY_KEY {
+  PARAMETER raw.
+  LOCAL key IS ("" + raw):TOUPPER.
+  SET key TO key:REPLACE(" ", "").
+  SET key TO key:REPLACE("-", "").
+  RETURN key.
+}
+
+FUNCTION REGISTER_RUNWAY_ALIAS {
+  PARAMETER alias, plate_id.
+  LOCAL key IS _NORMALIZE_RUNWAY_KEY(alias).
+  IF key = "" { RETURN. }
+  SET RUNWAY_ALIAS_TO_PLATE[key] TO plate_id.
+}
+
+FUNCTION REGISTER_RUNWAY_FAMILY_ALIASES {
+  PARAMETER apt, rwy, nav_sid.
+  LOCAL plate_id IS "PLATE_" + apt + "_ILS" + rwy.
+  REGISTER_RUNWAY_ALIAS(apt + rwy, plate_id).
+  REGISTER_RUNWAY_ALIAS(apt + "_" + rwy, plate_id).
+  IF nav_sid <> "" { REGISTER_RUNWAY_ALIAS(nav_sid, plate_id). }
+}
+
+FUNCTION _GET_PLATE_BY_ID_WITH_SHORT_OPTION {
+  PARAMETER plate_id, short_approach.
+
+  IF short_approach {
+    LOCAL short_id IS plate_id.
+    IF short_id:LENGTH < 6 OR short_id:SUBSTRING(short_id:LENGTH - 6, 6) <> "_SHORT" {
+      SET short_id TO plate_id + "_SHORT".
+    }
+    IF PLATE_REGISTRY:HASKEY(short_id) { RETURN PLATE_REGISTRY[short_id]. }
+  }
+
+  IF PLATE_REGISTRY:HASKEY(plate_id) { RETURN PLATE_REGISTRY[plate_id]. }
+  RETURN 0.
+}
+
+// Historical direct runway IDs
+REGISTER_RUNWAY_ALIAS("09",    "PLATE_KSC_ILS09").
+REGISTER_RUNWAY_ALIAS("09R",   "PLATE_KSC_ILS09R").
+REGISTER_RUNWAY_ALIAS("27L",   "PLATE_KSC_ILS27L").
+REGISTER_RUNWAY_ALIAS("27",    "PLATE_KSC_ILS27L"). // backwards-compatible plain "27"
+REGISTER_RUNWAY_ALIAS("36",    "PLATE_DAF_ILS36").
+REGISTER_RUNWAY_ALIAS("18",    "PLATE_DAF_ILS18").
+REGISTER_RUNWAY_ALIAS("POR34", "PLATE_POL_ILS34").
+REGISTER_RUNWAY_ALIAS("POL34", "PLATE_POL_ILS34").
+
+// Structured airport/runway aliases
+REGISTER_RUNWAY_FAMILY_ALIASES("KSC", "09",  "SC09").
+REGISTER_RUNWAY_FAMILY_ALIASES("KSC", "09R", "").
+REGISTER_RUNWAY_FAMILY_ALIASES("KSC", "27L", "").
+REGISTER_RUNWAY_FAMILY_ALIASES("ISL", "09",  "IS09").
+REGISTER_RUNWAY_FAMILY_ALIASES("ISL", "27",  "IS27").
+REGISTER_RUNWAY_FAMILY_ALIASES("DAF", "36",  "DA36").
+REGISTER_RUNWAY_FAMILY_ALIASES("DAF", "18",  "DA18").
+REGISTER_RUNWAY_FAMILY_ALIASES("POL", "34",  "POR34").
+
+FOR nav_rwy IN NAVUTIL_MISSING_RUNWAYS {
+  REGISTER_RUNWAY_FAMILY_ALIASES(
+    nav_rwy["apt"],
+    nav_rwy["rwy"],
+    nav_rwy["sid"]
+  ).
+}
+
 FUNCTION GET_PLATE_FOR_RUNWAY {
   PARAMETER rwy_id, short_approach.
-  IF rwy_id = "09" {
-    IF short_approach { RETURN PLATE_KSC_ILS09_SHORT. }
-    RETURN PLATE_KSC_ILS09.
-  } ELSE IF rwy_id = "09R" {
-    IF short_approach { RETURN PLATE_KSC_ILS09R_SHORT. }
-    RETURN PLATE_KSC_ILS09R.
-  } ELSE IF rwy_id = "27L" {
-    IF short_approach { RETURN PLATE_KSC_ILS27L_SHORT. }
-    RETURN PLATE_KSC_ILS27L.
-  } ELSE IF rwy_id = "27" {
-    // Compatibility alias: plain "27" now maps to "27L".
-    IF short_approach { RETURN PLATE_KSC_ILS27L_SHORT. }
-    RETURN PLATE_KSC_ILS27L.
-  } ELSE IF rwy_id = "36" {
-    IF short_approach { RETURN PLATE_DAF_ILS36_SHORT. }
-    RETURN PLATE_DAF_ILS36.
-  } ELSE IF rwy_id = "18" {
-    IF short_approach { RETURN PLATE_DAF_ILS18_SHORT. }
-    RETURN PLATE_DAF_ILS18.
-  } ELSE IF rwy_id = "POR34" OR rwy_id = "POL34" {
-    IF short_approach { RETURN PLATE_POL_ILS34_SHORT. }
-    RETURN PLATE_POL_ILS34.
+  LOCAL key IS _NORMALIZE_RUNWAY_KEY(rwy_id).
+  LOCAL plate IS 0.
+
+  // Allow direct plate ID lookup too, e.g. "PLATE_CAK_ILS33".
+  IF PLATE_REGISTRY:HASKEY(key) {
+    SET plate TO _GET_PLATE_BY_ID_WITH_SHORT_OPTION(key, short_approach).
+    IF plate <> 0 { RETURN plate. }
+  }
+
+  IF RUNWAY_ALIAS_TO_PLATE:HASKEY(key) {
+    SET plate TO _GET_PLATE_BY_ID_WITH_SHORT_OPTION(RUNWAY_ALIAS_TO_PLATE[key], short_approach).
+    IF plate <> 0 { RETURN plate. }
   }
   SET IFC_ALERT_TEXT TO "NAV: no plate for runway '" + rwy_id + "'".
   SET IFC_ALERT_UT   TO TIME:SECONDS.

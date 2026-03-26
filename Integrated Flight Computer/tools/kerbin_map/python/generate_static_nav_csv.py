@@ -26,6 +26,7 @@ _NAV_BEACONS = _IFC_ROOT / "nav" / "nav_beacons.ks"
 _NAV_WPTS    = _IFC_ROOT / "nav" / "nav_custom_wpts.ks"
 
 KERBIN_R_M = 600_000.0
+BELOW_GS_M = 300.0
 
 
 # ---------------------------------------------------------------------------
@@ -272,6 +273,188 @@ def _extract_plates(text: str) -> tuple[list[dict], list[str]]:
 
 
 # ---------------------------------------------------------------------------
+# Dynamic NavInstruments runway import parser (nav_beacons.ks)
+# ---------------------------------------------------------------------------
+_NAVUTIL_LIST_RE = re.compile(
+    r"LOCAL\s+NAVUTIL_MISSING_RUNWAYS\s+IS\s+LIST\s*\((.*?)\)\.\s*FOR\s+nav_rwy",
+    re.IGNORECASE | re.DOTALL,
+)
+_NAVUTIL_LEX_RE = re.compile(r"LEXICON\s*\(([^)]*)\)", re.IGNORECASE | re.DOTALL)
+_NAVUTIL_KV_RE = re.compile(
+    r'"([^"]+)"\s*,\s*("([^"]*)"|[-+]?\d+(?:\.\d+)?)',
+    re.IGNORECASE,
+)
+
+
+def _extract_navutil_missing_runways(text: str) -> list[dict]:
+    runways: list[dict] = []
+    m = _NAVUTIL_LIST_RE.search(text)
+    if not m:
+        return runways
+
+    body = m.group(1)
+    for lm in _NAVUTIL_LEX_RE.finditer(body):
+        raw = lm.group(1)
+        kv: dict[str, float | str] = {}
+        for km in _NAVUTIL_KV_RE.finditer(raw):
+            key = km.group(1).strip().lower()
+            tok = km.group(2).strip()
+            if tok.startswith('"') and tok.endswith('"'):
+                kv[key] = tok[1:-1]
+            else:
+                try:
+                    kv[key] = float(tok)
+                except ValueError:
+                    continue
+
+        required = ("apt", "rwy", "hdg", "alt", "lat", "lng", "vapp")
+        if not all(k in kv for k in required):
+            continue
+
+        runways.append({
+            "apt": str(kv["apt"]),
+            "rwy": str(kv["rwy"]),
+            "hdg": float(kv["hdg"]),
+            "alt": float(kv["alt"]),
+            "lat": float(kv["lat"]),
+            "lng": float(kv["lng"]),
+            "vapp": float(kv["vapp"]),
+        })
+
+    return runways
+
+
+def _append_navutil_dynamic_data(
+    beacons: list[dict],
+    plate_rows: list[dict],
+    runways: list[dict],
+) -> tuple[int, int]:
+    seen_beacons = {b["id"] for b in beacons}
+    seen_plate_rows = {
+        (p["plate_id"], int(p["sequence"]), p["beacon_id"])
+        for p in plate_rows
+    }
+
+    added_beacons = 0
+    added_plate_rows = 0
+
+    def add_beacon(row: dict) -> None:
+        nonlocal added_beacons
+        if row["id"] in seen_beacons:
+            return
+        beacons.append(row)
+        seen_beacons.add(row["id"])
+        added_beacons += 1
+
+    def add_plate_row(row: dict) -> None:
+        nonlocal added_plate_rows
+        key = (row["plate_id"], int(row["sequence"]), row["beacon_id"])
+        if key in seen_plate_rows:
+            return
+        plate_rows.append(row)
+        seen_plate_rows.add(key)
+        added_plate_rows += 1
+
+    for rw in runways:
+        apt = rw["apt"]
+        rwy = rw["rwy"]
+        hdg = rw["hdg"]
+        alt = rw["alt"]
+        lat = rw["lat"]
+        lng = rw["lng"]
+        vapp = rw["vapp"]
+
+        ils_id = f"{apt}_ILS_{rwy}"
+        if ils_id in seen_beacons:
+            continue
+
+        gs_angle = 3.0
+        add_beacon({
+            "id": ils_id,
+            "type": "ILS",
+            "lat": round(lat, 7),
+            "lon": round(lng, 7),
+            "alt_asl": round(alt, 2),
+            "name": ils_id,
+            "rwy": rwy,
+            "hdg": round(hdg, 4),
+            "gs_angle": round(gs_angle, 4),
+        })
+
+        inbound_recip = (hdg + 180.0) % 360.0
+        iaf60_lat, iaf60_lon = _geo_destination(lat, lng, inbound_recip, 60000.0)
+        iaf30_lat, iaf30_lon = _geo_destination(lat, lng, inbound_recip, 30000.0)
+        faf_lat, faf_lon = _geo_destination(lat, lng, inbound_recip, 15000.0)
+
+        gs_hgt_15 = round(15000.0 * math.tan(math.radians(gs_angle)), 0)
+        gs_hgt_30 = round(30000.0 * math.tan(math.radians(gs_angle)), 0)
+        gs_hgt_60 = round(60000.0 * math.tan(math.radians(gs_angle)), 0)
+        faf_alt = alt + gs_hgt_15
+        iaf30_alt = alt + gs_hgt_30 - BELOW_GS_M
+        iaf60_alt = alt + gs_hgt_60 - BELOW_GS_M
+
+        iaf60_id = f"{apt}_IAF_{rwy}_60"
+        iaf30_id = f"{apt}_IAF_{rwy}_30"
+        faf_id = f"{apt}_FAF_{rwy}"
+
+        add_beacon({
+            "id": iaf60_id,
+            "type": "IAF",
+            "lat": round(iaf60_lat, 7),
+            "lon": round(iaf60_lon, 7),
+            "alt_asl": round(iaf60_alt, 2),
+            "name": f"{apt} RWY{rwy} IAF 60km",
+            "rwy": rwy,
+            "hdg": 0.0,
+            "gs_angle": 0.0,
+        })
+        add_beacon({
+            "id": iaf30_id,
+            "type": "IAF",
+            "lat": round(iaf30_lat, 7),
+            "lon": round(iaf30_lon, 7),
+            "alt_asl": round(iaf30_alt, 2),
+            "name": f"{apt} RWY{rwy} IAF 30km",
+            "rwy": rwy,
+            "hdg": 0.0,
+            "gs_angle": 0.0,
+        })
+        add_beacon({
+            "id": faf_id,
+            "type": "FAF",
+            "lat": round(faf_lat, 7),
+            "lon": round(faf_lon, 7),
+            "alt_asl": round(faf_alt, 2),
+            "name": f"{apt} RWY{rwy} FAF 15km",
+            "rwy": rwy,
+            "hdg": 0.0,
+            "gs_angle": 0.0,
+        })
+
+        plate_full = f"PLATE_{apt}_ILS{rwy}"
+        plate_short = f"{plate_full}_SHORT"
+
+        for seq, beacon_id in enumerate((iaf60_id, iaf30_id, faf_id)):
+            add_plate_row({
+                "plate_id": plate_full,
+                "sequence": seq,
+                "beacon_id": beacon_id,
+                "vapp": vapp,
+                "ils_id": ils_id,
+            })
+        for seq, beacon_id in enumerate((iaf30_id, faf_id)):
+            add_plate_row({
+                "plate_id": plate_short,
+                "sequence": seq,
+                "beacon_id": beacon_id,
+                "vapp": vapp,
+                "ils_id": ils_id,
+            })
+
+    return added_beacons, added_plate_rows
+
+
+# ---------------------------------------------------------------------------
 # CSV writer
 # ---------------------------------------------------------------------------
 def _write_csv(path: Path, fieldnames: list[str], rows: list[dict]) -> int:
@@ -327,6 +510,17 @@ def main() -> None:
                 "ils_id":    plate["ils_id"],
             })
 
+    # Parse and synthesize dynamic NavInstruments runway additions in nav_beacons.ks.
+    navutil_added_beacons = 0
+    navutil_added_plate_rows = 0
+    if _NAV_BEACONS in texts:
+        navutil_runways = _extract_navutil_missing_runways(texts[_NAV_BEACONS])
+        navutil_added_beacons, navutil_added_plate_rows = _append_navutil_dynamic_data(
+            all_beacons,
+            plate_rows,
+            navutil_runways,
+        )
+
     # Write CSVs
     beacons_path = _WEB_DATA / "ifc_beacons.csv"
     plates_path  = _WEB_DATA / "ifc_plates.csv"
@@ -351,6 +545,11 @@ def main() -> None:
     print(f"Wrote {n_b} beacons -> {beacons_path.resolve()}")
     print(f"Wrote {n_p} plate rows -> {plates_path.resolve()}")
     print(f"  ILS={ils}  IAF={iaf}  FAF={faf}  airports={apt}  waypoints={wpt}")
+    if navutil_added_beacons or navutil_added_plate_rows:
+        print(
+            f"  dynamic_navutil: +{navutil_added_beacons} beacons, "
+            f"+{navutil_added_plate_rows} plate rows"
+        )
 
 
 if __name__ == "__main__":
