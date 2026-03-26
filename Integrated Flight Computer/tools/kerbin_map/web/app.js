@@ -31,8 +31,15 @@ const beaconsPathInput = document.getElementById("beaconsPath");
 const platesPathInput  = document.getElementById("platesPath");
 const reloadBtn        = document.getElementById("reloadBtn");
 const showLabelsEl     = document.getElementById("showLabels");
+const showPseudo3DEl   = document.getElementById("showPseudo3D");
+const showAltStemsEl   = document.getElementById("showAltStems");
+const heightExagEl     = document.getElementById("heightExaggeration");
 const markerSizeEl     = document.getElementById("markerSize");
 const plateSelectEl    = document.getElementById("plateSelect");
+const showProfileEl    = document.getElementById("showPlateProfile");
+const profileCanvas    = document.getElementById("profileCanvas");
+const profileCtx       = profileCanvas ? profileCanvas.getContext("2d") : null;
+const profileStatusEl  = document.getElementById("profileStatus");
 const cursorReadoutEl  = document.getElementById("cursorReadout");
 const statusEl         = document.getElementById("status");
 const tooltipEl        = document.getElementById("tooltip");
@@ -58,7 +65,9 @@ const state = {
   selectedPlate: "",
   view:          { scale: 1, tx: 0, ty: 0 },
   dragging:      false,
-  dragStart:     { x: 0, y: 0, tx: 0, ty: 0 },
+  dragMode:      "",
+  dragStart:     { x: 0, y: 0, tx: 0, ty: 0, azimuth: 232, strength: 1.0 },
+  tilt:          { azimuth: 232, strength: 1.0 },
   hovered:       null,
 };
 
@@ -127,6 +136,58 @@ function worldToScreen(wx, wy) {
   };
 }
 
+function clamp(v, lo, hi) {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+function geoDistanceM(lat1, lon1, lat2, lon2) {
+  const p = Math.PI / 180;
+  const aLat = lat1 * p;
+  const bLat = lat2 * p;
+  const dLat = (lat2 - lat1) * p;
+  const dLon = (lon2 - lon1) * p;
+  const s = Math.sin(dLat * 0.5) ** 2
+    + Math.cos(aLat) * Math.cos(bLat) * Math.sin(dLon * 0.5) ** 2;
+  return 2 * KERBIN_R_M * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
+}
+
+function metersPerWorldUnit() {
+  return (2 * Math.PI * KERBIN_R_M) / state.mapWidth;
+}
+
+function pseudo3dEnabled() {
+  return !!(showPseudo3DEl && showPseudo3DEl.checked);
+}
+
+function getHeightExaggeration() {
+  if (!heightExagEl) return 1;
+  return clamp(Number(heightExagEl.value) || 1, 1, 20);
+}
+
+function getBeaconWorldBase(beacon) {
+  return lonLatToWorld(beacon.lon, beacon.lat);
+}
+
+function getBeaconWorldTop(beacon) {
+  const p = getBeaconWorldBase(beacon);
+  if (!pseudo3dEnabled()) return p;
+
+  const metersPerWorld = metersPerWorldUnit();
+  const altM = Math.max(0, Number(beacon.alt_asl) || 0);
+  const worldLift = (altM / metersPerWorld) * getHeightExaggeration() * clamp(state.tilt.strength, 0.15, 3.0);
+
+  const az = ((state.tilt.azimuth % 360) + 360) % 360;
+  const rad = az * Math.PI / 180;
+  const ux = Math.cos(rad);
+  const uy = Math.sin(rad);
+  return { x: p.x + worldLift * ux, y: p.y + worldLift * uy };
+}
+
+function markerAltitudeAlpha(altM) {
+  if (!pseudo3dEnabled()) return 1.0;
+  return clamp(0.75 + (Math.max(0, altM) / 8000), 0.75, 1.0);
+}
+
 function fitView() {
   const vw = canvas.clientWidth;
   const vh = canvas.clientHeight;
@@ -164,6 +225,13 @@ async function loadCsv(url) {
   const resp = await fetch(`${url}?t=${Date.now()}`);
   if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${url}`);
   return parseCsv(await resp.text());
+}
+
+function getPlateSequence(plate) {
+  if (!plate) return [];
+  const seq = [...plate.fixes];
+  if (plate.ils_id && plate.ils_id !== seq[seq.length - 1]) seq.push(plate.ils_id);
+  return seq;
 }
 
 // ---- Marker rendering ----
@@ -281,7 +349,7 @@ function hitTest(sx, sy) {
   let minDist = 16; // screen pixels
   for (const b of state.beacons) {
     if (!layerVisible(b.type, b.id)) continue;
-    const wp = lonLatToWorld(b.lon, b.lat);
+    const wp = getBeaconWorldTop(b);
     const sc = worldToScreen(wp.x, wp.y);
     const d  = Math.hypot(sx - sc.x, sy - sc.y);
     if (d < minDist) { minDist = d; closest = b; }
@@ -355,6 +423,7 @@ function drawCenterlines() {
 function drawBeacons() {
   const markerSize = Number(markerSizeEl.value) || 6;
   const showLabels = showLabelsEl.checked;
+  const drawStems = !!(showAltStemsEl && showAltStemsEl.checked && pseudo3dEnabled());
 
   ctx.save();
   ctx.translate(state.view.tx, state.view.ty);
@@ -363,18 +432,32 @@ function drawBeacons() {
   for (const b of state.beacons) {
     if (!layerVisible(b.type, b.id)) continue;
 
-    const p  = lonLatToWorld(b.lon, b.lat);
+    const pBase = getBeaconWorldBase(b);
+    const pTop  = getBeaconWorldTop(b);
     const r  = markerSize / state.view.scale;
     const isHovered = state.hovered === b;
+    const alpha = markerAltitudeAlpha(b.alt_asl);
+
+    if (drawStems && (pTop.x !== pBase.x || pTop.y !== pBase.y)) {
+      ctx.beginPath();
+      ctx.moveTo(pBase.x, pBase.y);
+      ctx.lineTo(pTop.x, pTop.y);
+      ctx.strokeStyle = "rgba(210,230,245,0.35)";
+      ctx.lineWidth = 1.1 / state.view.scale;
+      ctx.stroke();
+    }
 
     if (isHovered) {
       ctx.beginPath();
-      ctx.arc(p.x, p.y, r * 2.4, 0, Math.PI * 2);
+      ctx.arc(pTop.x, pTop.y, r * 2.4, 0, Math.PI * 2);
       ctx.fillStyle = "rgba(255,255,255,0.1)";
       ctx.fill();
     }
 
-    drawMarkerShape(p.x, p.y, b.type, b.id, r);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    drawMarkerShape(pTop.x, pTop.y, b.type, b.id, r);
+    ctx.restore();
 
     if (showLabels && state.view.scale >= 0.4) {
       const label = b.id.replace(/^WPT_APT_/, "").replace(/^WPT_/, "");
@@ -384,7 +467,7 @@ function drawBeacons() {
       ctx.fillStyle = color;
       ctx.shadowBlur  = 3 / state.view.scale;
       ctx.shadowColor = "#000000";
-      ctx.fillText(label, p.x + r + 2 / state.view.scale, p.y + 3 / state.view.scale);
+      ctx.fillText(label, pTop.x + r + 2 / state.view.scale, pTop.y + 3 / state.view.scale);
       ctx.shadowBlur = 0;
     }
   }
@@ -397,10 +480,8 @@ function drawPlateRoute() {
   if (!plate) return;
 
   // Full fix sequence: IAF(s) → FAF → ILS threshold
-  const allFixes = [...plate.fixes];
-  if (plate.ils_id && plate.ils_id !== allFixes[allFixes.length - 1]) {
-    allFixes.push(plate.ils_id);
-  }
+  const allFixes = getPlateSequence(plate);
+  if (!allFixes.length) return;
 
   ctx.save();
   ctx.translate(state.view.tx, state.view.ty);
@@ -415,7 +496,7 @@ function drawPlateRoute() {
   for (const fixId of allFixes) {
     const b = state.beaconById.get(fixId);
     if (!b) continue;
-    const p = lonLatToWorld(b.lon, b.lat);
+    const p = getBeaconWorldTop(b);
     if (first) { ctx.moveTo(p.x, p.y); first = false; } else ctx.lineTo(p.x, p.y);
   }
   if (!first) ctx.stroke();
@@ -425,7 +506,7 @@ function drawPlateRoute() {
   allFixes.forEach((fixId, i) => {
     const b = state.beaconById.get(fixId);
     if (!b) return;
-    const p = lonLatToWorld(b.lon, b.lat);
+    const p = getBeaconWorldTop(b);
     const r = 4 / state.view.scale;
     const isILS = i === allFixes.length - 1 && b.type === "ILS";
 
@@ -451,6 +532,127 @@ function drawPlateRoute() {
   ctx.restore();
 }
 
+function drawPlateProfile() {
+  if (!profileCtx || !profileCanvas || !profileStatusEl) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.max(200, Math.floor(profileCanvas.clientWidth || 420));
+  const h = Math.max(110, Math.floor(profileCanvas.clientHeight || 170));
+  if (profileCanvas.width !== Math.floor(w * dpr) || profileCanvas.height !== Math.floor(h * dpr)) {
+    profileCanvas.width = Math.floor(w * dpr);
+    profileCanvas.height = Math.floor(h * dpr);
+  }
+  profileCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  profileCtx.clearRect(0, 0, w, h);
+
+  const panelOff = showProfileEl && !showProfileEl.checked;
+  if (panelOff) {
+    profileStatusEl.textContent = "Profile hidden.";
+    return;
+  }
+  if (!state.selectedPlate) {
+    profileStatusEl.textContent = "Select a plate to view its altitude profile.";
+    return;
+  }
+
+  const plate = state.plates.get(state.selectedPlate);
+  if (!plate) {
+    profileStatusEl.textContent = "Selected plate data not found.";
+    return;
+  }
+
+  const sequence = getPlateSequence(plate);
+  if (!sequence.length) {
+    profileStatusEl.textContent = "Selected plate has no fixes.";
+    return;
+  }
+
+  const points = [];
+  let distM = 0;
+  let prev = null;
+  for (const id of sequence) {
+    const b = state.beaconById.get(id);
+    if (!b) continue;
+    if (prev) distM += geoDistanceM(prev.lat, prev.lon, b.lat, b.lon);
+    points.push({ id, lat: b.lat, lon: b.lon, alt: Number(b.alt_asl) || 0, dist: distM / 1000 });
+    prev = b;
+  }
+  if (points.length < 2) {
+    profileStatusEl.textContent = "Need at least two valid beacons for profile.";
+    return;
+  }
+
+  const minAltRaw = Math.min(...points.map(p => p.alt));
+  const maxAltRaw = Math.max(...points.map(p => p.alt));
+  const yMin = Math.max(0, minAltRaw - 200);
+  const yMax = Math.max(yMin + 500, maxAltRaw + 250);
+  const xMax = Math.max(1, points[points.length - 1].dist);
+
+  const m = { l: 42, r: 10, t: 10, b: 22 };
+  const pw = Math.max(20, w - m.l - m.r);
+  const ph = Math.max(20, h - m.t - m.b);
+
+  const xFor = dKm => m.l + (dKm / xMax) * pw;
+  const yFor = altM => m.t + (1 - ((altM - yMin) / (yMax - yMin))) * ph;
+
+  profileCtx.fillStyle = "#0f171f";
+  profileCtx.fillRect(0, 0, w, h);
+
+  // Grid + axes
+  profileCtx.strokeStyle = "rgba(170,200,220,0.22)";
+  profileCtx.lineWidth = 1;
+  profileCtx.beginPath();
+  profileCtx.moveTo(m.l, m.t);
+  profileCtx.lineTo(m.l, m.t + ph);
+  profileCtx.lineTo(m.l + pw, m.t + ph);
+  profileCtx.stroke();
+
+  profileCtx.fillStyle = "rgba(175,205,225,0.8)";
+  profileCtx.font = "11px Consolas";
+  for (let i = 0; i <= 4; i++) {
+    const t = i / 4;
+    const altTick = yMin + (1 - t) * (yMax - yMin);
+    const y = m.t + t * ph;
+    profileCtx.strokeStyle = "rgba(170,200,220,0.12)";
+    profileCtx.beginPath();
+    profileCtx.moveTo(m.l, y);
+    profileCtx.lineTo(m.l + pw, y);
+    profileCtx.stroke();
+    profileCtx.fillText(`${Math.round(altTick)}m`, 3, y + 3);
+  }
+  profileCtx.fillText(`${xMax.toFixed(1)}km`, m.l + pw - 44, h - 5);
+  profileCtx.fillText("0km", m.l - 4, h - 5);
+
+  // Profile path
+  profileCtx.strokeStyle = "rgba(255,120,120,0.95)";
+  profileCtx.lineWidth = 2;
+  profileCtx.beginPath();
+  points.forEach((p, i) => {
+    const x = xFor(p.dist);
+    const y = yFor(p.alt);
+    if (i === 0) profileCtx.moveTo(x, y); else profileCtx.lineTo(x, y);
+  });
+  profileCtx.stroke();
+
+  // Markers + labels
+  points.forEach((p, i) => {
+    const x = xFor(p.dist);
+    const y = yFor(p.alt);
+    profileCtx.beginPath();
+    profileCtx.arc(x, y, 3, 0, Math.PI * 2);
+    profileCtx.fillStyle = i === points.length - 1 ? "#ffd166" : "#ff7a7a";
+    profileCtx.fill();
+    if (pw > 280) {
+      profileCtx.fillStyle = "rgba(230,240,250,0.9)";
+      profileCtx.font = "10px Consolas";
+      profileCtx.fillText(p.id, x + 4, y - 4);
+    }
+  });
+
+  profileStatusEl.textContent =
+    `${state.selectedPlate}  |  Dist ${xMax.toFixed(1)} km  |  Alt ${Math.round(minAltRaw)}-${Math.round(maxAltRaw)} m MSL`;
+}
+
 function draw() {
   const w = canvas.clientWidth;
   const h = canvas.clientHeight;
@@ -471,6 +673,7 @@ function draw() {
   drawCenterlines();
   drawPlateRoute();
   drawBeacons();
+  drawPlateProfile();
 }
 
 // ---- Plate select ----
@@ -605,6 +808,10 @@ async function reloadAll() {
 // ---- Event wiring ----
 reloadBtn.addEventListener("click", reloadAll);
 showLabelsEl.addEventListener("change", draw);
+if (showPseudo3DEl) showPseudo3DEl.addEventListener("change", draw);
+if (showAltStemsEl) showAltStemsEl.addEventListener("change", draw);
+if (heightExagEl) heightExagEl.addEventListener("input", draw);
+if (showProfileEl) showProfileEl.addEventListener("change", draw);
 markerSizeEl.addEventListener("input", draw);
 plateSelectEl.addEventListener("change", () => {
   state.selectedPlate = plateSelectEl.value || "";
@@ -614,15 +821,41 @@ Object.values(layerCbs).forEach(cb => cb.addEventListener("change", draw));
 
 // Pan
 canvas.addEventListener("mousedown", e => {
-  state.dragging  = true;
-  state.dragStart = { x: e.clientX, y: e.clientY, tx: state.view.tx, ty: state.view.ty };
+  if (e.button !== 0) return;
+  e.preventDefault();
+  state.dragging = true;
+
+  if (e.shiftKey) {
+    state.dragMode = "tilt";
+  } else {
+    state.dragMode = "pan";
+  }
+
+  state.dragStart = {
+    x: e.clientX,
+    y: e.clientY,
+    tx: state.view.tx,
+    ty: state.view.ty,
+    azimuth: state.tilt.azimuth,
+    strength: state.tilt.strength,
+  };
 });
-window.addEventListener("mouseup", () => { state.dragging = false; });
+window.addEventListener("mouseup", () => {
+  state.dragging = false;
+  state.dragMode = "";
+});
 
 window.addEventListener("mousemove", e => {
   if (state.dragging) {
-    state.view.tx = state.dragStart.tx + (e.clientX - state.dragStart.x);
-    state.view.ty = state.dragStart.ty + (e.clientY - state.dragStart.y);
+    if (state.dragMode === "tilt") {
+      const dx = e.clientX - state.dragStart.x;
+      const dy = e.clientY - state.dragStart.y;
+      state.tilt.azimuth = state.dragStart.azimuth + dx * 0.35;
+      state.tilt.strength = clamp(state.dragStart.strength - dy * 0.01, 0.15, 3.0);
+    } else {
+      state.view.tx = state.dragStart.tx + (e.clientX - state.dragStart.x);
+      state.view.ty = state.dragStart.ty + (e.clientY - state.dragStart.y);
+    }
     draw();
     return;
   }

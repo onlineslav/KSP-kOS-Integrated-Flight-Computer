@@ -162,6 +162,23 @@ input[type="range"] {
 #status { margin-top: 5px; color: #b7e3ff; }
 .hint { margin: 7px 0 0; color: var(--muted); font-size: 0.74rem; line-height: 1.5; }
 
+/* ---- Plate profile ---- */
+#profileCanvas {
+  width: 100%;
+  height: 170px;
+  display: block;
+  margin-top: 6px;
+  border: 1px solid #324350;
+  border-radius: 6px;
+  background: #0f171f;
+}
+#profileStatus {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
 /* ---- Viewport + canvas ---- */
 .viewport { position: relative; width: 100%; height: 100%; }
 #mapCanvas { width: 100%; height: 100%; display: block; background: #0d1620; }

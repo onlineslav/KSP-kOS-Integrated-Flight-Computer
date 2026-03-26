@@ -15,6 +15,7 @@
 - Fix fix-skipping logic: only skip a fix when it is truly behind (10 deg cone).
 
 # Ideas
+- each ILS has a default GS, as well as a lower limit GS (if terrain is in the way), but GS can be set manually for each approach (so that spaceplanes that glide at high flight path angles can utilize them)
 - Add a bank angle limiter that fights AA - see if it can work
 - Have a "kOS augmented" manual FBW mode
   - Has automatic crash prevention

@@ -66,6 +66,11 @@
     <section>
       <h2>Display</h2>
       <label><input id="showLabels" type="checkbox" checked> Show labels</label>
+      <label><input id="showPseudo3D" type="checkbox" checked> Enable pseudo-3D altitude</label>
+      <label><input id="showAltStems" type="checkbox" checked> Show altitude stems</label>
+      <label>Height exaggeration
+        <input id="heightExaggeration" type="range" min="1" max="20" value="6">
+      </label>
       <label>Marker size
         <input id="markerSize" type="range" min="2" max="16" value="6">
       </label>
@@ -82,9 +87,17 @@
       <div id="status">Not loaded.</div>
       <p class="hint">
         Scroll: zoom &nbsp;·&nbsp; Drag: pan<br>
+        Shift + left-drag: tilt pseudo-3D<br>
         Double-click: fit view<br>
         Hover beacon: details
       </p>
+    </section>
+
+    <section>
+      <h2>Plate Profile</h2>
+      <label><input id="showPlateProfile" type="checkbox" checked> Show selected plate side profile</label>
+      <canvas id="profileCanvas" width="420" height="170"></canvas>
+      <div id="profileStatus">Select a plate to view its altitude profile.</div>
     </section>
 
     <section class="legend">
