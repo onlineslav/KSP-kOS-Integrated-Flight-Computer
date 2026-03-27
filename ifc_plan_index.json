@@ -7,6 +7,10 @@
         {
             "value": "KSC -> 8000m -> POL 16 SHRT",
             "$type": "kOS.Safe.Encapsulation.StringValue"
+        },
+        {
+            "value": "KSC RH Traffic Pattern 09R",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
         }
     ],
     "$type": "kOS.Safe.Encapsulation.ListValue"

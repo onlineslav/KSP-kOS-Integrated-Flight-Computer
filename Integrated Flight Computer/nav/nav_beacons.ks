@@ -101,7 +101,7 @@ LOCAL BELOW_GS_M IS 300.                            // m below GS at each IAF
 LOCAL GS_HGT_15KM IS ROUND(15000 * TAN(GS_ANG), 0). // 787 m above field at FAF
 LOCAL GS_HGT_30KM IS ROUND(30000 * TAN(GS_ANG), 0). // 1571 m above field at IAF-30
 LOCAL GS_HGT_60KM IS ROUND(60000 * TAN(GS_ANG), 0). // 3144 m above field at IAF-60
-LOCAL GS_ANG_STEEP IS 4.0.                               // deg, terrain-clearance approaches
+LOCAL GS_ANG_STEEP IS 5.0.                               // deg, terrain-clearance approaches
 LOCAL GS4_HGT_15KM IS ROUND(15000 * TAN(GS_ANG_STEEP), 0).
 LOCAL GS4_HGT_30KM IS ROUND(30000 * TAN(GS_ANG_STEEP), 0).
 LOCAL GS4_HGT_60KM IS ROUND(60000 * TAN(GS_ANG_STEEP), 0).

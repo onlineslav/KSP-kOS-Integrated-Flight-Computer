@@ -1,4 +1,4 @@
-@LAZYGLOBAL OFF.
+﻿@LAZYGLOBAL OFF.
 
 // ============================================================
 // cf1_j_cfg.ks  -  Integrated Flight Computer aircraft config
@@ -40,7 +40,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "amo_engine_tag_prefix", "ifc_eng",        // [string]          Ordered engine tags: prefix_1, prefix_2, ... left to right. Lower half = left bank, upper half = right bank. "" disables.
     "amo_engine_left_tag", "",                 // [string]          Optional part tag to force left-side engine bank (used only when amo_engine_tag_prefix is "").
     "amo_engine_right_tag", "",                // [string]          Optional part tag to force right-side engine bank (used only when amo_engine_tag_prefix is "").
-    "amo_engine_module_name", "ModuleEnginesFX", // [string]        Optional engine module override for thrust limiter binding.
+    "amo_engine_module_name", "ModuleEngines", // [string]        Optional engine module override for thrust limiter binding.
     "amo_engine_field_name", "thrustPercentage", // [string]        Optional thrust limiter field name on that module.
     "amo_engine_field_base", 100,              // [number]          Full-scale for amo_engine_field_name (-1 = auto).
     "abrk_default_strength", 0.7,              // [0..1]            Default wheel brake strength setting when not steering differentially.

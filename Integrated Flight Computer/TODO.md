@@ -54,4 +54,6 @@ Organize these (CLAUDE OR CODEX, THESE ARE INSTRUCTIONS FOR YOU):
 - Alter the waypoint cruise mode, so instead of it having 3 drop downs for waypoints, have waypoint type dropdown (Nav Aids, Arrival Navigation, etc.)
   - If you select Arrival Navigation, the next dropdown will be airports, and the next dropdown will be IAFs for the available runways. The reason for this is that the list of all waypoints is currently too long for a single popup menu and this reduces the amount of listed items per popup menu
 
-- Current organization of AMO is not quite aligned with my vision. Augmented Manual Operation is a mode that contains toggleable submodules. One submodule of this is Differential Steering Assist. AMO will have other modules in the future, such as terrain following FBW, etc.
+- Current organization of AMO is not quite aligned with my vision. Augmented Manual Operation is a mode that contains toggleable submodules. One submodule of this is Differential Steering Assist (DSA). AMO will have other modules in the future, such as terrain following FBW, etc.
+
+- Also note: the autobraking module will not just be used with DSA. In the future it will also be used for improving landing performance/stability.

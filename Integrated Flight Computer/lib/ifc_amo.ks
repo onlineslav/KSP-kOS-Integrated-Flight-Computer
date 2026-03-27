@@ -197,7 +197,7 @@ FUNCTION _AMO_MAKE_ENGINE_ENTRY {
     LOCAL p IS eng:PART.
     IF p <> 0 {
       LOCAL forced_mod IS _AMO_CFG_STR("amo_engine_module_name", "").
-      IF forced_mod <> "" AND p:HASSUFFIX("GETMODULE") {
+      IF forced_mod <> "" AND p:HASSUFFIX("GETMODULE") AND p:HASMODULE(forced_mod) {
         LOCAL mref IS p:GETMODULE(forced_mod).
         IF mref <> 0 {
           LOCAL fld IS _AMO_RESOLVE_THR_FIELD(mref).
@@ -225,7 +225,7 @@ FUNCTION _AMO_MAKE_ENGINE_ENTRY {
 
   // Fallback: scan all part modules for a thrust-limiter field.
   LOCAL forced_mod IS _AMO_CFG_STR("amo_engine_module_name", "").
-  IF forced_mod <> "" AND p:HASSUFFIX("GETMODULE") {
+  IF forced_mod <> "" AND p:HASSUFFIX("GETMODULE") AND p:HASMODULE(forced_mod) {
     LOCAL mref IS p:GETMODULE(forced_mod).
     IF mref <> 0 {
       LOCAL fld IS _AMO_RESOLVE_THR_FIELD(mref).
@@ -348,7 +348,7 @@ FUNCTION _AMO_COLLECT_TAGGED_CANDIDATES {
       UNTIL ei >= all_eng:LENGTH {
         LOCAL eng IS all_eng[ei].
         SET ei TO ei + 1.
-        IF eng <> 0 AND eng:HASSUFFIX("PART") AND eng:PART = tp {
+        IF eng <> 0 AND eng:HASSUFFIX("PART") AND eng:PART:UID = tp:UID {
           LOCAL entry IS _AMO_MAKE_ENGINE_ENTRY(eng).
           IF entry <> 0 AND NOT _AMO_CAND_HAS_ENGINE(out_cands, eng) {
             LOCAL side_m IS 0.
@@ -361,10 +361,48 @@ FUNCTION _AMO_COLLECT_TAGGED_CANDIDATES {
   }
 }
 
+// Build a thrust-limiter entry directly from a Part (no Engine object needed).
+// For "field" mode entries the engine reference is unused at write time,
+// so storing 0 is safe.  Returns 0 if no writable thrust field is found.
+FUNCTION _AMO_MAKE_PART_ENTRY {
+  PARAMETER p.
+  IF p = 0 { RETURN 0. }
+  LOCAL forced_mod IS _AMO_CFG_STR("amo_engine_module_name", "").
+  IF forced_mod <> "" AND p:HASSUFFIX("GETMODULE") AND p:HASMODULE(forced_mod) {
+    LOCAL mref IS p:GETMODULE(forced_mod).
+    IF mref <> 0 {
+      LOCAL fld IS _AMO_RESOLVE_THR_FIELD(mref).
+      IF fld <> "" {
+        LOCAL scale IS _AMO_THR_BASE_FOR_FIELD(fld).
+        LOCAL base_limit IS CLAMP(_AMO_GET_MODULE_FIELD(mref, fld, scale), 0, scale).
+        RETURN LEXICON("eng", 0, "mode", "field", "module", mref, "field", fld, "base_limit", base_limit, "scale", scale).
+      }
+    }
+  }
+  LOCAL mods IS _AMO_MODULE_ENTRIES(p).
+  LOCAL i IS 0.
+  UNTIL i >= mods:LENGTH {
+    LOCAL m IS mods[i].
+    SET i TO i + 1.
+    IF m <> 0 {
+      LOCAL mname IS _AMO_ENTRY_NAME(m).
+      LOCAL module_ref IS _AMO_RESOLVE_MODULE_OBJECT(p, m, mname).
+      LOCAL field_name IS _AMO_RESOLVE_THR_FIELD(module_ref).
+      IF field_name <> "" {
+        LOCAL scale IS _AMO_THR_BASE_FOR_FIELD(field_name).
+        LOCAL base_limit IS CLAMP(_AMO_GET_MODULE_FIELD(module_ref, field_name, scale), 0, scale).
+        RETURN LEXICON("eng", 0, "mode", "field", "module", module_ref, "field", field_name, "base_limit", base_limit, "scale", scale).
+      }
+    }
+  }
+  RETURN 0.
+}
+
 // Discover engine entries by ordered tags: tag_prefix + "_1", "_2", ... left to right.
+// Builds entries directly from tagged parts — does not require SHIP:ENGINES matching.
 // Splits at floor(N/2): lower-indexed half → out_left, upper half → out_right.
 FUNCTION _AMO_DISCOVER_NUMBERED_ENGS {
-  PARAMETER tag_prefix, all_eng, out_left, out_right.
+  PARAMETER tag_prefix, out_left, out_right.
   LOCAL found IS LIST().
   LOCAL n IS 1.
   UNTIL n > 20 {
@@ -374,15 +412,8 @@ FUNCTION _AMO_DISCOVER_NUMBERED_ENGS {
     UNTIL ti >= tagged:LENGTH {
       LOCAL tp IS tagged[ti].
       SET ti TO ti + 1.
-      LOCAL ei IS 0.
-      UNTIL ei >= all_eng:LENGTH {
-        LOCAL eng IS all_eng[ei].
-        SET ei TO ei + 1.
-        IF eng <> 0 AND eng:HASSUFFIX("PART") AND eng:PART = tp {
-          LOCAL entry IS _AMO_MAKE_ENGINE_ENTRY(eng).
-          IF entry <> 0 { found:ADD(entry). }
-        }
-      }
+      LOCAL entry IS _AMO_MAKE_PART_ENTRY(tp).
+      IF entry <> 0 { found:ADD(entry). }
     }
     SET n TO n + 1.
   }
@@ -416,7 +447,8 @@ FUNCTION _AMO_DISCOVER_ENGINES {
   // Lower half → left bank, upper half → right bank.  No geometry needed.
   LOCAL tag_prefix IS _AMO_CFG_STR("amo_engine_tag_prefix", "").
   IF tag_prefix <> "" AND SHIP:HASSUFFIX("PARTSTAGGED") {
-    _AMO_DISCOVER_NUMBERED_ENGS(tag_prefix, all_eng, AMO_LEFT_ENGS, AMO_RIGHT_ENGS).
+    LOCAL _dbg_tag1_count IS SHIP:PARTSTAGGED(tag_prefix + "_1"):LENGTH.
+    _AMO_DISCOVER_NUMBERED_ENGS(tag_prefix, AMO_LEFT_ENGS, AMO_RIGHT_ENGS).
     SET AMO_ENG_DISCOVERED TO TRUE.
     IF AMO_LEFT_ENGS:LENGTH > 0 AND AMO_RIGHT_ENGS:LENGTH > 0 {
       SET AMO_DIFF_AVAILABLE TO TRUE.
@@ -424,7 +456,7 @@ FUNCTION _AMO_DISCOVER_ENGINES {
       IF AMO_LEFT_ENGS[0]:HASKEY("mode") { SET _dbg_mode TO AMO_LEFT_ENGS[0]["mode"]. }
       IFC_SET_ALERT("AMO eng (numbered): L=" + AMO_LEFT_ENGS:LENGTH + " R=" + AMO_RIGHT_ENGS:LENGTH + " mode=" + _dbg_mode, "INFO").
     } ELSE {
-      IFC_SET_ALERT("AMO eng: numbered tags '" + tag_prefix + "_N' found L=" + AMO_LEFT_ENGS:LENGTH + " R=" + AMO_RIGHT_ENGS:LENGTH, "WARN").
+      IFC_SET_ALERT("AMO eng: tag1_parts=" + _dbg_tag1_count + " eng_total=" + all_eng:LENGTH + " L=" + AMO_LEFT_ENGS:LENGTH + " R=" + AMO_RIGHT_ENGS:LENGTH, "WARN").
     }
     RETURN.
   }
@@ -574,15 +606,17 @@ FUNCTION AMO_TICK_PREARM {
   }
 
   IF AMO_DIFF_AVAILABLE {
-    LOCAL thr_frac IS CLAMP(GET_CURRENT_THROTTLE(), 0, 1).
+    // Cut the limiter on the side we are turning toward; leave the other at full.
+    // thrustPercentage is a limiter, not a throttle command — the pilot's throttle
+    // lever controls actual thrust within the limit, so 1.0 = full authority.
     IF steer_raw > 0 {
-      // Steering right: left bank drives, right bank idles.
-      _AMO_SET_BANK_LIMIT_FRAC(AMO_LEFT_ENGS, thr_frac).
+      // Steering right: cut right bank, leave left at full.
       _AMO_SET_BANK_LIMIT_FRAC(AMO_RIGHT_ENGS, 0).
+      _AMO_SET_BANK_LIMIT_FRAC(AMO_LEFT_ENGS, 1.0).
     } ELSE {
-      // Steering left: right bank drives, left bank idles.
-      _AMO_SET_BANK_LIMIT_FRAC(AMO_RIGHT_ENGS, thr_frac).
+      // Steering left: cut left bank, leave right at full.
       _AMO_SET_BANK_LIMIT_FRAC(AMO_LEFT_ENGS, 0).
+      _AMO_SET_BANK_LIMIT_FRAC(AMO_RIGHT_ENGS, 1.0).
     }
   }
 
