@@ -37,6 +37,8 @@ LOCAL ifc_root IS "0:/Integrated Flight Computer/".
 RUNPATH(ifc_root + "lib/ifc_constants.ks").
 RUNPATH(ifc_root + "lib/ifc_state.ks").
 RUNPATH(ifc_root + "lib/ifc_helpers.ks").
+RUNPATH(ifc_root + "lib/ifc_autobrake.ks").
+RUNPATH(ifc_root + "lib/ifc_amo.ks").
 RUNPATH(ifc_root + "lib/ifc_autothrottle.ks").
 RUNPATH(ifc_root + "lib/ifc_autospoiler.ks").
 RUNPATH(ifc_root + "lib/ifc_ui.ks").
@@ -90,6 +92,13 @@ LOCAL _DEFAULT_AIRCRAFT IS LEXICON(
   "as_cap_deg_hi",      -1,
   "ag_thrust_rev",      0,
   "ag_drogue",          0,
+  "has_nws",            TRUE,
+  "amo_enabled",        1,
+  "diff_brake_strength",1.0,
+  "abrk_default_strength",0.7,
+  "abrk_module_name",   "",
+  "abrk_field_name",    "",
+  "abrk_field_base",    -1,
   "flaps_initial_detent", 0,
   "flaps_detent_up",      0,
   "flaps_detent_climb",   1,
@@ -594,6 +603,10 @@ FUNCTION _RUN_FLIGHT_PLAN {
 
   // Reboot safety: dispose any lingering GUI windows from a previous run
   // before state reset clears the stored handles.
+  // Also release any AMO differential limits/brake commands carried over
+  // from pre-arm ground handling.
+  AMO_RELEASE().
+  ABRK_RELEASE().
   _GUI_CLOSE().
   IFC_INIT_STATE().
 
@@ -740,6 +753,8 @@ FUNCTION _RUN_FLIGHT_PLAN {
   }
 
   // ── Shutdown ──────────────────────────────────────────
+  AMO_RELEASE().
+  ABRK_RELEASE().
   AS_RELEASE().
   UNLOCK THROTTLE.
   UNLOCK STEERING.
@@ -779,7 +794,7 @@ FUNCTION _IFC_INTERACTIVE_START {
     SET IFC_MISSION_START_UT TO TIME:SECONDS.
     SET IFC_PHASE    TO PHASE_PREARM.
     SET IFC_SUBPHASE TO "".
-    IFC_SET_UI_MODE(UI_MODE_PREARM).
+    IFC_SET_UI_MODE(UI_MODE_PREARM_AMO).
     UI_INIT().
 
     IF ACTIVE_AIRCRAFT = 0 {
@@ -801,17 +816,23 @@ FUNCTION _IFC_INTERACTIVE_START {
       DRAFT_PLAN:ADD(_FMS_DEFAULT_LEG(LEG_TAKEOFF)).
     }
 
-    _GUI_BUILD().
-
     LOCAL prearm_result IS "".
     UNTIL prearm_result = "ARM" OR prearm_result = "QUIT" {
-      LOCAL gui_result IS _GUI_TICK().
+      AMO_TICK_PREARM().
+      LOCAL gui_result IS "".
+      IF IFC_UI_MODE = UI_MODE_PREARM {
+        SET gui_result TO _GUI_TICK().
+      } ELSE IF GUI_WIN <> 0 OR GUI_EDIT_WIN <> 0 {
+        _GUI_CLOSE().
+      }
       IF gui_result <> "" { SET prearm_result TO gui_result. }
       ELSE { SET prearm_result TO MENU_TICK(). }
       DISPLAY_TICK().
       WAIT IFC_LOOP_DT.
     }
 
+    AMO_RELEASE().
+    ABRK_RELEASE().
     _GUI_CLOSE().
 
     IF prearm_result = "QUIT" {

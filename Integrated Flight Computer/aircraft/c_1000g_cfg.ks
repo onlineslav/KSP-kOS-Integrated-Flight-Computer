@@ -1,4 +1,4 @@
-﻿@LAZYGLOBAL OFF.
+@LAZYGLOBAL OFF.
 
 // ============================================================
 // cf1_j_cfg.ks  -  Integrated Flight Computer aircraft config
@@ -33,7 +33,13 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // ========================================================
     // 2) Hardware / Action-Group Mapping
     // ========================================================
-    "has_nws", TRUE,                          // [bool]            TRUE when the aircraft has usable nose-wheel steering.                           
+    "has_nws", FALSE,                          // [bool]            TRUE when the aircraft has usable nose-wheel steering.
+    "amo_enabled", 1,                          // [bool]            Enable AMO ground assist while pre-arm and unarmed.
+    "diff_brake_strength", 1.0,                // [0..1]            Per-side brake strength for AMO differential braking.
+    "abrk_default_strength", 0.7,              // [0..1]            Default wheel brake strength setting when not steering differentially.
+    "abrk_module_name", "ModuleWheelBase",     // [string]          Optional auto-brake module override for wheel parts.
+    "abrk_field_name", "brakeTweakable",       // [string]          Optional writable brake field name override on that module.
+    "abrk_field_base", 100,                    // [number]          Optional full-scale value for abrk_field_name (-1 = auto).
     "ag_flaps_step_up", 9,                    // [AG#]             FAR flap detent step-up action group (1..10, 0 disables).                        
     "ag_flaps_step_down", 10,                 // [AG#]             FAR flap detent step-down action group (1..10, 0 disables).                      
     "ag_spoilers", 7,                         // [AG#]             Touchdown spoiler/airbrake deploy action group (1..10, 0 disables).              

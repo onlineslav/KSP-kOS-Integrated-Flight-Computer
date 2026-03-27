@@ -195,7 +195,7 @@ GLOBAL GEAR_MAX_EXTEND_IAS IS 120. // m/s max IAS allowed for automatic gear ext
 // ----------------------------
 // Flare
 // ----------------------------
-GLOBAL FLARE_MAIN_GEAR_TAG_DEFAULT IS "ifc_maingear". // part tag used to identify main-gear contact sensors for flare/touchdown height logic
+GLOBAL FLARE_MAIN_GEAR_TAG_DEFAULT IS "ifc_maingear". // base part tag for main-gear flare/touchdown sensors; discovery checks base + "_L" + "_R"
 GLOBAL FLARE_CTRL_H_OFFSET_MAX_M IS 30.0. // m max allowed body-vs-gear height offset captured at flare entry for control shaping
 GLOBAL FLARE_AGL_M      IS 25.   // m runway-relative height to trigger flare
 GLOBAL FLARE_TRIGGER_HYST_M IS 1.0. // m hysteresis for flare trigger re-arm
@@ -436,10 +436,21 @@ GLOBAL IFC_ALERT_EXPIRE_S   IS 5.0.  // s  auto-clear alert after this long
 // UI interaction modes
 // ----------------------------
 GLOBAL UI_MODE_PREARM         IS "MODE_PREARM".
+GLOBAL UI_MODE_PREARM_AMO     IS "MODE_PREARM_AMO".
 GLOBAL UI_MODE_AUTOFLOW       IS "MODE_AUTOFLOW".
 GLOBAL UI_MODE_MENU_OVERLAY   IS "MODE_MENU_OVERLAY".
 GLOBAL UI_MODE_MANUAL_OVERRIDE IS "MODE_MANUAL_OVERRIDE".
 GLOBAL UI_MODE_COMPLETE       IS "MODE_COMPLETE".
+
+// ----------------------------
+// Augmented Manual Operation (AMO) ground steering assist
+// ----------------------------
+GLOBAL AMO_ENABLED_DEFAULT        IS TRUE. // default enable flag when aircraft config omits amo_enabled
+GLOBAL AMO_STEER_DEADBAND         IS 0.08. // 0..1 minimum steering input before diff assist engages
+GLOBAL AMO_BRAKE_MAX_IAS          IS 35.0. // m/s apply brake assist only at/below this IAS
+GLOBAL AMO_ENGINE_SIDE_EPS_M      IS 0.25. // m engine lateral offset deadzone when auto-splitting left/right banks
+GLOBAL AMO_DIFF_BRAKE_STRENGTH    IS 1.00. // 0..1 nominal per-side brake strength used by AMO differential braking
+GLOBAL ABRK_DEFAULT_STRENGTH      IS 0.70. // 0..1 default per-wheel brake strength setting when differential braking is idle
 
 // ----------------------------
 // UI event queue

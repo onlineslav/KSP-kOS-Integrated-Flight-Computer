@@ -1035,6 +1035,9 @@ FUNCTION _FMS_EDITOR_KEY {
 }
 
 FUNCTION MENU_OPEN {
+  IF IFC_UI_MODE <> UI_MODE_MENU_OVERLAY {
+    SET IFC_UI_MODE_PRE_MENU TO IFC_UI_MODE.
+  }
   IF IFC_PHASE = PHASE_PREARM {
     MENU_STAGE_FROM_LIVE().
   }
@@ -1048,7 +1051,11 @@ FUNCTION MENU_OPEN {
 
 FUNCTION MENU_CLOSE {
   IF IFC_PHASE = PHASE_PREARM {
-    IFC_SET_UI_MODE(UI_MODE_PREARM).
+    IF IFC_UI_MODE_PRE_MENU = UI_MODE_PREARM_AMO {
+      IFC_SET_UI_MODE(UI_MODE_PREARM_AMO).
+    } ELSE {
+      IFC_SET_UI_MODE(UI_MODE_PREARM).
+    }
   } ELSE IF IFC_PHASE = PHASE_DONE {
     IFC_SET_UI_MODE(UI_MODE_COMPLETE).
   } ELSE IF IFC_MANUAL_MODE {
@@ -1223,7 +1230,27 @@ FUNCTION MENU_TICK {
         }
       }
     } ELSE IF IFC_PHASE = PHASE_PREARM {
-      SET result TO _FMS_EDITOR_KEY(ch).
+      IF ch = "p" OR ch = "P" {
+        IF IFC_UI_MODE = UI_MODE_PREARM {
+          IFC_SET_UI_MODE(UI_MODE_PREARM_AMO).
+        } ELSE {
+          IFC_SET_UI_MODE(UI_MODE_PREARM).
+        }
+        SET LAST_DISPLAY_UT TO 0.
+        SET LAST_SECONDARY_UT TO 0.
+      } ELSE IF IFC_UI_MODE = UI_MODE_PREARM {
+        SET result TO _FMS_EDITOR_KEY(ch).
+      } ELSE {
+        IF ch = "m" OR ch = "M" {
+          MENU_OPEN().
+        } ELSE IF ch = "q" OR ch = "Q" {
+          SET result TO "QUIT".
+        } ELSE IF ch = "d" OR ch = "D" {
+          MENU_DISPATCH("debug").
+        } ELSE IF ch = "l" OR ch = "L" {
+          MENU_DISPATCH("logger").
+        }
+      }
     } ELSE {
       IF ch = "m" OR ch = "M" {
         MENU_OPEN().

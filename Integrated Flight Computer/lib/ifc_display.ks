@@ -19,6 +19,7 @@ FUNCTION DISPLAY_HEADER {
   LOCAL t_str IS "T+" + UI_FORMAT_TIME(TIME:SECONDS - IFC_MISSION_START_UT).
   LOCAL mode_str IS IFC_UI_MODE.
   IF IFC_MANUAL_MODE { SET mode_str TO "MANUAL". }
+  IF IFC_UI_MODE = UI_MODE_PREARM_AMO { SET mode_str TO "AMO". }
   IF IFC_UI_MODE = UI_MODE_MENU_OVERLAY { SET mode_str TO "MENU". }
   IF IFC_PHASE = PHASE_DONE { SET mode_str TO "DONE". }
 
@@ -84,6 +85,43 @@ FUNCTION _DISPLAY_PREARM_CHECKLIST {
   } ELSE {
     UI_P("  READY: configure in menu, then ARM.", UI_PRI_TOP + 5).
   }
+}
+
+FUNCTION DISPLAY_AMO_GROUND {
+  _DISPLAY_AIR_DATA().
+
+  LOCAL amo_mode IS "STANDBY".
+  IF AMO_ACTIVE { SET amo_mode TO "ACTIVE". }
+
+  LOCAL diff_thr IS "UNAVAIL".
+  IF NOT AMO_ENG_DISCOVERED { SET diff_thr TO "N/A". }
+  IF AMO_DIFF_AVAILABLE { SET diff_thr TO "READY". }
+
+  LOCAL diff_brk IS "UNAVAIL".
+  IF NOT ABRK_DISCOVERED { SET diff_brk TO "N/A". }
+  IF ABRK_AVAILABLE { SET diff_brk TO "READY". }
+
+  LOCAL diff_brk_strength IS AMO_DIFF_BRAKE_STRENGTH.
+  IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("diff_brake_strength") {
+    LOCAL cfg_s IS ACTIVE_AIRCRAFT["diff_brake_strength"].
+    IF cfg_s:TYPENAME = "Scalar" { SET diff_brk_strength TO CLAMP(cfg_s, 0, 1). }
+  }
+
+  LOCAL enabled_txt IS "OFF".
+  IF _AMO_ENABLED() { SET enabled_txt TO "ON". }
+  LOCAL ground_txt IS "AIRBORNE".
+  IF _AMO_ON_GROUND() { SET ground_txt TO "ON GROUND". }
+  LOCAL nws_txt IS "NOSE STEER: YES".
+  IF NOT _AMO_HAS_NWS() { SET nws_txt TO "NOSE STEER: NO". }
+
+  UI_P("  AMO GROUND ASSIST  [" + amo_mode + "]", UI_PRI_TOP + 3).
+  UI_P("  Enabled " + enabled_txt + "  " + ground_txt + "  " + nws_txt, UI_PRI_TOP + 4).
+  UI_P("  Diff thrust " + diff_thr + "  Diff brake " + diff_brk +
+       "  strength " + ROUND(diff_brk_strength, 2), UI_PRI_TOP + 5).
+  UI_P("  Banks ENG L/R " + AMO_LEFT_ENGS:LENGTH + "/" + AMO_RIGHT_ENGS:LENGTH +
+       "   BRK L/R " + ABRK_LEFT_BINDINGS:LENGTH + "/" + ABRK_RIGHT_BINDINGS:LENGTH, UI_PRI_TOP + 6).
+  UI_P("  SteerIn " + ROUND(_AMO_STEER_INPUT(), 3) +
+       "  Deadband " + ROUND(CLAMP(_AMO_CFG_NUM("amo_steer_deadband", AMO_STEER_DEADBAND, 0), 0, 1), 3), UI_PRI_TOP + 7).
 }
 
 FUNCTION DISPLAY_PLAN_EDITOR {
@@ -376,8 +414,13 @@ FUNCTION DISPLAY_QUICK_ACTIONS {
     LOCAL c_aa    IS "[ ] AA".     IF aa_ok   { SET c_aa   TO "[x] AA". }
     LOCAL c_far   IS "[ ] FAR".    IF far_ok  { SET c_far  TO "[x] FAR". }
     SET row0 TO "  CHK " + c_cfg + "  " + c_aa + "  " + c_far.
-    SET row1 TO "  W/S:leg  A:add  X:del  E:edit  M:menu  Q:quit".
-    SET row2 TO "  ARM the plan via M > ARM IFC".
+    IF IFC_UI_MODE = UI_MODE_PREARM_AMO {
+      SET row1 TO "  P:planner  M:menu  D:debug  L:log  Q:quit".
+      SET row2 TO "  A/D steer on ground for AMO differential assist".
+    } ELSE {
+      SET row1 TO "  W/S:leg  A:add  X:del  E:edit  P:AMO  M:menu  Q:quit".
+      SET row2 TO "  ARM the plan via M > ARM IFC".
+    }
   }
 
   UI_P(row0, UI_SEC_TOP).
@@ -431,6 +474,8 @@ FUNCTION DISPLAY_KEY_HINTS {
 
   IF IFC_UI_MODE = UI_MODE_MENU_OVERLAY {
     SET hints TO "  [W/S]Move  [A/D]Change  [Y]Exec  [M]Close  [Q]Quit".
+  } ELSE IF IFC_UI_MODE = UI_MODE_PREARM_AMO {
+    SET hints TO "  [P]Planner  [M]Menu  [D]Debug  [L]Log  [Q]Quit".
   } ELSE IF IFC_PHASE = PHASE_PREARM {
     IF FMS_EDITING_LEG {
       SET hints TO "  [W/S]Field  [A/D]Change  [E]Done editing".
@@ -445,6 +490,11 @@ FUNCTION DISPLAY_KEY_HINTS {
 }
 
 FUNCTION _DISPLAY_PRIMARY_BY_PHASE {
+  IF IFC_PHASE = PHASE_PREARM AND IFC_UI_MODE = UI_MODE_PREARM_AMO {
+    DISPLAY_AMO_GROUND().
+    RETURN.
+  }
+
   IF IFC_PHASE = PHASE_PREARM {
     DISPLAY_PLAN_EDITOR().
     RETURN.

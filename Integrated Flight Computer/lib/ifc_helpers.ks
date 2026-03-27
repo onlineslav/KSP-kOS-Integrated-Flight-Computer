@@ -219,6 +219,63 @@ FUNCTION _GET_MAIN_GEAR_TAG {
   RETURN tag.
 }
 
+FUNCTION _GEAR_PART_LIST_HAS {
+  PARAMETER lst, p.
+  LOCAL i IS 0.
+  UNTIL i >= lst:LENGTH {
+    IF lst[i] = p { RETURN TRUE. }
+    SET i TO i + 1.
+  }
+  RETURN FALSE.
+}
+
+FUNCTION _GEAR_TAG_VARIANTS {
+  PARAMETER base_tag.
+  LOCAL tags IS LIST().
+  IF base_tag = "" { RETURN tags. }
+  LOCAL stem IS base_tag.
+  IF base_tag:LENGTH >= 2 {
+    LOCAL sfx IS base_tag:SUBSTRING(base_tag:LENGTH - 2, 2):TOUPPER.
+    IF sfx = "_L" OR sfx = "_R" {
+      SET stem TO base_tag:SUBSTRING(0, base_tag:LENGTH - 2).
+    }
+  }
+
+  LOCAL stems IS LIST(stem).
+  // Prefix compatibility:
+  // - current family: ifc_*
+  // - legacy family:  ifs_*
+  IF stem:LENGTH > 4 {
+    LOCAL pref IS stem:SUBSTRING(0, 4):TOLOWER.
+    IF pref = "ifc_" {
+      stems:ADD("ifs_" + stem:SUBSTRING(4, stem:LENGTH - 4)).
+    } ELSE IF pref = "ifs_" {
+      stems:ADD("ifc_" + stem:SUBSTRING(4, stem:LENGTH - 4)).
+    }
+  }
+
+  LOCAL si IS 0.
+  UNTIL si >= stems:LENGTH {
+    LOCAL s IS stems[si].
+    LOCAL cands IS LIST(s, s + "_L", s + "_R").
+    LOCAL ci IS 0.
+    UNTIL ci >= cands:LENGTH {
+      LOCAL cand IS cands[ci].
+      LOCAL seen IS FALSE.
+      LOCAL ti IS 0.
+      UNTIL ti >= tags:LENGTH OR seen {
+        IF tags[ti] = cand { SET seen TO TRUE. }
+        SET ti TO ti + 1.
+      }
+      IF NOT seen { tags:ADD(cand). }
+      SET ci TO ci + 1.
+    }
+    SET si TO si + 1.
+  }
+
+  RETURN tags.
+}
+
 FUNCTION _GET_RUNWAY_REF_ALT_ASL {
   IF ACTIVE_ILS_ID <> "" {
     LOCAL ils IS GET_BEACON(ACTIVE_ILS_ID).
@@ -238,17 +295,22 @@ FUNCTION _DISCOVER_MAIN_GEAR_PARTS {
   IF tag = "" { RETURN. }
   IF NOT SHIP:HASSUFFIX("PARTSTAGGED") { RETURN. }
 
-  LOCAL tagged_parts IS SHIP:PARTSTAGGED(tag).
-  LOCAL i IS 0.
-  UNTIL i >= tagged_parts:LENGTH {
-    LOCAL p IS tagged_parts[i].
-    IF p <> 0 AND p:HASSUFFIX("BOUNDS") {
-      LOCAL b IS p:BOUNDS.
-      IF b <> 0 AND (b:HASSUFFIX("BOTTOMALT") OR b:HASSUFFIX("BOTTOMALTRADAR")) {
-        FLARE_GEAR_PARTS:ADD(p).
+  LOCAL tags IS _GEAR_TAG_VARIANTS(tag).
+  LOCAL ti IS 0.
+  UNTIL ti >= tags:LENGTH {
+    LOCAL tagged_parts IS SHIP:PARTSTAGGED(tags[ti]).
+    LOCAL i IS 0.
+    UNTIL i >= tagged_parts:LENGTH {
+      LOCAL p IS tagged_parts[i].
+      IF p <> 0 AND p:HASSUFFIX("BOUNDS") AND NOT _GEAR_PART_LIST_HAS(FLARE_GEAR_PARTS, p) {
+        LOCAL b IS p:BOUNDS.
+        IF b <> 0 AND (b:HASSUFFIX("BOTTOMALT") OR b:HASSUFFIX("BOTTOMALTRADAR")) {
+          FLARE_GEAR_PARTS:ADD(p).
+        }
       }
+      SET i TO i + 1.
     }
-    SET i TO i + 1.
+    SET ti TO ti + 1.
   }
 }
 

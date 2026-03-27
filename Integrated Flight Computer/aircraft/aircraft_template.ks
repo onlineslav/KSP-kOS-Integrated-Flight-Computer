@@ -88,6 +88,12 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
 
     // ── Takeoff ───────────────────────────────────────────
     "has_nws",            TRUE,  // TRUE = aircraft has nose wheel steering
+    "amo_enabled",        1,     // 1 enables AMO ground assist in pre-arm when has_nws=FALSE
+    "diff_brake_strength",1.0,   // 0..1 per-side auto-brake strength used by AMO differential steering
+    "abrk_default_strength",0.7, // 0..1 default wheel brake strength setting when not differentially steering
+    "abrk_module_name",   "",    // optional override: exact wheel module name to bind (e.g., "ModuleWheelBase")
+    "abrk_field_name",    "",    // optional override: exact brake field name on that module (e.g., "brakeTweakable")
+    "abrk_field_base",    -1,    // optional override: numeric full-scale value for abrk_field_name (-1 = auto infer)
     "v_r",                70.0,  // m/s  rotate speed
     "v2",                 80.0,  // m/s  V2 climb speed
     "takeoff_pitch_tgt",  12.0,  // deg  pitch target at rotation
@@ -186,7 +192,7 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     // ── Flare ─────────────────────────────────────────────
     // Override the global constants for this specific aircraft.
     // Set to -1 to use the global default from ifc_constants.ks.
-    "flare_gear_tag",      "", // tagged main-gear parts used for flare/touchdown height ("", use global default tag)
+    "flare_gear_tag",      "", // base main-gear tag for flare/touchdown height; IFC also checks "<tag>_L" and "<tag>_R"
     "flare_ctrl_h_offset_max_m",-1, // m max captured (runway-height - gear-height) used for control-height shaping (-1 = global)
     "flare_agl",    -1,   // m runway-relative main-gear height to begin flare  (-1 = use FLARE_AGL_M)
     "flare_entry_vs_min", -1, // m/s minimum flare-entry sink retained from approach (more negative = later arrest) (-1 = global)

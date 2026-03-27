@@ -145,6 +145,7 @@ GLOBAL IFC_ALERT_LAST_LINE IS "__INIT__". // last rendered alert row text (preve
 GLOBAL IFC_MENU_OPEN      IS FALSE.  // TRUE when menu overlay is visible
 GLOBAL IFC_MENU_DIRTY     IS FALSE.  // TRUE when overlay needs redraw
 GLOBAL IFC_UI_MODE        IS "".     // active interaction mode (UI_MODE_*)
+GLOBAL IFC_UI_MODE_PRE_MENU IS "".   // UI mode to restore when closing menu overlay
 GLOBAL IFC_FAST_MODE      IS FALSE.  // TRUE = skip UI/menu rendering work in main loop
 GLOBAL IFC_EVENT_QUEUE    IS LIST(). // recent events, newest at end
 GLOBAL IFC_EVENT_LAST_UT  IS -99.    // last alert UT mirrored into queue
@@ -289,6 +290,27 @@ GLOBAL FMS_WPT_UNIVERSE  IS 0.      // cached LEXICON("ids",LIST,"names",LIST) o
 GLOBAL IFC_MANUAL_MODE IS FALSE. // TRUE = autopilot suspended, pilot has control
 
 // ----------------------------
+// AMO (Augmented Manual Operation) ground steering assist
+// ----------------------------
+GLOBAL AMO_ACTIVE IS FALSE.          // TRUE while AMO differential assist is actively applying
+GLOBAL AMO_ENG_DISCOVERED IS FALSE.  // TRUE after once-per-session diff-engine bank discovery
+GLOBAL AMO_DIFF_AVAILABLE IS FALSE.  // TRUE when both left/right steering-engine banks were found
+GLOBAL AMO_LEFT_ENGS IS LIST().      // LIST of LEXICON("eng",Engine,"base_limit",percent)
+GLOBAL AMO_RIGHT_ENGS IS LIST().     // LIST of LEXICON("eng",Engine,"base_limit",percent)
+GLOBAL AMO_BRAKES_FORCED IS FALSE.   // TRUE when AMO enabled brakes this frame group (so release is safe)
+
+// ----------------------------
+// Auto-brake (per-side wheel brake control via tagged main gear)
+// ----------------------------
+GLOBAL ABRK_DISCOVERED IS FALSE.      // TRUE once side-tagged brake modules are discovered
+GLOBAL ABRK_AVAILABLE IS FALSE.       // TRUE when both left/right brake banks have writable bindings
+GLOBAL ABRK_WARNED_NO_PARTS IS FALSE. // one-shot warning latch when no valid brake bindings are found
+GLOBAL ABRK_LEFT_BINDINGS IS LIST().  // LIST of LEXICON("module",module,"field",field_name,"base",numeric_base)
+GLOBAL ABRK_RIGHT_BINDINGS IS LIST(). // LIST of LEXICON("module",module,"field",field_name,"base",numeric_base)
+GLOBAL ABRK_LAST_LEFT_CMD IS 0.       // last commanded left brake fraction [0..1]
+GLOBAL ABRK_LAST_RIGHT_CMD IS 0.      // last commanded right brake fraction [0..1]
+
+// ----------------------------
 // Cruise phase state
 // ----------------------------
 GLOBAL CRUISE_WAYPOINTS   IS LIST().      // ordered list of beacon IDs to navigate
@@ -330,7 +352,7 @@ GLOBAL FLARE_TECS_H_REF IS 0. // flare TECS runway-relative reference height (m)
 GLOBAL FLARE_TRIGGER_START_UT IS -1. // debounce timer start for entering flare
 GLOBAL FLARE_GEAR_DISCOVERED IS FALSE. // TRUE once tagged main-gear parts are discovered for flare-height reference
 GLOBAL FLARE_GEAR_TAG_ACTIVE IS "". // active tag used for main-gear discovery cache
-GLOBAL FLARE_GEAR_PARTS IS LIST(). // LIST of Part handles tagged as main-gear flare sensors
+GLOBAL FLARE_GEAR_PARTS IS LIST(). // LIST of Part handles tagged as main-gear flare sensors (base tag and/or base_L/base_R)
 GLOBAL TOUCHDOWN_CANDIDATE_UT IS -1. // debounce timer start for entering touchdown
 GLOBAL TOUCHDOWN_INIT_DONE IS FALSE. // one-time touchdown handoff latch
 GLOBAL TOUCHDOWN_CAPTURE_PITCH_DEG IS 0. // pitch snapshot captured at flare->touchdown transition
@@ -606,7 +628,8 @@ FUNCTION IFC_INIT_STATE {
   SET IFC_ALERT_LAST_LINE TO "__INIT__".
   SET IFC_MENU_OPEN    TO FALSE.
   SET IFC_MENU_DIRTY   TO FALSE.
-  SET IFC_UI_MODE      TO UI_MODE_PREARM.
+  SET IFC_UI_MODE      TO UI_MODE_PREARM_AMO.
+  SET IFC_UI_MODE_PRE_MENU TO UI_MODE_PREARM_AMO.
   SET IFC_EVENT_QUEUE  TO LIST().
   SET IFC_EVENT_LAST_UT TO -99.
   SET IFC_EVENT_LAST_TEXT TO "".
@@ -738,6 +761,19 @@ FUNCTION IFC_INIT_STATE {
   SET FLIGHT_PLAN       TO LIST().
   SET FLIGHT_PLAN_INDEX TO 0.
   SET IFC_MANUAL_MODE   TO FALSE.
+  SET AMO_ACTIVE        TO FALSE.
+  SET AMO_ENG_DISCOVERED TO FALSE.
+  SET AMO_DIFF_AVAILABLE TO FALSE.
+  AMO_LEFT_ENGS:CLEAR().
+  AMO_RIGHT_ENGS:CLEAR().
+  SET AMO_BRAKES_FORCED TO FALSE.
+  SET ABRK_DISCOVERED TO FALSE.
+  SET ABRK_AVAILABLE TO FALSE.
+  SET ABRK_WARNED_NO_PARTS TO FALSE.
+  ABRK_LEFT_BINDINGS:CLEAR().
+  ABRK_RIGHT_BINDINGS:CLEAR().
+  SET ABRK_LAST_LEFT_CMD TO 0.
+  SET ABRK_LAST_RIGHT_CMD TO 0.
 
   SET DRAFT_PLAN        TO LIST().
   SET FMS_LEG_CURSOR    TO 0.
