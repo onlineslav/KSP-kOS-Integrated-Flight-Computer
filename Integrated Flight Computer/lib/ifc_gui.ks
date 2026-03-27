@@ -1,14 +1,14 @@
-@LAZYGLOBAL OFF.
+﻿@LAZYGLOBAL OFF.
 
 // ============================================================
 // ifc_gui.ks  -  Integrated Flight Computer
 //
 // Two-window flight plan editor for PHASE_PREARM.
 //
-// Window 1  GUI_WIN      — leg list + ARM/QUIT/SAVE/LOAD.
+// Window 1  GUI_WIN      â€” leg list + ARM/QUIT/SAVE/LOAD.
 //           Pre-allocated (8 rows), never rebuilt.
 //
-// Window 2  GUI_EDIT_WIN — leg detail editor.
+// Window 2  GUI_EDIT_WIN â€” leg detail editor.
 //           Uses cycle buttons for type/nav switching and text/popup controls
 //           for numeric entry and waypoint/airport/plate selection.
 //           Rebuilt when the leg type or cruise nav subtype changes.
@@ -36,14 +36,14 @@
 //     [4] plate_popup    (POPUPMENU)
 //
 // Public entry points (called from ifc_main.ks):
-//   _GUI_BUILD()  — open both windows
-//   _GUI_CLOSE()  — close both windows
-//   _GUI_TICK()   — poll all widgets; returns "" / "ARM" / "QUIT"
+//   _GUI_BUILD()  â€” open both windows
+//   _GUI_CLOSE()  â€” close both windows
+//   _GUI_TICK()   â€” poll all widgets; returns "" / "ARM" / "QUIT"
 // ============================================================
 
 LOCAL GUI_MAX_LEGS IS 8.
 
-// ── Safe string-to-number parser ─────────────────────────
+// â”€â”€ Safe string-to-number parser â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 FUNCTION _PARSE_NUM {
   PARAMETER txt, fallback.
   IF txt:LENGTH = 0 { RETURN fallback. }
@@ -76,7 +76,7 @@ FUNCTION _GUI_CRUISE_PARSE_SPD_INPUT {
   RETURN CLAMP(parsed, 10, 500).
 }
 
-// ── Leg-type helpers ──────────────────────────────────────
+// â”€â”€ Leg-type helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 FUNCTION _TYPE_NAME {
   PARAMETER ti.
   IF ti = 0 { RETURN "TAKEOFF". }
@@ -96,7 +96,7 @@ FUNCTION _IDX_TO_TYPE {
   RETURN LEG_APPROACH.
 }
 
-// ── Swap two legs ─────────────────────────────────────────
+// â”€â”€ Swap two legs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 FUNCTION _GUI_SWAP_LEGS {
   PARAMETER a, b.
   LOCAL tmp IS DRAFT_PLAN[a].
@@ -104,7 +104,7 @@ FUNCTION _GUI_SWAP_LEGS {
   SET DRAFT_PLAN[b] TO tmp.
 }
 
-// ── Cycle-button row builder ──────────────────────────────
+// â”€â”€ Cycle-button row builder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Adds a row: LABEL(row_label) [<] LABEL(val_text) [>]
 // Returns LIST(prev_btn, val_lbl, next_btn).
 FUNCTION _GUI_CYCLE_ROW {
@@ -122,9 +122,9 @@ FUNCTION _GUI_CYCLE_ROW {
   RETURN LIST(pb, vl, nb).
 }
 
-// ══════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // EDIT WINDOW  (GUI_EDIT_WIN)
-// ══════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 FUNCTION _GUI_CLOSE_EDIT {
   IF GUI_EDIT_WIN <> 0 {
@@ -163,14 +163,14 @@ FUNCTION _GUI_BUILD_EDIT {
 
   GUI_EDIT_HANDLES:CLEAR().
 
-  // ── [0..2] Leg type cycle row ─────────────────────────
+  // â”€â”€ [0..2] Leg type cycle row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   LOCAL ti IS _TYPE_TO_IDX(t).
   LOCAL type_row IS _GUI_CYCLE_ROW(GUI_EDIT_WIN, "Leg Type:", _TYPE_NAME(ti)).
   GUI_EDIT_HANDLES:ADD(type_row[0]).  // [0] type_prev
   GUI_EDIT_HANDLES:ADD(type_row[1]).  // [1] type_lbl
   GUI_EDIT_HANDLES:ADD(type_row[2]).  // [2] type_next
 
-  // ── Type-specific widgets (index 3+) ─────────────────
+  // â”€â”€ Type-specific widgets (index 3+) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   IF t = LEG_TAKEOFF {
     // [3..5] Runway cycle row
     LOCAL rwy_idx IS 0.
@@ -560,7 +560,7 @@ FUNCTION _GUI_TICK_EDIT {
   LOCAL t   IS GUI_EDIT_LEG_TYPE.
   LOCAL p   IS leg["params"].
 
-  // ── [0] type_prev / [2] type_next ────────────────────
+  // â”€â”€ [0] type_prev / [2] type_next â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   LOCAL ti IS _TYPE_TO_IDX(t).
   IF GUI_EDIT_HANDLES[0]:TAKEPRESS {
     LOCAL new_t IS _IDX_TO_TYPE(MOD(ti + 2, 3)).
@@ -575,9 +575,9 @@ FUNCTION _GUI_TICK_EDIT {
     RETURN TRUE.
   }
 
-  // ── Type-specific polling ─────────────────────────────
+  // â”€â”€ Type-specific polling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   IF t = LEG_TAKEOFF AND GUI_EDIT_HANDLES:LENGTH >= 6 {
-    // [3]/[5] — 2-option toggle
+    // [3]/[5] â€” 2-option toggle
     LOCAL rwy_idx IS 0.
     IF p:HASKEY("rwy_idx") { SET rwy_idx TO CLAMP(ROUND(p["rwy_idx"], 0), 0, 1). }
     IF GUI_EDIT_HANDLES[3]:TAKEPRESS OR GUI_EDIT_HANDLES[5]:TAKEPRESS {
@@ -623,7 +623,7 @@ FUNCTION _GUI_TICK_EDIT {
       RETURN TRUE.
     }
 
-    // [6]/[8] — Nav type cycle (rebuild on change)
+    // [6]/[8] â€” Nav type cycle (rebuild on change)
     LOCAL nav_types IS LIST("waypoint", "course_dist", "course_time").
     LOCAL nt IS "waypoint".
     IF p:HASKEY("nav_type") { SET nt TO p["nav_type"]. }
@@ -643,7 +643,7 @@ FUNCTION _GUI_TICK_EDIT {
       RETURN TRUE.
     }
 
-    // [9+] — Nav-type-specific fields
+    // [9+] â€” Nav-type-specific fields
     IF nt = "course_dist" AND GUI_EDIT_HANDLES:LENGTH >= 11 {
       LOCAL cdeg IS 90.
       LOCAL dnm  IS 100.
@@ -748,10 +748,10 @@ FUNCTION _GUI_TICK_EDIT {
   RETURN FALSE.
 }
 
-// ══════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // MAIN WINDOW  (GUI_WIN)
 // Pre-allocated leg list with 8 rows.  Never rebuilt.
-// ══════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 FUNCTION _GUI_CLOSE {
   _GUI_CLOSE_EDIT().
@@ -807,7 +807,7 @@ FUNCTION _GUI_REFRESH {
     SET li TO li + 1.
   }
 
-  // Save/Load — prefill name and repopulate plan list.
+  // Save/Load â€” prefill name and repopulate plan list.
   IF GUI_SAVE_NAME_TF <> 0 AND GUI_SAVE_NAME_TF:TEXT = "" {
     SET GUI_SAVE_NAME_TF:TEXT TO FMS_LAST_SAVE_NAME.
   }
@@ -1029,10 +1029,10 @@ FUNCTION _GUI_TICK {
   RETURN "".
 }
 
-// ══════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // END-OF-FLIGHT CONFIRMATION DIALOG
 // Blocking mini-loop GUI.  Returns TRUE = new flight, FALSE = exit.
-// ══════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 FUNCTION _GUI_SHOW_END_CONFIRM {
   LOCAL win IS GUI(280).
   LOCAL hdr IS win:ADDLABEL("  FLIGHT COMPLETE").
@@ -1060,13 +1060,13 @@ FUNCTION _GUI_SHOW_END_CONFIRM {
   RETURN confirm.
 }
 
-// ══════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // IN-FLIGHT PLAN EDITING
-// ══════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 // Open the plan editor mid-flight.  Populates DRAFT_PLAN from the
 // remaining legs in FLIGHT_PLAN_DRAFT_COPY (editor format), then
-// builds the GUI window with COMMIT / DISCARD button labels.
+// builds the GUI window with COMMIT / CANCEL button labels.
 FUNCTION _GUI_OPEN_INFLIGHT {
   DRAFT_PLAN:CLEAR().
   LOCAL start IS FLIGHT_PLAN_INDEX + 1.
@@ -1084,16 +1084,16 @@ FUNCTION _GUI_OPEN_INFLIGHT {
 
   _GUI_BUILD().
 
-  // Relabel ARM → COMMIT, QUIT → DISCARD for in-flight context.
+  // Relabel ARM â†’ COMMIT, QUIT â†’ DISCARD for in-flight context.
   IF GUI_ARM_BTN  <> 0 { SET GUI_ARM_BTN:TEXT  TO "    COMMIT    ". }
-  IF GUI_QUIT_BTN <> 0 { SET GUI_QUIT_BTN:TEXT TO "   DISCARD   ". }
+  IF GUI_QUIT_BTN <> 0 { SET GUI_QUIT_BTN:TEXT TO "    CANCEL    ". }
 
   SET GUI_INFLIGHT_MODE TO TRUE.
 }
 
 // Poll the in-flight plan editor each loop tick.
-// Delegates to _GUI_TICK(); translates ARM → COMMIT, QUIT → DISCARD.
-// Returns "" / "COMMIT" / "DISCARD".
+// Delegates to _GUI_TICK(); translates ARM â†’ COMMIT, QUIT â†’ DISCARD.
+// Returns "" / "COMMIT" / "CANCEL".
 FUNCTION _GUI_TICK_INFLIGHT {
   LOCAL tick_res IS _GUI_TICK().
   IF tick_res = "ARM" {
@@ -1106,7 +1106,8 @@ FUNCTION _GUI_TICK_INFLIGHT {
   IF tick_res = "QUIT" {
     SET GUI_INFLIGHT_MODE TO FALSE.
     _GUI_CLOSE().
-    RETURN "DISCARD".
+    RETURN "CANCEL".
   }
   RETURN "".
 }
+

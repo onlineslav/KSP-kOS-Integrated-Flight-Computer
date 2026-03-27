@@ -151,7 +151,24 @@ FUNCTION DISPLAY_PLAN_EDITOR {
 
 FUNCTION DISPLAY_CRUISE {
   _DISPLAY_AIR_DATA().
-  UI_CLR(UI_PRI_TOP + 2).
+  // VNAV ToD readout (if available): distance and time remaining to top-of-descent.
+  IF CRUISE_VNAV_TOD_M > 0 AND CRUISE_VNAV_TGT_LL <> 0 {
+    LOCAL dist_iaf_m IS GEO_DISTANCE(SHIP:GEOPOSITION, CRUISE_VNAV_TGT_LL).
+    LOCAL tod_rem_m IS dist_iaf_m - CRUISE_VNAV_TOD_M.
+    IF tod_rem_m > 0 {
+      LOCAL tod_km IS ROUND(tod_rem_m / 1000, 1).
+      LOCAL gs_mps IS MAX(SHIP:GROUNDSPEED, 0).
+      LOCAL tod_time_txt IS "--:--".
+      IF gs_mps > 1 {
+        SET tod_time_txt TO UI_FORMAT_TIME(tod_rem_m / gs_mps).
+      }
+      UI_P("  VNAV ToD IN " + tod_km + " km  T-" + tod_time_txt, UI_PRI_TOP + 2).
+    } ELSE {
+      UI_P("  VNAV ToD NOW (descent active)", UI_PRI_TOP + 2).
+    }
+  } ELSE {
+    UI_CLR(UI_PRI_TOP + 2).
+  }
   LOCAL spd_txt IS ROUND(CRUISE_SPD_MPS, 0) + " m/s".
   IF CRUISE_IS_MACH_MODE(CRUISE_SPD_MODE) {
     SET spd_txt TO "M" + ROUND(CRUISE_SPD_MACH, 2) + "  (" + ROUND(CRUISE_SPD_MPS, 0) + " m/s cmd)".

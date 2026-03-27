@@ -73,6 +73,8 @@ If an aircraft does not have nose steering, differential braking and differentia
 ### Radar-based Terrain Following Mode
 This mode allows the aircraft to be fully manually operatable, however pilot-inputs are blended with terrain following, that way the aircraft can still bank and turn, but the autopilot also tries to keep the same radar altitude.
 
+### Radar-based SLAM navigation (plotting course around terrain (horizontally or vertically))
+
 # Bugs
 - Thrust reverser should throttle zero before disengaging (and wait for spool down) at end of landing so that it doesn't start accelerating the plane fwd when reversers are disengaged
 
