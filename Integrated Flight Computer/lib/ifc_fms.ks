@@ -12,13 +12,14 @@
 
 GLOBAL FMS_PLAN_PREFIX IS "0:/ifc_plan_".
 GLOBAL FMS_PLAN_SUFFIX IS ".json".
+GLOBAL FMS_PLAN_INDEX_PATH IS "0:/ifc_plan_index.json".
 
 // Sanitize a display name into a safe filename stem.
 // Spaces become underscores; non-alnum/underscore/hyphen chars stripped.
 // Result capped at 32 chars; falls back to "plan" if empty.
 FUNCTION _FMS_SANITIZE_NAME {
   PARAMETER raw.
-  LOCAL s IS raw:TRIM:REPLACE(" ", "_").
+  LOCAL s IS ("" + raw):TRIM:REPLACE(" ", "_").
   LOCAL valid IS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-".
   LOCAL safe IS "".
   LOCAL i IS 0.
@@ -35,6 +36,43 @@ FUNCTION _FMS_SANITIZE_NAME {
 FUNCTION _FMS_NAME_PATH {
   PARAMETER name.
   RETURN FMS_PLAN_PREFIX + _FMS_SANITIZE_NAME(name) + FMS_PLAN_SUFFIX.
+}
+
+FUNCTION _FMS_READ_PLAN_INDEX {
+  LOCAL plans IS LIST().
+  IF NOT EXISTS(FMS_PLAN_INDEX_PATH) { RETURN plans. }
+  LOCAL data IS READJSON(FMS_PLAN_INDEX_PATH).
+  LOCAL src IS LIST().
+  IF data:TYPENAME = "List" OR data:TYPENAME = "ListValue" {
+    SET src TO data.
+  } ELSE {
+    LOCAL is_lex IS data:TYPENAME = "Lexicon" OR data:TYPENAME = "LexiconValue".
+    IF NOT is_lex OR NOT data:HASKEY("plans") { RETURN plans. }
+    LOCAL psrc IS data["plans"].
+    IF psrc:TYPENAME = "List" OR psrc:TYPENAME = "ListValue" {
+      SET src TO psrc.
+    } ELSE {
+      RETURN plans.
+    }
+  }
+
+  LOCAL i IS 0.
+  UNTIL i >= src:LENGTH {
+    LOCAL n IS src[i].
+    IF n:TYPENAME = "String" {
+      LOCAL clean IS n:TRIM.
+      IF clean <> "" AND NOT plans:CONTAINS(clean) {
+        plans:ADD(clean).
+      }
+    }
+    SET i TO i + 1.
+  }
+  RETURN plans.
+}
+
+FUNCTION _FMS_WRITE_PLAN_INDEX {
+  PARAMETER plans.
+  WRITEJSON(plans, FMS_PLAN_INDEX_PATH).
 }
 
 // Serialise one DRAFT_PLAN leg to a plain LEXICON safe for WRITEJSON.
@@ -80,13 +118,13 @@ FUNCTION _FMS_DESERIALISE_LEG {
       LOCAL wid  IS "".
       IF p:HASKEY(wkey) {
         LOCAL raw IS p[wkey].
-        // v2 compatibility: integer index → beacon ID string
+        // v2 compatibility: integer index -> beacon ID string
         IF raw:TYPENAME = "Scalar" {
           LOCAL idx IS ROUND(raw, 0).
           IF idx >= 0 AND idx < CUSTOM_WPT_IDS:LENGTH {
             SET wid TO CUSTOM_WPT_IDS[idx].
           }
-        } ELSE {
+        } ELSE IF raw:TYPENAME = "String" {
           SET wid TO raw.
         }
       }
@@ -114,7 +152,9 @@ FUNCTION _FMS_DESERIALISE_LEG {
 
 FUNCTION FMS_SAVE_PLAN {
   PARAMETER name IS "plan".
-  LOCAL path IS _FMS_NAME_PATH(name).
+  LOCAL display_name IS ("" + name):TRIM.
+  IF display_name = "" { SET display_name TO "plan". }
+  LOCAL file_path IS _FMS_NAME_PATH(display_name).
 
   LOCAL legs IS LIST().
   LOCAL i IS 0.
@@ -125,25 +165,36 @@ FUNCTION FMS_SAVE_PLAN {
 
   LOCAL snapshot IS LEXICON(
     "version", 3,
-    "name",    name,
+    "name",    display_name,
     "legs",    legs
   ).
-  WRITEJSON(snapshot, path).
-  SET FMS_LAST_SAVE_NAME TO name.
-  IFC_SET_ALERT("Plan saved: " + name).
+  WRITEJSON(snapshot, file_path).
+
+  LOCAL plans IS _FMS_READ_PLAN_INDEX().
+  IF NOT plans:CONTAINS(display_name) {
+    plans:ADD(display_name).
+    _FMS_WRITE_PLAN_INDEX(plans).
+  }
+
+  SET FMS_LAST_SAVE_NAME TO display_name.
+  IFC_SET_ALERT("Plan saved: " + display_name).
   RETURN TRUE.
 }
 
 FUNCTION FMS_LOAD_PLAN {
   PARAMETER name IS "plan".
-  LOCAL path IS _FMS_NAME_PATH(name).
+  LOCAL file_path IS _FMS_NAME_PATH(name).
+  LOCAL display_name IS name.
 
-  IF NOT EXISTS(path) {
+  IF NOT EXISTS(file_path) {
     IFC_SET_ALERT("No saved plan: " + name).
     RETURN FALSE.
   }
 
-  LOCAL p IS READJSON(path).
+  LOCAL p IS READJSON(file_path).
+  IF p:HASKEY("name") AND p["name"]:TYPENAME = "String" AND p["name"] <> "" {
+    SET display_name TO p["name"].
+  }
 
   IF NOT p:HASKEY("version") OR p["version"] < 2 {
     IFC_SET_ALERT("Plan " + name + ": old format, re-save needed").
@@ -180,9 +231,15 @@ FUNCTION FMS_LOAD_PLAN {
   SET FMS_EDIT_FIELD    TO 0.
   SET FMS_EDITING_LEG   TO FALSE.
   SET LAST_DISPLAY_UT   TO 0.
-  SET FMS_LAST_SAVE_NAME TO name.
+  SET FMS_LAST_SAVE_NAME TO display_name.
 
-  IFC_SET_ALERT("Plan loaded: " + name).
+  LOCAL plans IS _FMS_READ_PLAN_INDEX().
+  IF NOT plans:CONTAINS(display_name) {
+    plans:ADD(display_name).
+    _FMS_WRITE_PLAN_INDEX(plans).
+  }
+
+  IFC_SET_ALERT("Plan loaded: " + display_name).
   RETURN TRUE.
 }
 
@@ -191,19 +248,7 @@ FUNCTION FMS_PLAN_EXISTS {
   RETURN EXISTS(_FMS_NAME_PATH(name)).
 }
 
-// Returns a LIST of saved plan names derived from filenames on the archive volume.
+// Returns a LIST of saved plan names from the plan index file.
 FUNCTION FMS_LIST_PLANS {
-  LOCAL result IS LIST().
-  IF NOT EXISTS("0:") { RETURN result. }
-  LOCAL vol IS OPEN("0:").
-  LOCAL files IS vol:FILES.
-  FOR fname IN files:KEYS {
-    IF fname:STARTSWITH("ifc_plan_") AND fname:ENDSWITH(".json") {
-      // Strip "ifc_plan_" (9 chars) prefix and ".json" (5 chars) suffix.
-      IF fname:LENGTH > 14 {
-        result:ADD(fname:SUBSTRING(9, fname:LENGTH - 14)).
-      }
-    }
-  }
-  RETURN result.
+  RETURN _FMS_READ_PLAN_INDEX().
 }

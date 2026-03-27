@@ -117,7 +117,7 @@ FUNCTION _MENU_SET_VALUE {
     RETURN.
   }
   IF key = "slot" {
-    SET IFC_MENU_SLOT TO CLAMP(ROUND(val, 0), FMS_SLOT_MIN, FMS_SLOT_MAX).
+    SET IFC_MENU_SLOT TO CLAMP(ROUND(val, 0), 1, 99).
     RETURN.
   }
 
@@ -164,9 +164,9 @@ FUNCTION MENU_BUILD_ITEMS {
     _MENU_ADD_ITEM(LEXICON("type","numeric","key","vr","label","VR (m/s)","min",0,"max",220,"step",_VSPD_STEP,"auto",1)).
     _MENU_ADD_ITEM(LEXICON("type","numeric","key","v2","label","V2 (m/s)","min",0,"max",260,"step",_VSPD_STEP,"auto",1)).
     _MENU_ADD_ITEM(LEXICON("type","numeric","key","vapp","label","VAPP (m/s)","min",0,"max",220,"step",_VSPD_STEP,"auto",1)).
-    _MENU_ADD_ITEM(LEXICON("type","numeric","key","slot","label","Plan Slot","min",FMS_SLOT_MIN,"max",FMS_SLOT_MAX,"step",1,"auto",0)).
-    _MENU_ADD_ITEM(LEXICON("type","action","key","save","label","Save Slot")).
-    _MENU_ADD_ITEM(LEXICON("type","action","key","load","label","Load Slot")).
+    _MENU_ADD_ITEM(LEXICON("type","numeric","key","slot","label","Plan Index","min",1,"max",99,"step",1,"auto",0)).
+    _MENU_ADD_ITEM(LEXICON("type","action","key","save","label","Save Named Plan")).
+    _MENU_ADD_ITEM(LEXICON("type","action","key","load","label","Load Plan Index")).
     _MENU_ADD_ITEM(LEXICON("type","toggle","key","debug","label","Debug Panel")).
     _MENU_ADD_ITEM(LEXICON("type","toggle","key","logger","label","Logger")).
     _MENU_ADD_ITEM(LEXICON("type","action","key","events","label","Event History")).
@@ -640,11 +640,31 @@ FUNCTION _FMS_AP_NORMALISE_PARAMS {
 // Falls back to the ID itself if no "name" field exists.
 FUNCTION _FMS_WPT_DISPLAY_NAME {
   PARAMETER bid.
-  IF bid = "" { RETURN "(none)". }
-  IF NOT NAV_BEACON_DB:HASKEY(bid) { RETURN bid. }
-  LOCAL b IS NAV_BEACON_DB[bid].
+  LOCAL wid IS bid.
+  IF wid:TYPENAME = "Scalar" {
+    LOCAL widx IS ROUND(wid, 0).
+    IF widx >= 0 AND widx < CUSTOM_WPT_IDS:LENGTH {
+      SET wid TO CUSTOM_WPT_IDS[widx].
+    } ELSE {
+      SET wid TO "".
+    }
+  } ELSE IF wid:TYPENAME <> "String" {
+    SET wid TO "" + wid.
+  }
+  IF wid = "" { RETURN "(none)". }
+  IF NOT NAV_BEACON_DB:HASKEY(wid) { RETURN wid. }
+  LOCAL b IS NAV_BEACON_DB[wid].
   IF b:HASKEY("name") { RETURN b["name"]. }
-  RETURN bid.
+  RETURN wid.
+}
+
+FUNCTION _FMS_WPT_UNIV_ADD {
+  PARAMETER ids, names, bid.
+  IF bid = "" { RETURN. }
+  IF ids:CONTAINS(bid) { RETURN. }
+  IF NOT NAV_BEACON_DB:HASKEY(bid) { RETURN. }
+  ids:ADD(bid).
+  names:ADD(_FMS_WPT_DISPLAY_NAME(bid)).
 }
 
 // Builds (and caches in FMS_WPT_UNIVERSE) the combined cruise waypoint universe:
@@ -658,18 +678,33 @@ FUNCTION _FMS_GET_WPT_UNIVERSE {
   LOCAL wi IS 0.
   UNTIL wi >= CUSTOM_WPT_IDS:LENGTH {
     LOCAL bid IS CUSTOM_WPT_IDS[wi].
-    IF NAV_BEACON_DB:HASKEY(bid) {
-      ids:ADD(bid).
-      names:ADD(_FMS_WPT_DISPLAY_NAME(bid)).
-    }
+    _FMS_WPT_UNIV_ADD(ids, names, bid).
     SET wi TO wi + 1.
   }
-  // Then: all IAF fixes registered in the beacon database.
+
+  // Then: all IAF fixes referenced by approach plates (deterministic source).
+  FOR pid IN PLATE_IDS {
+    IF PLATE_REGISTRY:HASKEY(pid) {
+      LOCAL plate IS PLATE_REGISTRY[pid].
+      IF plate:HASKEY("fixes") {
+        LOCAL fixes IS plate["fixes"].
+        FOR fid IN fixes {
+          IF NAV_BEACON_DB:HASKEY(fid) {
+            LOCAL bfix IS NAV_BEACON_DB[fid].
+            IF bfix:HASKEY("type") AND bfix["type"] = BTYPE_IAF {
+              _FMS_WPT_UNIV_ADD(ids, names, fid).
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Fallback: include any orphan IAF not referenced by a plate.
   FOR bid IN NAV_BEACON_DB:KEYS {
     LOCAL b IS NAV_BEACON_DB[bid].
     IF b:HASKEY("type") AND b["type"] = BTYPE_IAF {
-      ids:ADD(bid).
-      names:ADD(_FMS_WPT_DISPLAY_NAME(bid)).
+      _FMS_WPT_UNIV_ADD(ids, names, bid).
     }
   }
   SET FMS_WPT_UNIVERSE TO LEXICON("ids", ids, "names", names).
@@ -1075,10 +1110,21 @@ FUNCTION _MENU_EXEC_CURRENT {
   }
   IF t <> "action" { RETURN "". }
 
-  IF key = "save" { FMS_SAVE_PLAN(IFC_MENU_SLOT). RETURN "". }
+  IF key = "save" {
+    LOCAL save_name IS FMS_LAST_SAVE_NAME.
+    IF save_name = "" { SET save_name TO "plan_" + IFC_MENU_SLOT. }
+    FMS_SAVE_PLAN(save_name).
+    RETURN "".
+  }
 
   IF key = "load" {
-    IF FMS_LOAD_PLAN(IFC_MENU_SLOT) AND IFC_PHASE = PHASE_PREARM {
+    LOCAL plans IS FMS_LIST_PLANS().
+    IF plans:LENGTH = 0 {
+      IFC_SET_ALERT("No saved plans").
+      RETURN "".
+    }
+    LOCAL pidx IS CLAMP(IFC_MENU_SLOT - 1, 0, plans:LENGTH - 1).
+    IF FMS_LOAD_PLAN(plans[pidx]) AND IFC_PHASE = PHASE_PREARM {
       MENU_STAGE_FROM_LIVE().
     }
     RETURN "".
@@ -1216,4 +1262,3 @@ FUNCTION MENU_TICK {
   }
   RETURN result.
 }
-

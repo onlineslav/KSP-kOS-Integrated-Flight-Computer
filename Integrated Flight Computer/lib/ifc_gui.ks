@@ -9,9 +9,9 @@
 //           Pre-allocated (8 rows), never rebuilt.
 //
 // Window 2  GUI_EDIT_WIN — leg detail editor.
-//           All selections use [<] LABEL [>] cycle buttons.
-//           No TEXTFIELD / POPUPMENU (both have kOS compat issues).
-//           Rebuilt only when the leg type changes.
+//           Uses cycle buttons for type/nav switching and text/popup controls
+//           for numeric entry and waypoint/airport/plate selection.
+//           Rebuilt when the leg type or cruise nav subtype changes.
 //
 // Handle layout in GUI_EDIT_HANDLES (LIST):
 //   [0] type_prev   [1] type_lbl   [2] type_next
@@ -22,7 +22,7 @@
 //     [3] alt_tf                          (TEXTFIELD, m)
 //     [4] spd_tf                          (TEXTFIELD, numeric value only)
 //     [5] spd_mode_pm                     (POPUPMENU, "IAS m/s"=0 / "Mach"=1)
-//     [6] nav_prev  [7] nav_lbl  [8] nav_next  (Waypoint/Dist+Course/Time+Course)
+//     [6] nav_prev  [7] nav_lbl  [8] nav_next  (Waypoint+Alt/Dist+Course/Time+Course)
 //     -- nav_type-specific (index 9+) --
 //     waypoint:    [9]  wpt0_pm
 //                  [10] wpt1_pm
@@ -153,7 +153,7 @@ FUNCTION _GUI_BUILD_EDIT {
   SET GUI_EDIT_LEG_TYPE TO t.
   SET GUI_EDIT_CLOSED_BY_USER TO FALSE.
 
-  SET GUI_EDIT_WIN TO GUI(270).
+  SET GUI_EDIT_WIN TO GUI(380).
   IF GUI_EDIT_POS_VALID {
     SET GUI_EDIT_WIN:X TO GUI_EDIT_LAST_X.
     SET GUI_EDIT_WIN:Y TO GUI_EDIT_LAST_Y.
@@ -219,7 +219,7 @@ FUNCTION _GUI_BUILD_EDIT {
     GUI_EDIT_HANDLES:ADD(spd_mode_pm).  // [5]
 
     // [6..8] Nav type cycle row
-    LOCAL nav_names IS LIST("Waypoint", "Dist+Course", "Time+Course").
+    LOCAL nav_names IS LIST("Waypoint+Alt", "Dist+Course", "Time+Course").
     LOCAL nav_ni IS 0.
     IF nt = "course_dist" { SET nav_ni TO 1. }
     IF nt = "course_time" { SET nav_ni TO 2. }
@@ -273,20 +273,36 @@ FUNCTION _GUI_BUILD_EDIT {
       SET tme_tf:STYLE:WIDTH TO 110.
       GUI_EDIT_HANDLES:ADD(tme_tf).  // [10]
     } ELSE {
-      // waypoint: [9..17] — 3 slots × 3 handles each
+      // waypoint: [9..11] popup menus
+      LOCAL univ IS _FMS_GET_WPT_UNIVERSE().
+      LOCAL wids IS univ["ids"].
+      LOCAL wnames IS univ["names"].
       LOCAL slot IS 0.
       UNTIL slot >= FMS_WPT_SLOTS {
         LOCAL wkey IS "wpt" + slot.
-        LOCAL widx IS -1.
-        IF p:HASKEY(wkey) { SET widx TO ROUND(p[wkey], 0). }
-        LOCAL wpt_name IS "- none -".
-        IF widx >= 0 AND widx < CUSTOM_WPT_IDS:LENGTH {
-          SET wpt_name TO CUSTOM_WPT_IDS[widx].
+        LOCAL wid IS "".
+        IF p:HASKEY(wkey) { SET wid TO p[wkey]. }
+
+        LOCAL wrow IS GUI_EDIT_WIN:ADDHBOX().
+        LOCAL wl IS wrow:ADDLABEL("WPT " + (slot + 1) + ":").
+        SET wl:STYLE:WIDTH TO 80.
+        LOCAL wpm IS wrow:ADDPOPUPMENU().
+        SET wpm:STYLE:WIDTH TO 280.
+        wpm:ADDOPTION("(none)").
+        LOCAL wi IS 0.
+        UNTIL wi >= wids:LENGTH {
+          wpm:ADDOPTION(wnames[wi]).
+          SET wi TO wi + 1.
         }
-        LOCAL wrow IS _GUI_CYCLE_ROW(GUI_EDIT_WIN, "WPT " + (slot + 1) + ":", wpt_name).
-        GUI_EDIT_HANDLES:ADD(wrow[0]).
-        GUI_EDIT_HANDLES:ADD(wrow[1]).
-        GUI_EDIT_HANDLES:ADD(wrow[2]).
+        LOCAL sel_idx IS 0.
+        SET wi TO 0.
+        UNTIL wi >= wids:LENGTH OR sel_idx > 0 {
+          IF wids[wi] = wid { SET sel_idx TO wi + 1. }
+          SET wi TO wi + 1.
+        }
+        SET wpm:INDEX TO sel_idx.
+        SET wpm:CHANGED TO FALSE.
+        GUI_EDIT_HANDLES:ADD(wpm).  // [9..11]
         SET slot TO slot + 1.
       }
     }
@@ -378,7 +394,7 @@ FUNCTION _GUI_REFRESH_EDIT {
     SET GUI_EDIT_HANDLES[4]:TEXT TO _GUI_CRUISE_SPD_TEXT(spd_mode, spd).
     SET GUI_EDIT_HANDLES[5]:INDEX TO CHOOSE 1 IF CRUISE_IS_MACH_MODE(spd_mode) ELSE 0.
     SET GUI_EDIT_HANDLES[5]:CHANGED TO FALSE.
-    LOCAL nav_names IS LIST("Waypoint", "Dist+Course", "Time+Course").
+    LOCAL nav_names IS LIST("Waypoint+Alt", "Dist+Course", "Time+Course").
     LOCAL nav_ni IS 0.
     IF nt = "course_dist" { SET nav_ni TO 1. }
     IF nt = "course_time" { SET nav_ni TO 2. }
@@ -399,18 +415,23 @@ FUNCTION _GUI_REFRESH_EDIT {
       SET GUI_EDIT_HANDLES[9]:TEXT TO "" + cdeg.
       SET GUI_EDIT_HANDLES[10]:TEXT TO "" + tmin.
     } ELSE {
+      LOCAL univ IS _FMS_GET_WPT_UNIVERSE().
+      LOCAL wids IS univ["ids"].
       LOCAL slot IS 0.
       UNTIL slot >= FMS_WPT_SLOTS {
-        LOCAL hi IS 9 + slot * 3 + 1.
+        LOCAL hi IS 9 + slot.
         IF hi < GUI_EDIT_HANDLES:LENGTH {
           LOCAL wkey IS "wpt" + slot.
-          LOCAL widx IS -1.
-          IF p:HASKEY(wkey) { SET widx TO ROUND(p[wkey], 0). }
-          IF widx >= 0 AND widx < CUSTOM_WPT_IDS:LENGTH {
-            SET GUI_EDIT_HANDLES[hi]:TEXT TO CUSTOM_WPT_IDS[widx].
-          } ELSE {
-            SET GUI_EDIT_HANDLES[hi]:TEXT TO "- none -".
+          LOCAL wid IS "".
+          IF p:HASKEY(wkey) { SET wid TO p[wkey]. }
+          LOCAL sel_idx IS 0.
+          LOCAL wi IS 0.
+          UNTIL wi >= wids:LENGTH OR sel_idx > 0 {
+            IF wids[wi] = wid { SET sel_idx TO wi + 1. }
+            SET wi TO wi + 1.
           }
+          SET GUI_EDIT_HANDLES[hi]:INDEX TO sel_idx.
+          SET GUI_EDIT_HANDLES[hi]:CHANGED TO FALSE.
         }
         SET slot TO slot + 1.
       }
@@ -666,31 +687,24 @@ FUNCTION _GUI_TICK_EDIT {
         RETURN TRUE.
       }
     } ELSE {
-      // waypoint: [9..17]
+      // waypoint: [9..11] popup menus
+      LOCAL univ IS _FMS_GET_WPT_UNIVERSE().
+      LOCAL wids IS univ["ids"].
       LOCAL slot IS 0.
       UNTIL slot >= FMS_WPT_SLOTS {
-        LOCAL base IS 9 + slot * 3.
-        IF base + 2 < GUI_EDIT_HANDLES:LENGTH {
+        LOCAL hi IS 9 + slot.
+        IF hi < GUI_EDIT_HANDLES:LENGTH AND GUI_EDIT_HANDLES[hi]:CHANGED {
+          SET GUI_EDIT_HANDLES[hi]:CHANGED TO FALSE.
+          LOCAL idx IS ROUND(GUI_EDIT_HANDLES[hi]:INDEX, 0).
           LOCAL wkey IS "wpt" + slot.
-          LOCAL widx IS -1.
-          IF p:HASKEY(wkey) { SET widx TO ROUND(p[wkey], 0). }
-          LOCAL n IS CUSTOM_WPT_IDS:LENGTH.
-          IF GUI_EDIT_HANDLES[base]:TAKEPRESS {
-            SET widx TO widx - 1.
-            IF widx < -1 { SET widx TO n - 1. }
-            SET p[wkey] TO widx.
-            IF widx < 0 { SET GUI_EDIT_HANDLES[base + 1]:TEXT TO "- none -". }
-            ELSE        { SET GUI_EDIT_HANDLES[base + 1]:TEXT TO CUSTOM_WPT_IDS[widx]. }
-            RETURN TRUE.
+          IF idx <= 0 {
+            SET p[wkey] TO "".
+          } ELSE IF idx - 1 < wids:LENGTH {
+            SET p[wkey] TO wids[idx - 1].
+          } ELSE {
+            SET p[wkey] TO "".
           }
-          IF GUI_EDIT_HANDLES[base + 2]:TAKEPRESS {
-            SET widx TO widx + 1.
-            IF widx >= n { SET widx TO -1. }
-            SET p[wkey] TO widx.
-            IF widx < 0 { SET GUI_EDIT_HANDLES[base + 1]:TEXT TO "- none -". }
-            ELSE        { SET GUI_EDIT_HANDLES[base + 1]:TEXT TO CUSTOM_WPT_IDS[widx]. }
-            RETURN TRUE.
-          }
+          RETURN TRUE.
         }
         SET slot TO slot + 1.
       }
@@ -755,8 +769,10 @@ FUNCTION _GUI_CLOSE {
   GUI_LEG_DN_BTNS:CLEAR().
   GUI_LEG_DEL_BTNS:CLEAR().
   GUI_LEG_SUM_LBLS:CLEAR().
-  GUI_SLOT_SAVE_BTNS:CLEAR().
-  GUI_SLOT_LOAD_BTNS:CLEAR().
+  SET GUI_SAVE_NAME_TF TO 0.
+  SET GUI_SAVE_BTN TO 0.
+  SET GUI_LOAD_PM TO 0.
+  SET GUI_LOAD_BTN TO 0.
 }
 
 // Refresh all in-place labels and enabled states.
@@ -792,18 +808,27 @@ FUNCTION _GUI_REFRESH {
   }
 
   // Save/Load — prefill name and repopulate plan list.
-  IF GUI_SAVE_NAME_TF <> 0 AND FMS_LAST_SAVE_NAME <> "" {
+  IF GUI_SAVE_NAME_TF <> 0 AND GUI_SAVE_NAME_TF:TEXT = "" {
     SET GUI_SAVE_NAME_TF:TEXT TO FMS_LAST_SAVE_NAME.
   }
   IF GUI_LOAD_PM <> 0 {
+    LOCAL selected_idx IS CLAMP(ROUND(GUI_LOAD_PM:INDEX, 0), 0, 9999).
     GUI_LOAD_PM:CLEAR().
     LOCAL plans IS FMS_LIST_PLANS().
     LOCAL pi IS 0.
+    LOCAL select_idx IS selected_idx.
+    IF select_idx >= plans:LENGTH { SET select_idx TO MAX(plans:LENGTH - 1, 0). }
     UNTIL pi >= plans:LENGTH {
       GUI_LOAD_PM:ADDOPTION(plans[pi]).
+      IF FMS_LAST_SAVE_NAME <> "" AND plans[pi] = FMS_LAST_SAVE_NAME {
+        SET select_idx TO pi.
+      }
       SET pi TO pi + 1.
     }
-    IF plans:LENGTH > 0 { SET GUI_LOAD_PM:CHANGED TO FALSE. }
+    IF plans:LENGTH > 0 {
+      SET GUI_LOAD_PM:INDEX TO select_idx.
+      SET GUI_LOAD_PM:CHANGED TO FALSE.
+    }
   }
 }
 
@@ -982,8 +1007,19 @@ FUNCTION _GUI_TICK {
     RETURN "".
   }
   IF GUI_LOAD_BTN <> 0 AND GUI_LOAD_BTN:TAKEPRESS {
-    IF GUI_LOAD_PM <> 0 AND GUI_LOAD_PM:VALUE <> "" {
-      FMS_LOAD_PLAN(GUI_LOAD_PM:VALUE).
+    IF GUI_LOAD_PM <> 0 {
+      LOCAL plans IS FMS_LIST_PLANS().
+      IF plans:LENGTH > 0 {
+        LOCAL pi IS CLAMP(ROUND(GUI_LOAD_PM:INDEX, 0), 0, plans:LENGTH - 1).
+        FMS_LOAD_PLAN(plans[pi]).
+      } ELSE IF GUI_SAVE_NAME_TF <> 0 {
+        LOCAL typed_name IS GUI_SAVE_NAME_TF:TEXT:TRIM.
+        IF typed_name <> "" AND FMS_PLAN_EXISTS(typed_name) {
+          FMS_LOAD_PLAN(typed_name).
+        } ELSE {
+          IFC_SET_ALERT("No saved plans in index; enter plan name to load").
+        }
+      }
       _GUI_BUILD_EDIT().
       _GUI_REFRESH().
     }

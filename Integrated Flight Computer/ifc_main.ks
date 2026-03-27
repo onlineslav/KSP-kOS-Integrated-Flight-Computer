@@ -309,8 +309,8 @@ FUNCTION _BUILD_PLAN_FROM_MENU {
 }
 
 // ── Build flight plan from DRAFT_PLAN (plan editor state) ─
-// Converts the editor representation (index-based) into the
-// execution representation (string IDs) consumed by _INIT_LEG.
+// Converts the editor representation into the execution representation
+// consumed by _INIT_LEG.
 FUNCTION _BUILD_PLAN_FROM_DRAFT {
   LOCAL plan IS LIST().
   LOCAL i IS 0.
@@ -331,9 +331,11 @@ FUNCTION _BUILD_PLAN_FROM_DRAFT {
       LOCAL wi IS 0.
       UNTIL wi >= FMS_WPT_SLOTS {
         LOCAL wkey IS "wpt" + wi.
-        LOCAL widx IS ROUND(p[wkey], 0).
-        IF widx >= 0 AND widx < CUSTOM_WPT_IDS:LENGTH {
-          wpts:ADD(CUSTOM_WPT_IDS[widx]).
+        IF p:HASKEY(wkey) {
+          LOCAL wid IS p[wkey].
+          IF wid:TYPENAME = "String" AND wid <> "" AND NAV_BEACON_DB:HASKEY(wid) {
+            wpts:ADD(wid).
+          }
         }
         SET wi TO wi + 1.
       }
@@ -434,14 +436,14 @@ FUNCTION _INIT_LEG {
         SET CRUISE_END_UT     TO TIME:SECONDS + tmin * 60.
 
       } ELSE {
-        // "waypoint" nav_type: build wpt list from wpt0/wpt1/wpt2 indices
+        // "waypoint" nav_type: read wpt0/wpt1/wpt2 beacon IDs directly.
         LOCAL slot IS 0.
         UNTIL slot >= FMS_WPT_SLOTS {
           LOCAL wkey IS "wpt" + slot.
           IF params:HASKEY(wkey) {
-            LOCAL widx IS ROUND(params[wkey], 0).
-            IF widx >= 0 AND widx < CUSTOM_WPT_IDS:LENGTH {
-              wpts:ADD(CUSTOM_WPT_IDS[widx]).
+            LOCAL wid IS params[wkey].
+            IF wid:TYPENAME = "String" AND wid <> "" AND NAV_BEACON_DB:HASKEY(wid) {
+              wpts:ADD(wid).
             }
           }
           SET slot TO slot + 1.

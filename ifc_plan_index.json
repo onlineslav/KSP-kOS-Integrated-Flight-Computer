@@ -1,0 +1,13 @@
+{
+    "items": [
+        {
+            "value": "KSC -> 8000m -> POL",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
+        },
+        {
+            "value": "KSC -> 8000m -> POL 16 SHRT",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
+        }
+    ],
+    "$type": "kOS.Safe.Encapsulation.ListValue"
+}
