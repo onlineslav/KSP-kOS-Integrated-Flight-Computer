@@ -280,6 +280,8 @@ GLOBAL DRAFT_PLAN        IS LIST(). // leg list being built in pre-arm
 GLOBAL FMS_LEG_CURSOR    IS 0.      // selected leg index in list view
 GLOBAL FMS_EDIT_FIELD    IS 0.      // selected field index when editing a leg
 GLOBAL FMS_EDITING_LEG   IS FALSE.  // TRUE = per-leg edit overlay is open
+GLOBAL FMS_LAST_SAVE_NAME IS "".    // display name of last saved/loaded plan (pre-fills save textfield)
+GLOBAL FMS_WPT_UNIVERSE  IS 0.      // cached LEXICON("ids",LIST,"names",LIST) of cruise waypoints; 0 = not built
 
 // ----------------------------
 // Manual override (CWS)
@@ -302,6 +304,13 @@ GLOBAL CRUISE_END_UT      IS -1.          // UT when course_time cruise ends (-1
 GLOBAL CRUISE_VNAV_TGT_LL    IS 0.        // GeoCoordinates of IAF fix for VNAV descent; 0 = VNAV inactive
 GLOBAL CRUISE_VNAV_TGT_ALT_M IS 0.        // m MSL  target crossing altitude at VNAV fix
 GLOBAL CRUISE_VNAV_TOD_M     IS 0.        // m  top-of-descent distance from fix; 0 = VNAV inactive
+
+// ----------------------------
+// In-flight plan editing state
+// ----------------------------
+GLOBAL FLIGHT_PLAN_DRAFT_COPY    IS LIST().  // editor-format mirror of FLIGHT_PLAN; populated at arm time
+GLOBAL GUI_INFLIGHT_MODE         IS FALSE.   // TRUE when plan-editor GUI is open during flight
+GLOBAL GUI_INFLIGHT_COMMIT_PENDING IS FALSE. // TRUE when user committed in-flight edits; main loop splices them in
 
 // ----------------------------
 // Autoland phase state
@@ -351,8 +360,10 @@ GLOBAL GUI_LEG_SUM_LBLS IS LIST().    // leg summary labels
 GLOBAL GUI_FIELD_LBLS IS LIST().      // value labels in the edit panel
 GLOBAL GUI_FIELD_DEC_BTNS IS LIST().  // [<] buttons in the edit panel
 GLOBAL GUI_FIELD_INC_BTNS IS LIST().  // [>] buttons in the edit panel
-GLOBAL GUI_SLOT_SAVE_BTNS IS LIST().  // [SAVE n] buttons for slots 1-5
-GLOBAL GUI_SLOT_LOAD_BTNS IS LIST().  // [LOAD n] buttons for slots 1-5
+GLOBAL GUI_SAVE_NAME_TF IS 0.  // TEXTFIELD for plan name input
+GLOBAL GUI_SAVE_BTN     IS 0.  // [SAVE] button
+GLOBAL GUI_LOAD_PM      IS 0.  // POPUPMENU of saved plans
+GLOBAL GUI_LOAD_BTN     IS 0.  // [LOAD] button
 GLOBAL GUI_PLAN_LBL IS 0.            // "FLIGHT PLAN (n legs)" label
 GLOBAL GUI_EDIT_HDR_LBL IS 0.        // (unused — kept for compatibility)
 GLOBAL GUI_FIELD_NAME_LBLS IS LIST(). // (unused — kept for compatibility)
@@ -728,10 +739,12 @@ FUNCTION IFC_INIT_STATE {
   SET FLIGHT_PLAN_INDEX TO 0.
   SET IFC_MANUAL_MODE   TO FALSE.
 
-  SET DRAFT_PLAN      TO LIST().
-  SET FMS_LEG_CURSOR  TO 0.
-  SET FMS_EDIT_FIELD  TO 0.
-  SET FMS_EDITING_LEG TO FALSE.
+  SET DRAFT_PLAN        TO LIST().
+  SET FMS_LEG_CURSOR    TO 0.
+  SET FMS_EDIT_FIELD    TO 0.
+  SET FMS_EDITING_LEG   TO FALSE.
+  SET FMS_LAST_SAVE_NAME TO "".
+  SET FMS_WPT_UNIVERSE  TO 0.
 
   // GUI editor handles — cleared here; window disposal is handled by
   // _GUI_CLOSE() in ifc_gui.ks before _IFC_INTERACTIVE_START calls INIT_STATE.
@@ -747,8 +760,10 @@ FUNCTION IFC_INIT_STATE {
   GUI_FIELD_LBLS:CLEAR().
   GUI_FIELD_DEC_BTNS:CLEAR().
   GUI_FIELD_INC_BTNS:CLEAR().
-  GUI_SLOT_SAVE_BTNS:CLEAR().
-  GUI_SLOT_LOAD_BTNS:CLEAR().
+  SET GUI_SAVE_NAME_TF TO 0.
+  SET GUI_SAVE_BTN     TO 0.
+  SET GUI_LOAD_PM      TO 0.
+  SET GUI_LOAD_BTN     TO 0.
   SET GUI_PLAN_LBL     TO 0.
   SET GUI_EDIT_HDR_LBL TO 0.
   GUI_FIELD_NAME_LBLS:CLEAR().
@@ -775,6 +790,10 @@ FUNCTION IFC_INIT_STATE {
   SET CRUISE_VNAV_TGT_LL    TO 0.
   SET CRUISE_VNAV_TGT_ALT_M TO 0.
   SET CRUISE_VNAV_TOD_M     TO 0.
+
+  SET FLIGHT_PLAN_DRAFT_COPY    TO LIST().
+  SET GUI_INFLIGHT_MODE         TO FALSE.
+  SET GUI_INFLIGHT_COMMIT_PENDING TO FALSE.
 
   SET APP_SPOILERS_ARMED  TO FALSE.
   SET AS_DISCOVERED       TO FALSE.

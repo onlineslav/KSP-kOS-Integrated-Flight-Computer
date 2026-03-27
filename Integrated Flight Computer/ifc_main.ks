@@ -561,10 +561,29 @@ FUNCTION _INIT_LEG {
   }
 }
 
+// ── Skip the current leg ──────────────────────────────────
+// Advances FLIGHT_PLAN_INDEX and initialises the next leg,
+// or sets PHASE_DONE if no more legs remain.
+FUNCTION _IFC_SKIP_LEG {
+  SET FLIGHT_PLAN_INDEX TO FLIGHT_PLAN_INDEX + 1.
+  IF FLIGHT_PLAN_INDEX < FLIGHT_PLAN:LENGTH {
+    _INIT_LEG(FLIGHT_PLAN[FLIGHT_PLAN_INDEX]).
+    IFC_SET_ALERT("Skip: leg " + (FLIGHT_PLAN_INDEX + 1) + " of " + FLIGHT_PLAN:LENGTH).
+  } ELSE {
+    SET_PHASE(PHASE_DONE).
+    IFC_SET_ALERT("All legs skipped — flight done").
+  }
+}
+
 // ── Unified flight plan executor ──────────────────────────
 // Runs init, then drives the leg queue until all legs complete.
+// draft_copy  — editor-format snapshot of DRAFT_PLAN at arm time,
+//               saved into FLIGHT_PLAN_DRAFT_COPY for in-flight editing.
+// Returns "DONE" when all legs complete naturally, "QUIT" if the user
+// aborted via the menu or terminal.
 FUNCTION _RUN_FLIGHT_PLAN {
   PARAMETER plan.
+  PARAMETER draft_copy IS LIST().
 
   IF plan:LENGTH = 0 {
     IFC_SET_ALERT("Empty flight plan", "ERROR").
@@ -575,6 +594,14 @@ FUNCTION _RUN_FLIGHT_PLAN {
   // before state reset clears the stored handles.
   _GUI_CLOSE().
   IFC_INIT_STATE().
+
+  // Save editor-format draft snapshot for in-flight editing.
+  LOCAL dci IS 0.
+  UNTIL dci >= draft_copy:LENGTH {
+    FLIGHT_PLAN_DRAFT_COPY:ADD(draft_copy[dci]).
+    SET dci TO dci + 1.
+  }
+
   UI_INIT().
 
   IF DEFINED VR_PROBE_HOOKS_READY AND VR_PROBE_HOOKS_READY {
@@ -599,6 +626,8 @@ FUNCTION _RUN_FLIGHT_PLAN {
   SET FLIGHT_PLAN_INDEX TO 0.
   _INIT_LEG(plan[0]).
   IFC_SET_UI_MODE(UI_MODE_AUTOFLOW).
+
+  LOCAL quit_via_menu IS FALSE.
 
   // ── Main loop ─────────────────────────────────────────
   UNTIL IFC_PHASE = PHASE_DONE {
@@ -636,6 +665,7 @@ FUNCTION _RUN_FLIGHT_PLAN {
         LOCAL ch IS TERMINAL:INPUT:GETCHAR().
         IF ch = "q" OR ch = "Q" {
           SET menu_result TO "QUIT".
+          SET quit_via_menu TO TRUE.
           SET_PHASE(PHASE_DONE).
           IFC_SET_UI_MODE(UI_MODE_COMPLETE).
         }
@@ -643,10 +673,32 @@ FUNCTION _RUN_FLIGHT_PLAN {
     } ELSE {
       SET menu_result TO MENU_TICK().
       IF menu_result = "QUIT" {
+        SET quit_via_menu TO TRUE.
         SET_PHASE(PHASE_DONE).
         IFC_SET_UI_MODE(UI_MODE_COMPLETE).
       }
     }
+
+    // In-flight plan edit commit: splice new tail into FLIGHT_PLAN.
+    IF GUI_INFLIGHT_COMMIT_PENDING {
+      SET GUI_INFLIGHT_COMMIT_PENDING TO FALSE.
+      LOCAL new_tail IS _BUILD_PLAN_FROM_DRAFT().
+      LOCAL new_plan IS LIST().
+      LOCAL ki IS 0.
+      UNTIL ki <= FLIGHT_PLAN_INDEX {
+        new_plan:ADD(FLIGHT_PLAN[ki]).
+        SET ki TO ki + 1.
+      }
+      LOCAL ni IS 0.
+      UNTIL ni >= new_tail:LENGTH {
+        new_plan:ADD(new_tail[ni]).
+        SET ni TO ni + 1.
+      }
+      SET FLIGHT_PLAN TO new_plan.
+      IFC_SET_ALERT("Plan updated: " + new_tail:LENGTH + " leg(s) remaining").
+    }
+    // In-flight GUI tick (plan editor open mid-flight).
+    IF GUI_INFLIGHT_MODE { _GUI_TICK_INFLIGHT(). }
 
     IF NOT IFC_MANUAL_MODE {
       IF IFC_PHASE = PHASE_TAKEOFF {
@@ -704,48 +756,86 @@ FUNCTION _RUN_FLIGHT_PLAN {
   SET LAST_HEADER_UT   TO 0.
   SET LAST_LOGGER_UT   TO 0.
   IF NOT IFC_FAST_MODE { DISPLAY_TICK(). }
+
+  IF quit_via_menu { RETURN "QUIT". }
+  RETURN "DONE".
 }
 
 // ── Interactive startup (FMS pre-arm screen) ──────────────
-// Shows the plan editor, waits for the user to ARM or QUIT.
-// On ARM, converts DRAFT_PLAN to an execution plan and runs it.
+// Shows the plan editor, waits for ARM or QUIT.  On ARM, runs the
+// flight plan.  On natural completion, offers to return to the editor
+// with the same plan.  Loops until the user quits or declines to restart.
 FUNCTION _IFC_INTERACTIVE_START {
-  // Reboot safety: always clear stale GUI windows before new pre-arm GUI build.
-  _GUI_CLOSE().
-  IFC_INIT_STATE().
-  SET IFC_ACTIVE_CFG_PATH TO "".
-  SET IFC_MISSION_START_UT TO TIME:SECONDS.
-  SET IFC_PHASE    TO PHASE_PREARM.
-  SET IFC_SUBPHASE TO "".
-  IFC_SET_UI_MODE(UI_MODE_PREARM).
-  UI_INIT().
+  LOCAL saved_draft  IS LIST().  // persists the draft across loop iterations
+  LOCAL keep_running IS TRUE.
 
-  IF ACTIVE_AIRCRAFT = 0 {
-    _TRY_LOAD_AIRCRAFT_CONFIG().
-    IF ACTIVE_AIRCRAFT = 0 { SET ACTIVE_AIRCRAFT TO _DEFAULT_AIRCRAFT. }
+  UNTIL NOT keep_running {
+    // Reboot safety: always clear stale GUI windows before new pre-arm GUI build.
+    _GUI_CLOSE().
+    IFC_INIT_STATE().
+    SET IFC_ACTIVE_CFG_PATH TO "".
+    SET IFC_MISSION_START_UT TO TIME:SECONDS.
+    SET IFC_PHASE    TO PHASE_PREARM.
+    SET IFC_SUBPHASE TO "".
+    IFC_SET_UI_MODE(UI_MODE_PREARM).
+    UI_INIT().
+
+    IF ACTIVE_AIRCRAFT = 0 {
+      _TRY_LOAD_AIRCRAFT_CONFIG().
+      IF ACTIVE_AIRCRAFT = 0 { SET ACTIVE_AIRCRAFT TO _DEFAULT_AIRCRAFT. }
+    }
+
+    // Restore previous plan when looping back after a completed flight.
+    IF saved_draft:LENGTH > 0 {
+      LOCAL rdi IS 0.
+      UNTIL rdi >= saved_draft:LENGTH {
+        DRAFT_PLAN:ADD(saved_draft[rdi]).
+        SET rdi TO rdi + 1.
+      }
+    }
+
+    // Seed DRAFT_PLAN with a default takeoff leg if it's empty.
+    IF DRAFT_PLAN:LENGTH = 0 {
+      DRAFT_PLAN:ADD(_FMS_DEFAULT_LEG(LEG_TAKEOFF)).
+    }
+
+    _GUI_BUILD().
+
+    LOCAL prearm_result IS "".
+    UNTIL prearm_result = "ARM" OR prearm_result = "QUIT" {
+      LOCAL gui_result IS _GUI_TICK().
+      IF gui_result <> "" { SET prearm_result TO gui_result. }
+      ELSE { SET prearm_result TO MENU_TICK(). }
+      DISPLAY_TICK().
+      WAIT IFC_LOOP_DT.
+    }
+
+    _GUI_CLOSE().
+
+    IF prearm_result = "QUIT" {
+      SET keep_running TO FALSE.
+    } ELSE {
+      // Snapshot DRAFT_PLAN before IFC_INIT_STATE() wipes it in _RUN_FLIGHT_PLAN.
+      SET saved_draft TO LIST().
+      LOCAL sdi IS 0.
+      UNTIL sdi >= DRAFT_PLAN:LENGTH {
+        saved_draft:ADD(DRAFT_PLAN[sdi]).
+        SET sdi TO sdi + 1.
+      }
+
+      LOCAL fp_result IS _RUN_FLIGHT_PLAN(_BUILD_PLAN_FROM_DRAFT(), saved_draft).
+
+      IF fp_result = "QUIT" {
+        SET keep_running TO FALSE.
+      } ELSE {
+        // Plan completed naturally: ask user whether to return to editor.
+        IF NOT _GUI_SHOW_END_CONFIRM() {
+          SET keep_running TO FALSE.
+        }
+        // On TRUE, keep_running stays TRUE and saved_draft holds the plan.
+      }
+    }
   }
-
-  // Seed DRAFT_PLAN with a default takeoff leg if it's empty.
-  IF DRAFT_PLAN:LENGTH = 0 {
-    DRAFT_PLAN:ADD(_FMS_DEFAULT_LEG(LEG_TAKEOFF)).
-  }
-
-  _GUI_BUILD().
-
-  LOCAL result IS "".
-  UNTIL result = "ARM" OR result = "QUIT" {
-    LOCAL gui_result IS _GUI_TICK().
-    IF gui_result <> "" { SET result TO gui_result. }
-    ELSE { SET result TO MENU_TICK(). }
-    DISPLAY_TICK().
-    WAIT IFC_LOOP_DT.
-  }
-
-  _GUI_CLOSE().
-
-  IF result = "QUIT" { RETURN. }
-
-  _RUN_FLIGHT_PLAN(_BUILD_PLAN_FROM_DRAFT()).
 }
 
 // Boot scripts can set GLOBAL IFC_SKIP_INTERACTIVE IS TRUE. before loading
@@ -773,7 +863,7 @@ FUNCTION RUN_IFC {
     "type",   LEG_APPROACH,
     "params", LEXICON("rwy_id", rwy_id, "short_approach", short_approach)
   )).
-  _RUN_FLIGHT_PLAN(plan).
+  _RUN_FLIGHT_PLAN(plan, LIST()).
 }
 
 // route: a route LEXICON from nav_routes.ks, or 0 for takeoff-only.
@@ -808,5 +898,5 @@ FUNCTION RUN_TAKEOFF_IFC {
       "params", LEXICON("plate", route["dest_plate"])
     )).
   }
-  _RUN_FLIGHT_PLAN(plan).
+  _RUN_FLIGHT_PLAN(plan, LIST()).
 }

@@ -20,18 +20,20 @@
 //     [3] rwy_prev   [4] rwy_lbl   [5] rwy_next
 //   CRUISE:
 //     [3] alt_tf                          (TEXTFIELD, m)
-//     [4] spd_tf                          (TEXTFIELD, IAS m/s or Mx.xx)
-//     [5] nav_prev  [6] nav_lbl  [7] nav_next  (Waypoint/Dist+Course/Time+Course)
-//     -- nav_type-specific (index 8+) --
-//     waypoint:    [8]  wpt0_prev [9]  wpt0_lbl [10] wpt0_next
-//                  [11] wpt1_prev [12] wpt1_lbl [13] wpt1_next
-//                  [14] wpt2_prev [15] wpt2_lbl [16] wpt2_next
-//     course_dist: [8]  hdg_tf   (TEXTFIELD, deg)
-//                  [9]  dst_tf   (TEXTFIELD, nm)
-//     course_time: [8]  hdg_tf   (TEXTFIELD, deg)
-//                  [9]  tme_tf   (TEXTFIELD, min)
+//     [4] spd_tf                          (TEXTFIELD, numeric value only)
+//     [5] spd_mode_pm                     (POPUPMENU, "IAS m/s"=0 / "Mach"=1)
+//     [6] nav_prev  [7] nav_lbl  [8] nav_next  (Waypoint/Dist+Course/Time+Course)
+//     -- nav_type-specific (index 9+) --
+//     waypoint:    [9]  wpt0_pm
+//                  [10] wpt1_pm
+//                  [11] wpt2_pm
+//     course_dist: [9]  hdg_tf   (TEXTFIELD, deg)
+//                  [10] dst_tf   (TEXTFIELD, nm)
+//     course_time: [9]  hdg_tf   (TEXTFIELD, deg)
+//                  [10] tme_tf   (TEXTFIELD, min)
 //   APPROACH:
-//     [3] plate_popup  (POPUPMENU)
+//     [3] airport_popup  (POPUPMENU)
+//     [4] plate_popup    (POPUPMENU)
 //
 // Public entry points (called from ifc_main.ks):
 //   _GUI_BUILD()  — open both windows
@@ -59,35 +61,19 @@ FUNCTION _PARSE_NUM {
 
 FUNCTION _GUI_CRUISE_SPD_TEXT {
   PARAMETER mode_raw, spd_val.
-  LOCAL mode_now IS CRUISE_NORM_SPD_MODE(mode_raw).
-  IF CRUISE_IS_MACH_MODE(mode_now) {
-    RETURN "M" + ROUND(spd_val, 2).
+  IF CRUISE_IS_MACH_MODE(CRUISE_NORM_SPD_MODE(mode_raw)) {
+    RETURN "" + ROUND(spd_val, 2).
   }
   RETURN "" + ROUND(spd_val, 0).
 }
 
 FUNCTION _GUI_CRUISE_PARSE_SPD_INPUT {
-  PARAMETER txt, fallback_spd, fallback_mode.
-  LOCAL mode_now IS CRUISE_NORM_SPD_MODE(fallback_mode).
-  LOCAL clean IS txt:TRIM.
-  IF clean:LENGTH > 0 {
-    LOCAL first IS clean:SUBSTRING(0, 1):TOUPPER.
-    IF first = "M" {
-      SET mode_now TO CRUISE_SPD_MODE_MACH.
-      LOCAL mach_txt IS "".
-      IF clean:LENGTH > 1 { SET mach_txt TO clean:SUBSTRING(1, clean:LENGTH - 1). }
-      LOCAL mach_fb IS fallback_spd.
-      IF NOT CRUISE_IS_MACH_MODE(fallback_mode) { SET mach_fb TO CRUISE_DEFAULT_MACH. }
-      LOCAL mach_val IS _PARSE_NUM(mach_txt, mach_fb).
-      RETURN LEXICON("mode", mode_now, "spd", CLAMP(mach_val, 0.20, 5.00)).
-    }
+  PARAMETER txt, fallback_spd, mode_raw.
+  LOCAL parsed IS _PARSE_NUM(txt:TRIM, fallback_spd).
+  IF CRUISE_IS_MACH_MODE(CRUISE_NORM_SPD_MODE(mode_raw)) {
+    RETURN CLAMP(parsed, 0.20, 5.00).
   }
-
-  LOCAL parsed IS _PARSE_NUM(clean, fallback_spd).
-  IF CRUISE_IS_MACH_MODE(mode_now) {
-    RETURN LEXICON("mode", mode_now, "spd", CLAMP(parsed, 0.20, 5.00)).
-  }
-  RETURN LEXICON("mode", mode_now, "spd", CLAMP(parsed, 10, 500)).
+  RETURN CLAMP(parsed, 10, 500).
 }
 
 // ── Leg-type helpers ──────────────────────────────────────
@@ -216,28 +202,34 @@ FUNCTION _GUI_BUILD_EDIT {
     SET alt_tf:STYLE:WIDTH TO 110.
     GUI_EDIT_HANDLES:ADD(alt_tf).  // [3]
 
-    // [4] Speed text field (IAS m/s or Mach via Mx.xx)
+    // [4] Speed text field  [5] speed mode popup
     LOCAL spd_row IS GUI_EDIT_WIN:ADDHBOX().
     LOCAL spd_rl  IS spd_row:ADDLABEL("Spd:").
     SET spd_rl:STYLE:WIDTH TO 80.
     LOCAL spd_tf IS spd_row:ADDTEXTFIELD().
     SET spd_tf:TEXT TO _GUI_CRUISE_SPD_TEXT(spd_mode, spd).
-    SET spd_tf:TOOLTIP TO "IAS m/s, or prefix with M for Mach (example: M0.78)".
-    SET spd_tf:STYLE:WIDTH TO 110.
+    SET spd_tf:TOOLTIP TO "IAS m/s or Mach number".
+    SET spd_tf:STYLE:WIDTH TO 70.
     GUI_EDIT_HANDLES:ADD(spd_tf).  // [4]
+    LOCAL spd_mode_pm IS spd_row:ADDPOPUPMENU().
+    spd_mode_pm:ADDOPTION("IAS m/s").
+    spd_mode_pm:ADDOPTION("Mach").
+    SET spd_mode_pm:INDEX TO CHOOSE 1 IF CRUISE_IS_MACH_MODE(spd_mode) ELSE 0.
+    SET spd_mode_pm:CHANGED TO FALSE.
+    GUI_EDIT_HANDLES:ADD(spd_mode_pm).  // [5]
 
-    // [5..7] Nav type cycle row
+    // [6..8] Nav type cycle row
     LOCAL nav_names IS LIST("Waypoint", "Dist+Course", "Time+Course").
     LOCAL nav_ni IS 0.
     IF nt = "course_dist" { SET nav_ni TO 1. }
     IF nt = "course_time" { SET nav_ni TO 2. }
     LOCAL nav_row IS _GUI_CYCLE_ROW(GUI_EDIT_WIN, "Nav:", nav_names[nav_ni]).
-    GUI_EDIT_HANDLES:ADD(nav_row[0]).  // [5]
-    GUI_EDIT_HANDLES:ADD(nav_row[1]).  // [6]
-    GUI_EDIT_HANDLES:ADD(nav_row[2]).  // [7]
+    GUI_EDIT_HANDLES:ADD(nav_row[0]).  // [6]
+    GUI_EDIT_HANDLES:ADD(nav_row[1]).  // [7]
+    GUI_EDIT_HANDLES:ADD(nav_row[2]).  // [8]
     SET GUI_EDIT_NAV_TYPE TO nt.
 
-    // [8+] Nav-type-specific rows
+    // [9+] Nav-type-specific rows
     IF nt = "course_dist" {
       LOCAL cdeg IS 90.
       LOCAL dnm  IS 100.
@@ -250,7 +242,7 @@ FUNCTION _GUI_BUILD_EDIT {
       SET hdg_tf:TEXT TO "" + cdeg.
       SET hdg_tf:TOOLTIP TO "0-359".
       SET hdg_tf:STYLE:WIDTH TO 110.
-      GUI_EDIT_HANDLES:ADD(hdg_tf).  // [8]
+      GUI_EDIT_HANDLES:ADD(hdg_tf).  // [9]
       LOCAL dst_row IS GUI_EDIT_WIN:ADDHBOX().
       LOCAL dst_rl  IS dst_row:ADDLABEL("Dist (nm):").
       SET dst_rl:STYLE:WIDTH TO 80.
@@ -258,7 +250,7 @@ FUNCTION _GUI_BUILD_EDIT {
       SET dst_tf:TEXT TO "" + dnm.
       SET dst_tf:TOOLTIP TO "nm".
       SET dst_tf:STYLE:WIDTH TO 110.
-      GUI_EDIT_HANDLES:ADD(dst_tf).  // [9]
+      GUI_EDIT_HANDLES:ADD(dst_tf).  // [10]
     } ELSE IF nt = "course_time" {
       LOCAL cdeg IS 90.
       LOCAL tmin IS 60.
@@ -271,7 +263,7 @@ FUNCTION _GUI_BUILD_EDIT {
       SET hdg_tf:TEXT TO "" + cdeg.
       SET hdg_tf:TOOLTIP TO "0-359".
       SET hdg_tf:STYLE:WIDTH TO 110.
-      GUI_EDIT_HANDLES:ADD(hdg_tf).  // [8]
+      GUI_EDIT_HANDLES:ADD(hdg_tf).  // [9]
       LOCAL tme_row IS GUI_EDIT_WIN:ADDHBOX().
       LOCAL tme_rl  IS tme_row:ADDLABEL("Time (min):").
       SET tme_rl:STYLE:WIDTH TO 80.
@@ -279,9 +271,9 @@ FUNCTION _GUI_BUILD_EDIT {
       SET tme_tf:TEXT TO "" + tmin.
       SET tme_tf:TOOLTIP TO "min".
       SET tme_tf:STYLE:WIDTH TO 110.
-      GUI_EDIT_HANDLES:ADD(tme_tf).  // [9]
+      GUI_EDIT_HANDLES:ADD(tme_tf).  // [10]
     } ELSE {
-      // waypoint: [8..16] — 3 slots × 3 handles each
+      // waypoint: [9..17] — 3 slots × 3 handles each
       LOCAL slot IS 0.
       UNTIL slot >= FMS_WPT_SLOTS {
         LOCAL wkey IS "wpt" + slot.
@@ -370,7 +362,7 @@ FUNCTION _GUI_REFRESH_EDIT {
     IF rwy_idx = 0 { SET GUI_EDIT_HANDLES[4]:TEXT TO "RWY 09". }
     ELSE           { SET GUI_EDIT_HANDLES[4]:TEXT TO "RWY 27". }
 
-  } ELSE IF t = LEG_CRUISE AND GUI_EDIT_HANDLES:LENGTH >= 8 {
+  } ELSE IF t = LEG_CRUISE AND GUI_EDIT_HANDLES:LENGTH >= 9 {
     LOCAL nt IS "waypoint".
     IF p:HASKEY("nav_type") { SET nt TO p["nav_type"]. }
     // Rebuild if nav_type changed (different sub-rows)
@@ -384,30 +376,32 @@ FUNCTION _GUI_REFRESH_EDIT {
     IF p:HASKEY("spd_mode") { SET spd_mode TO CRUISE_NORM_SPD_MODE(p["spd_mode"]). }
     SET GUI_EDIT_HANDLES[3]:TEXT TO "" + ROUND(alt_m, 0).
     SET GUI_EDIT_HANDLES[4]:TEXT TO _GUI_CRUISE_SPD_TEXT(spd_mode, spd).
+    SET GUI_EDIT_HANDLES[5]:INDEX TO CHOOSE 1 IF CRUISE_IS_MACH_MODE(spd_mode) ELSE 0.
+    SET GUI_EDIT_HANDLES[5]:CHANGED TO FALSE.
     LOCAL nav_names IS LIST("Waypoint", "Dist+Course", "Time+Course").
     LOCAL nav_ni IS 0.
     IF nt = "course_dist" { SET nav_ni TO 1. }
     IF nt = "course_time" { SET nav_ni TO 2. }
-    SET GUI_EDIT_HANDLES[6]:TEXT TO nav_names[nav_ni].
+    SET GUI_EDIT_HANDLES[7]:TEXT TO nav_names[nav_ni].
 
-    IF nt = "course_dist" AND GUI_EDIT_HANDLES:LENGTH >= 10 {
+    IF nt = "course_dist" AND GUI_EDIT_HANDLES:LENGTH >= 11 {
       LOCAL cdeg IS 90.
       LOCAL dnm  IS 100.
       IF p:HASKEY("course_deg") { SET cdeg TO ROUND(p["course_deg"], 0). }
       IF p:HASKEY("dist_nm")    { SET dnm  TO ROUND(p["dist_nm"],    0). }
-      SET GUI_EDIT_HANDLES[8]:TEXT TO "" + cdeg.
-      SET GUI_EDIT_HANDLES[9]:TEXT TO "" + dnm.
-    } ELSE IF nt = "course_time" AND GUI_EDIT_HANDLES:LENGTH >= 10 {
+      SET GUI_EDIT_HANDLES[9]:TEXT TO "" + cdeg.
+      SET GUI_EDIT_HANDLES[10]:TEXT TO "" + dnm.
+    } ELSE IF nt = "course_time" AND GUI_EDIT_HANDLES:LENGTH >= 11 {
       LOCAL cdeg IS 90.
       LOCAL tmin IS 60.
       IF p:HASKEY("course_deg") { SET cdeg TO ROUND(p["course_deg"], 0). }
       IF p:HASKEY("time_min")   { SET tmin TO ROUND(p["time_min"],   0). }
-      SET GUI_EDIT_HANDLES[8]:TEXT TO "" + cdeg.
-      SET GUI_EDIT_HANDLES[9]:TEXT TO "" + tmin.
+      SET GUI_EDIT_HANDLES[9]:TEXT TO "" + cdeg.
+      SET GUI_EDIT_HANDLES[10]:TEXT TO "" + tmin.
     } ELSE {
       LOCAL slot IS 0.
       UNTIL slot >= FMS_WPT_SLOTS {
-        LOCAL hi IS 8 + slot * 3 + 1.
+        LOCAL hi IS 9 + slot * 3 + 1.
         IF hi < GUI_EDIT_HANDLES:LENGTH {
           LOCAL wkey IS "wpt" + slot.
           LOCAL widx IS -1.
@@ -453,7 +447,7 @@ FUNCTION _GUI_COMMIT_EDIT_FIELDS {
   LOCAL p   IS leg["params"].
   LOCAL changed IS FALSE.
 
-  IF t = LEG_CRUISE AND GUI_EDIT_HANDLES:LENGTH >= 8 {
+  IF t = LEG_CRUISE AND GUI_EDIT_HANDLES:LENGTH >= 9 {
     LOCAL alt_m IS CRUISE_DEFAULT_ALT_M.
     IF p:HASKEY("alt_m") { SET alt_m TO p["alt_m"]. }
     LOCAL alt_new IS _PARSE_NUM(GUI_EDIT_HANDLES[3]:TEXT, alt_m).
@@ -464,11 +458,9 @@ FUNCTION _GUI_COMMIT_EDIT_FIELDS {
 
     LOCAL spd IS CRUISE_DEFAULT_SPD.
     IF p:HASKEY("spd") { SET spd TO p["spd"]. }
-    LOCAL spd_mode IS CRUISE_SPD_MODE_IAS.
-    IF p:HASKEY("spd_mode") { SET spd_mode TO CRUISE_NORM_SPD_MODE(p["spd_mode"]). }
-    LOCAL spd_parsed IS _GUI_CRUISE_PARSE_SPD_INPUT(GUI_EDIT_HANDLES[4]:TEXT, spd, spd_mode).
-    LOCAL spd_mode_new IS CRUISE_NORM_SPD_MODE(spd_parsed["mode"]).
-    LOCAL spd_new IS spd_parsed["spd"].
+    LOCAL mode_idx IS CLAMP(ROUND(GUI_EDIT_HANDLES[5]:INDEX, 0), 0, 1).
+    LOCAL spd_mode_new IS CHOOSE CRUISE_SPD_MODE_MACH IF mode_idx = 1 ELSE CRUISE_SPD_MODE_IAS.
+    LOCAL spd_new IS _GUI_CRUISE_PARSE_SPD_INPUT(GUI_EDIT_HANDLES[4]:TEXT, spd, spd_mode_new).
     IF NOT p:HASKEY("spd_mode") OR CRUISE_NORM_SPD_MODE(p["spd_mode"]) <> spd_mode_new { SET changed TO TRUE. }
     IF NOT p:HASKEY("spd") OR p["spd"] <> spd_new { SET changed TO TRUE. }
     SET p["spd_mode"] TO spd_mode_new.
@@ -478,41 +470,41 @@ FUNCTION _GUI_COMMIT_EDIT_FIELDS {
     LOCAL nt IS "waypoint".
     IF p:HASKEY("nav_type") { SET nt TO p["nav_type"]. }
 
-    IF nt = "course_dist" AND GUI_EDIT_HANDLES:LENGTH >= 10 {
+    IF nt = "course_dist" AND GUI_EDIT_HANDLES:LENGTH >= 11 {
       LOCAL cdeg IS 90.
       LOCAL dnm  IS 100.
       IF p:HASKEY("course_deg") { SET cdeg TO ROUND(p["course_deg"], 0). }
       IF p:HASKEY("dist_nm")    { SET dnm  TO ROUND(p["dist_nm"],    0). }
 
-      LOCAL cdeg_new IS _PARSE_NUM(GUI_EDIT_HANDLES[8]:TEXT, cdeg).
+      LOCAL cdeg_new IS _PARSE_NUM(GUI_EDIT_HANDLES[9]:TEXT, cdeg).
       SET cdeg_new TO MOD(ROUND(cdeg_new, 0) + 360, 360).
       IF NOT p:HASKEY("course_deg") OR p["course_deg"] <> cdeg_new { SET changed TO TRUE. }
       SET p["course_deg"] TO cdeg_new.
-      SET GUI_EDIT_HANDLES[8]:TEXT TO "" + cdeg_new.
+      SET GUI_EDIT_HANDLES[9]:TEXT TO "" + cdeg_new.
 
-      LOCAL dnm_new IS _PARSE_NUM(GUI_EDIT_HANDLES[9]:TEXT, dnm).
+      LOCAL dnm_new IS _PARSE_NUM(GUI_EDIT_HANDLES[10]:TEXT, dnm).
       SET dnm_new TO CLAMP(ROUND(dnm_new, 0), 1, 9999).
       IF NOT p:HASKEY("dist_nm") OR p["dist_nm"] <> dnm_new { SET changed TO TRUE. }
       SET p["dist_nm"] TO dnm_new.
-      SET GUI_EDIT_HANDLES[9]:TEXT TO "" + dnm_new.
+      SET GUI_EDIT_HANDLES[10]:TEXT TO "" + dnm_new.
 
-    } ELSE IF nt = "course_time" AND GUI_EDIT_HANDLES:LENGTH >= 10 {
+    } ELSE IF nt = "course_time" AND GUI_EDIT_HANDLES:LENGTH >= 11 {
       LOCAL cdeg IS 90.
       LOCAL tmin IS 60.
       IF p:HASKEY("course_deg") { SET cdeg TO ROUND(p["course_deg"], 0). }
       IF p:HASKEY("time_min")   { SET tmin TO ROUND(p["time_min"],   0). }
 
-      LOCAL cdeg_new IS _PARSE_NUM(GUI_EDIT_HANDLES[8]:TEXT, cdeg).
+      LOCAL cdeg_new IS _PARSE_NUM(GUI_EDIT_HANDLES[9]:TEXT, cdeg).
       SET cdeg_new TO MOD(ROUND(cdeg_new, 0) + 360, 360).
       IF NOT p:HASKEY("course_deg") OR p["course_deg"] <> cdeg_new { SET changed TO TRUE. }
       SET p["course_deg"] TO cdeg_new.
-      SET GUI_EDIT_HANDLES[8]:TEXT TO "" + cdeg_new.
+      SET GUI_EDIT_HANDLES[9]:TEXT TO "" + cdeg_new.
 
-      LOCAL tmin_new IS _PARSE_NUM(GUI_EDIT_HANDLES[9]:TEXT, tmin).
+      LOCAL tmin_new IS _PARSE_NUM(GUI_EDIT_HANDLES[10]:TEXT, tmin).
       SET tmin_new TO CLAMP(ROUND(tmin_new, 0), 1, 9999).
       IF NOT p:HASKEY("time_min") OR p["time_min"] <> tmin_new { SET changed TO TRUE. }
       SET p["time_min"] TO tmin_new.
-      SET GUI_EDIT_HANDLES[9]:TEXT TO "" + tmin_new.
+      SET GUI_EDIT_HANDLES[10]:TEXT TO "" + tmin_new.
     }
   } ELSE IF t = LEG_APPROACH AND GUI_EDIT_HANDLES:LENGTH >= 5 {
     _FMS_AP_NORMALISE_PARAMS(p).
@@ -575,7 +567,7 @@ FUNCTION _GUI_TICK_EDIT {
       RETURN TRUE.
     }
 
-  } ELSE IF t = LEG_CRUISE AND GUI_EDIT_HANDLES:LENGTH >= 8 {
+  } ELSE IF t = LEG_CRUISE AND GUI_EDIT_HANDLES:LENGTH >= 9 {
     // [3] Altitude text field (meters)
     LOCAL alt_m IS CRUISE_DEFAULT_ALT_M.
     IF p:HASKEY("alt_m") { SET alt_m TO p["alt_m"]. }
@@ -587,89 +579,97 @@ FUNCTION _GUI_TICK_EDIT {
       RETURN TRUE.
     }
 
-    // [4] Speed text field (IAS m/s or Mach via Mx.xx)
+    // [4] Speed text field  [5] speed mode popup
     LOCAL spd IS CRUISE_DEFAULT_SPD.
     IF p:HASKEY("spd") { SET spd TO p["spd"]. }
     LOCAL spd_mode IS CRUISE_SPD_MODE_IAS.
     IF p:HASKEY("spd_mode") { SET spd_mode TO CRUISE_NORM_SPD_MODE(p["spd_mode"]). }
     IF GUI_EDIT_HANDLES[4]:CONFIRMED {
-      LOCAL spd_parsed IS _GUI_CRUISE_PARSE_SPD_INPUT(GUI_EDIT_HANDLES[4]:TEXT, spd, spd_mode).
-      LOCAL spd_mode_new IS CRUISE_NORM_SPD_MODE(spd_parsed["mode"]).
-      LOCAL val IS spd_parsed["spd"].
-      SET p["spd_mode"] TO spd_mode_new.
+      LOCAL mode_idx IS CLAMP(ROUND(GUI_EDIT_HANDLES[5]:INDEX, 0), 0, 1).
+      LOCAL mode_str IS CHOOSE CRUISE_SPD_MODE_MACH IF mode_idx = 1 ELSE CRUISE_SPD_MODE_IAS.
+      LOCAL val IS _GUI_CRUISE_PARSE_SPD_INPUT(GUI_EDIT_HANDLES[4]:TEXT, spd, mode_str).
+      SET p["spd_mode"] TO mode_str.
       SET p["spd"] TO val.
-      SET GUI_EDIT_HANDLES[4]:TEXT TO _GUI_CRUISE_SPD_TEXT(spd_mode_new, val).
+      SET GUI_EDIT_HANDLES[4]:TEXT TO _GUI_CRUISE_SPD_TEXT(mode_str, val).
+      RETURN TRUE.
+    }
+    IF GUI_EDIT_HANDLES[5]:CHANGED {
+      SET GUI_EDIT_HANDLES[5]:CHANGED TO FALSE.
+      LOCAL mode_idx IS CLAMP(ROUND(GUI_EDIT_HANDLES[5]:INDEX, 0), 0, 1).
+      LOCAL new_mode IS CHOOSE CRUISE_SPD_MODE_MACH IF mode_idx = 1 ELSE CRUISE_SPD_MODE_IAS.
+      SET p["spd_mode"] TO new_mode.
+      SET GUI_EDIT_HANDLES[4]:TEXT TO _GUI_CRUISE_SPD_TEXT(new_mode, spd).
       RETURN TRUE.
     }
 
-    // [5]/[7] — Nav type cycle (rebuild on change)
+    // [6]/[8] — Nav type cycle (rebuild on change)
     LOCAL nav_types IS LIST("waypoint", "course_dist", "course_time").
     LOCAL nt IS "waypoint".
     IF p:HASKEY("nav_type") { SET nt TO p["nav_type"]. }
     LOCAL nav_ni IS 0.
     IF nt = "course_dist" { SET nav_ni TO 1. }
     IF nt = "course_time" { SET nav_ni TO 2. }
-    IF GUI_EDIT_HANDLES[5]:TAKEPRESS {
+    IF GUI_EDIT_HANDLES[6]:TAKEPRESS {
       SET nav_ni TO MOD(nav_ni + 2, 3).
       SET p["nav_type"] TO nav_types[nav_ni].
       _GUI_BUILD_EDIT().
       RETURN TRUE.
     }
-    IF GUI_EDIT_HANDLES[7]:TAKEPRESS {
+    IF GUI_EDIT_HANDLES[8]:TAKEPRESS {
       SET nav_ni TO MOD(nav_ni + 1, 3).
       SET p["nav_type"] TO nav_types[nav_ni].
       _GUI_BUILD_EDIT().
       RETURN TRUE.
     }
 
-    // [8+] — Nav-type-specific fields
-    IF nt = "course_dist" AND GUI_EDIT_HANDLES:LENGTH >= 10 {
+    // [9+] — Nav-type-specific fields
+    IF nt = "course_dist" AND GUI_EDIT_HANDLES:LENGTH >= 11 {
       LOCAL cdeg IS 90.
       LOCAL dnm  IS 100.
       IF p:HASKEY("course_deg") { SET cdeg TO ROUND(p["course_deg"], 0). }
       IF p:HASKEY("dist_nm")    { SET dnm  TO ROUND(p["dist_nm"],    0). }
-      // [8] heading text field
-      IF GUI_EDIT_HANDLES[8]:CONFIRMED {
-        LOCAL val IS _PARSE_NUM(GUI_EDIT_HANDLES[8]:TEXT, cdeg).
+      // [9] heading text field
+      IF GUI_EDIT_HANDLES[9]:CONFIRMED {
+        LOCAL val IS _PARSE_NUM(GUI_EDIT_HANDLES[9]:TEXT, cdeg).
         SET val TO MOD(ROUND(val, 0) + 360, 360).
         SET p["course_deg"] TO val.
-        SET GUI_EDIT_HANDLES[8]:TEXT TO "" + val.
-        RETURN TRUE.
-      }
-      // [9] distance text field
-      IF GUI_EDIT_HANDLES[9]:CONFIRMED {
-        LOCAL val IS _PARSE_NUM(GUI_EDIT_HANDLES[9]:TEXT, dnm).
-        SET val TO CLAMP(ROUND(val, 0), 1, 9999).
-        SET p["dist_nm"] TO val.
         SET GUI_EDIT_HANDLES[9]:TEXT TO "" + val.
         RETURN TRUE.
       }
-    } ELSE IF nt = "course_time" AND GUI_EDIT_HANDLES:LENGTH >= 10 {
+      // [10] distance text field
+      IF GUI_EDIT_HANDLES[10]:CONFIRMED {
+        LOCAL val IS _PARSE_NUM(GUI_EDIT_HANDLES[10]:TEXT, dnm).
+        SET val TO CLAMP(ROUND(val, 0), 1, 9999).
+        SET p["dist_nm"] TO val.
+        SET GUI_EDIT_HANDLES[10]:TEXT TO "" + val.
+        RETURN TRUE.
+      }
+    } ELSE IF nt = "course_time" AND GUI_EDIT_HANDLES:LENGTH >= 11 {
       LOCAL cdeg IS 90.
       LOCAL tmin IS 60.
       IF p:HASKEY("course_deg") { SET cdeg TO ROUND(p["course_deg"], 0). }
       IF p:HASKEY("time_min")   { SET tmin TO ROUND(p["time_min"],   0). }
-      // [8] heading text field
-      IF GUI_EDIT_HANDLES[8]:CONFIRMED {
-        LOCAL val IS _PARSE_NUM(GUI_EDIT_HANDLES[8]:TEXT, cdeg).
+      // [9] heading text field
+      IF GUI_EDIT_HANDLES[9]:CONFIRMED {
+        LOCAL val IS _PARSE_NUM(GUI_EDIT_HANDLES[9]:TEXT, cdeg).
         SET val TO MOD(ROUND(val, 0) + 360, 360).
         SET p["course_deg"] TO val.
-        SET GUI_EDIT_HANDLES[8]:TEXT TO "" + val.
-        RETURN TRUE.
-      }
-      // [9] time text field
-      IF GUI_EDIT_HANDLES[9]:CONFIRMED {
-        LOCAL val IS _PARSE_NUM(GUI_EDIT_HANDLES[9]:TEXT, tmin).
-        SET val TO CLAMP(ROUND(val, 0), 1, 9999).
-        SET p["time_min"] TO val.
         SET GUI_EDIT_HANDLES[9]:TEXT TO "" + val.
         RETURN TRUE.
       }
+      // [10] time text field
+      IF GUI_EDIT_HANDLES[10]:CONFIRMED {
+        LOCAL val IS _PARSE_NUM(GUI_EDIT_HANDLES[10]:TEXT, tmin).
+        SET val TO CLAMP(ROUND(val, 0), 1, 9999).
+        SET p["time_min"] TO val.
+        SET GUI_EDIT_HANDLES[10]:TEXT TO "" + val.
+        RETURN TRUE.
+      }
     } ELSE {
-      // waypoint: [8..16]
+      // waypoint: [9..17]
       LOCAL slot IS 0.
       UNTIL slot >= FMS_WPT_SLOTS {
-        LOCAL base IS 8 + slot * 3.
+        LOCAL base IS 9 + slot * 3.
         IF base + 2 < GUI_EDIT_HANDLES:LENGTH {
           LOCAL wkey IS "wpt" + slot.
           LOCAL widx IS -1.
@@ -791,14 +791,19 @@ FUNCTION _GUI_REFRESH {
     SET li TO li + 1.
   }
 
-  // Save/Load slot labels.
-  LOCAL si IS 0.
-  UNTIL si >= GUI_SLOT_LOAD_BTNS:LENGTH {
-    LOCAL sn IS si + 1.
-    LOCAL lmark IS "  ".
-    IF FMS_SLOT_EXISTS(sn) { SET lmark TO "* ". }
-    SET GUI_SLOT_LOAD_BTNS[si]:TEXT TO "LOAD " + sn + lmark.
-    SET si TO si + 1.
+  // Save/Load — prefill name and repopulate plan list.
+  IF GUI_SAVE_NAME_TF <> 0 AND FMS_LAST_SAVE_NAME <> "" {
+    SET GUI_SAVE_NAME_TF:TEXT TO FMS_LAST_SAVE_NAME.
+  }
+  IF GUI_LOAD_PM <> 0 {
+    GUI_LOAD_PM:CLEAR().
+    LOCAL plans IS FMS_LIST_PLANS().
+    LOCAL pi IS 0.
+    UNTIL pi >= plans:LENGTH {
+      GUI_LOAD_PM:ADDOPTION(plans[pi]).
+      SET pi TO pi + 1.
+    }
+    IF plans:LENGTH > 0 { SET GUI_LOAD_PM:CHANGED TO FALSE. }
   }
 }
 
@@ -849,27 +854,22 @@ FUNCTION _GUI_BUILD {
   // Save / Load.
   GUI_WIN:ADDLABEL(" ").
   GUI_WIN:ADDLABEL("  SAVE / LOAD").
-  GUI_SLOT_SAVE_BTNS:CLEAR().
-  GUI_SLOT_LOAD_BTNS:CLEAR().
+  LOCAL save_row IS GUI_WIN:ADDHBOX().
+  LOCAL save_lbl IS save_row:ADDLABEL("Name:").
+  SET save_lbl:STYLE:WIDTH TO 50.
+  SET GUI_SAVE_NAME_TF TO save_row:ADDTEXTFIELD().
+  SET GUI_SAVE_NAME_TF:TEXT TO FMS_LAST_SAVE_NAME.
+  SET GUI_SAVE_NAME_TF:STYLE:WIDTH TO 200.
+  SET GUI_SAVE_BTN TO save_row:ADDBUTTON("SAVE").
+  SET GUI_SAVE_BTN:STYLE:WIDTH TO 70.
 
-  LOCAL slot_rows IS LIST(LIST(1, 2), LIST(3, 4), LIST(5)).
-  LOCAL ri IS 0.
-  UNTIL ri >= slot_rows:LENGTH {
-    LOCAL srow IS GUI_WIN:ADDHBOX().
-    LOCAL cols IS slot_rows[ri].
-    LOCAL ci IS 0.
-    UNTIL ci < cols:LENGTH {
-      LOCAL sn IS cols[ci].
-      LOCAL save_btn IS srow:ADDBUTTON("SAVE " + sn).
-      SET save_btn:STYLE:WIDTH TO 76.
-      LOCAL load_btn IS srow:ADDBUTTON("").
-      SET load_btn:STYLE:WIDTH TO 76.
-      GUI_SLOT_SAVE_BTNS:ADD(save_btn).
-      GUI_SLOT_LOAD_BTNS:ADD(load_btn).
-      SET ci TO ci + 1.
-    }
-    SET ri TO ri + 1.
-  }
+  LOCAL load_row IS GUI_WIN:ADDHBOX().
+  LOCAL load_lbl IS load_row:ADDLABEL("Plan:").
+  SET load_lbl:STYLE:WIDTH TO 50.
+  SET GUI_LOAD_PM TO load_row:ADDPOPUPMENU().
+  SET GUI_LOAD_PM:STYLE:WIDTH TO 200.
+  SET GUI_LOAD_BTN TO load_row:ADDBUTTON("LOAD").
+  SET GUI_LOAD_BTN:STYLE:WIDTH TO 70.
 
   // ARM / QUIT.
   GUI_WIN:ADDLABEL(" ").
@@ -972,21 +972,105 @@ FUNCTION _GUI_TICK {
   }
 
   // Save / Load.
-  LOCAL si IS 0.
-  UNTIL si >= GUI_SLOT_SAVE_BTNS:LENGTH {
-    IF GUI_SLOT_SAVE_BTNS[si]:TAKEPRESS {
-      FMS_SAVE_PLAN(si + 1).
-      _GUI_REFRESH().
-      RETURN "".
+  IF GUI_SAVE_BTN <> 0 AND GUI_SAVE_BTN:TAKEPRESS {
+    LOCAL sname IS "plan".
+    IF GUI_SAVE_NAME_TF <> 0 AND GUI_SAVE_NAME_TF:TEXT:LENGTH > 0 {
+      SET sname TO GUI_SAVE_NAME_TF:TEXT.
     }
-    IF GUI_SLOT_LOAD_BTNS[si]:TAKEPRESS {
-      FMS_LOAD_PLAN(si + 1).
+    FMS_SAVE_PLAN(sname).
+    _GUI_REFRESH().
+    RETURN "".
+  }
+  IF GUI_LOAD_BTN <> 0 AND GUI_LOAD_BTN:TAKEPRESS {
+    IF GUI_LOAD_PM <> 0 AND GUI_LOAD_PM:VALUE <> "" {
+      FMS_LOAD_PLAN(GUI_LOAD_PM:VALUE).
       _GUI_BUILD_EDIT().
       _GUI_REFRESH().
-      RETURN "".
     }
-    SET si TO si + 1.
+    RETURN "".
   }
 
+  RETURN "".
+}
+
+// ══════════════════════════════════════════════════════════
+// END-OF-FLIGHT CONFIRMATION DIALOG
+// Blocking mini-loop GUI.  Returns TRUE = new flight, FALSE = exit.
+// ══════════════════════════════════════════════════════════
+FUNCTION _GUI_SHOW_END_CONFIRM {
+  LOCAL win IS GUI(280).
+  LOCAL hdr IS win:ADDLABEL("  FLIGHT COMPLETE").
+  SET hdr:STYLE:FONTSIZE TO 13.
+  SET hdr:STYLE:ALIGN TO "CENTER".
+  win:ADDLABEL(" ").
+  win:ADDLABEL("  Return to plan editor?").
+  win:ADDLABEL(" ").
+  LOCAL btn_row IS win:ADDHBOX().
+  LOCAL new_btn  IS btn_row:ADDBUTTON("  NEW FLIGHT  ").
+  LOCAL exit_btn IS btn_row:ADDBUTTON("     EXIT     ").
+  SET new_btn:STYLE:WIDTH  TO 125.
+  SET exit_btn:STYLE:WIDTH TO 125.
+  win:SHOW().
+
+  LOCAL chosen  IS FALSE.
+  LOCAL confirm IS FALSE.
+  UNTIL chosen {
+    IF new_btn:TAKEPRESS  { SET chosen TO TRUE. SET confirm TO TRUE. }
+    IF exit_btn:TAKEPRESS { SET chosen TO TRUE. }
+    WAIT IFC_LOOP_DT.
+  }
+
+  win:DISPOSE().
+  RETURN confirm.
+}
+
+// ══════════════════════════════════════════════════════════
+// IN-FLIGHT PLAN EDITING
+// ══════════════════════════════════════════════════════════
+
+// Open the plan editor mid-flight.  Populates DRAFT_PLAN from the
+// remaining legs in FLIGHT_PLAN_DRAFT_COPY (editor format), then
+// builds the GUI window with COMMIT / DISCARD button labels.
+FUNCTION _GUI_OPEN_INFLIGHT {
+  DRAFT_PLAN:CLEAR().
+  LOCAL start IS FLIGHT_PLAN_INDEX + 1.
+  IF start < FLIGHT_PLAN_DRAFT_COPY:LENGTH {
+    LOCAL i IS start.
+    UNTIL i >= FLIGHT_PLAN_DRAFT_COPY:LENGTH {
+      DRAFT_PLAN:ADD(FLIGHT_PLAN_DRAFT_COPY[i]).
+      SET i TO i + 1.
+    }
+  }
+  IF DRAFT_PLAN:LENGTH = 0 {
+    DRAFT_PLAN:ADD(_FMS_DEFAULT_LEG(LEG_APPROACH)).
+  }
+  SET FMS_LEG_CURSOR TO 0.
+
+  _GUI_BUILD().
+
+  // Relabel ARM → COMMIT, QUIT → DISCARD for in-flight context.
+  IF GUI_ARM_BTN  <> 0 { SET GUI_ARM_BTN:TEXT  TO "    COMMIT    ". }
+  IF GUI_QUIT_BTN <> 0 { SET GUI_QUIT_BTN:TEXT TO "   DISCARD   ". }
+
+  SET GUI_INFLIGHT_MODE TO TRUE.
+}
+
+// Poll the in-flight plan editor each loop tick.
+// Delegates to _GUI_TICK(); translates ARM → COMMIT, QUIT → DISCARD.
+// Returns "" / "COMMIT" / "DISCARD".
+FUNCTION _GUI_TICK_INFLIGHT {
+  LOCAL tick_res IS _GUI_TICK().
+  IF tick_res = "ARM" {
+    _GUI_COMMIT_EDIT_FIELDS().
+    SET GUI_INFLIGHT_COMMIT_PENDING TO TRUE.
+    SET GUI_INFLIGHT_MODE TO FALSE.
+    _GUI_CLOSE().
+    RETURN "COMMIT".
+  }
+  IF tick_res = "QUIT" {
+    SET GUI_INFLIGHT_MODE TO FALSE.
+    _GUI_CLOSE().
+    RETURN "DISCARD".
+  }
   RETURN "".
 }

@@ -37,6 +37,8 @@
 - able to list nearest waypoint to airport
 - should be able to select which type of speed (Mach or IAS)
 
+- be able to change top-of-descent fpa (while planning and during flight)
+
 - ground handling mode?
   - some aircraft don't have steerable nose gear. would be good to use diff braking and/or diff thrust to turn the aircraft on the ground. Note: this would be a feature of the "enhanced manual mode" 
 
@@ -59,6 +61,17 @@
     - Could specify a cruise->descent maximum negative vert speed in cfgs.
 - Handle the case correctly where if waypoint 1->2->3 form an acute triangle (so to say), that 3 won't get skipped once AC gets to waypoint 2 just because 2 is "behind" the aircraft.
 
+# Augmented Manual Operation (AMO) Mode
+
+## Modules
+
+### Ground Steering Assist
+This module is a feature of Augmented Manual Operation (AMO) Mode. When a flight plan is not active, this is the default state the aircraft should be in. There will be other modules that will be usable in this mode, but this is the first one.
+
+If an aircraft does not have nose steering, differential braking and differential thrust should be used, so the 'A' and 'D' keys, which normally steers the aircraft with the nosewheel (in addition to the rudder), will create diffenertial steering. Note: the thrust level of the steering engines is set by the throttle - the opposite engine should be idle.
+
+### Radar-based Terrain Following Mode
+This mode allows the aircraft to be fully manually operatable, however pilot-inputs are blended with terrain following, that way the aircraft can still bank and turn, but the autopilot also tries to keep the same radar altitude.
 
 # Bugs
 - Thrust reverser should throttle zero before disengaging (and wait for spool down) at end of landing so that it doesn't start accelerating the plane fwd when reversers are disengaged

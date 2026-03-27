@@ -191,6 +191,8 @@ FUNCTION MENU_BUILD_ITEMS {
   _MENU_ADD_ITEM(LEXICON("type","toggle","key","debug","label","Debug Panel")).
   _MENU_ADD_ITEM(LEXICON("type","toggle","key","logger","label","Logger")).
   _MENU_ADD_ITEM(LEXICON("type","action","key","events","label","Event History")).
+  _MENU_ADD_ITEM(LEXICON("type","action","key","edit_plan","label","Edit Plan")).
+  _MENU_ADD_ITEM(LEXICON("type","action","key","skip_leg","label","Skip Leg")).
   _MENU_ADD_ITEM(LEXICON("type","action","key","close","label","Close Menu")).
   _MENU_ADD_ITEM(LEXICON("type","action","key","quit","label","Quit IFC")).
 }
@@ -466,6 +468,9 @@ FUNCTION MENU_DISPATCH {
     IFC_SET_ALERT("Debug panel " + s).
     RETURN.
   }
+
+  IF cmd = "edit_plan" { _GUI_OPEN_INFLIGHT(). RETURN. }
+  IF cmd = "skip_leg"  { _IFC_SKIP_LEG().      RETURN. }
 }
 
 // ============================================================
@@ -631,6 +636,46 @@ FUNCTION _FMS_AP_NORMALISE_PARAMS {
   _FMS_AP_SYNC_PARAMS_FROM_PID(prm, pid).
 }
 
+// Returns the human-readable display name for a waypoint beacon ID.
+// Falls back to the ID itself if no "name" field exists.
+FUNCTION _FMS_WPT_DISPLAY_NAME {
+  PARAMETER bid.
+  IF bid = "" { RETURN "(none)". }
+  IF NOT NAV_BEACON_DB:HASKEY(bid) { RETURN bid. }
+  LOCAL b IS NAV_BEACON_DB[bid].
+  IF b:HASKEY("name") { RETURN b["name"]. }
+  RETURN bid.
+}
+
+// Builds (and caches in FMS_WPT_UNIVERSE) the combined cruise waypoint universe:
+//   BTYPE_WPT beacons in CUSTOM_WPT_IDS order, then all BTYPE_IAF beacons.
+// Returns LEXICON("ids", LIST of beacon IDs, "names", LIST of display names).
+FUNCTION _FMS_GET_WPT_UNIVERSE {
+  IF FMS_WPT_UNIVERSE <> 0 { RETURN FMS_WPT_UNIVERSE. }
+  LOCAL ids   IS LIST().
+  LOCAL names IS LIST().
+  // First: airports / named waypoints in stable CUSTOM_WPT_IDS order.
+  LOCAL wi IS 0.
+  UNTIL wi >= CUSTOM_WPT_IDS:LENGTH {
+    LOCAL bid IS CUSTOM_WPT_IDS[wi].
+    IF NAV_BEACON_DB:HASKEY(bid) {
+      ids:ADD(bid).
+      names:ADD(_FMS_WPT_DISPLAY_NAME(bid)).
+    }
+    SET wi TO wi + 1.
+  }
+  // Then: all IAF fixes registered in the beacon database.
+  FOR bid IN NAV_BEACON_DB:KEYS {
+    LOCAL b IS NAV_BEACON_DB[bid].
+    IF b:HASKEY("type") AND b["type"] = BTYPE_IAF {
+      ids:ADD(bid).
+      names:ADD(_FMS_WPT_DISPLAY_NAME(bid)).
+    }
+  }
+  SET FMS_WPT_UNIVERSE TO LEXICON("ids", ids, "names", names).
+  RETURN FMS_WPT_UNIVERSE.
+}
+
 // Returns a fresh leg LEXICON with default params for the given type string.
 FUNCTION _FMS_DEFAULT_LEG {
   PARAMETER ltype.
@@ -643,7 +688,7 @@ FUNCTION _FMS_DEFAULT_LEG {
       "params", LEXICON("alt_m", CRUISE_DEFAULT_ALT_M, "spd_mode", CRUISE_SPD_MODE_IAS, "spd", CRUISE_DEFAULT_SPD,
                         "nav_type", "waypoint",
                         "course_deg", 90, "dist_nm", 100, "time_min", 60,
-                        "wpt0", -1, "wpt1", -1, "wpt2", -1)).
+                        "wpt0", "", "wpt1", "", "wpt2", "")).
   }
   IF ltype = LEG_APPROACH {
     LOCAL prm IS LEXICON("plate_idx", 0, "airport_idx", 0, "plate_sel_idx", 0).
@@ -725,9 +770,9 @@ FUNCTION _FMS_LEG_FIELD_VALUE_TEXT {
     }
     IF fi = 4 OR fi = 5 OR fi = 6 {
       LOCAL wkey IS "wpt" + (fi - 4).
-      LOCAL idx  IS ROUND(prm[wkey], 0).
-      IF idx < 0 OR idx >= CUSTOM_WPT_IDS:LENGTH { RETURN "- none -". }
-      RETURN CUSTOM_WPT_IDS[idx].
+      LOCAL wid  IS "".
+      IF prm:HASKEY(wkey) { SET wid TO prm[wkey]. }
+      RETURN _FMS_WPT_DISPLAY_NAME(wid).
     }
   }
   IF t = LEG_APPROACH {
@@ -781,11 +826,21 @@ FUNCTION _FMS_LEG_CHANGE_FIELD {
     }
     IF fi = 4 OR fi = 5 OR fi = 6 {
       LOCAL wkey IS "wpt" + (fi - 4).
-      LOCAL n    IS CUSTOM_WPT_IDS:LENGTH.
-      LOCAL cur  IS ROUND(prm[wkey], 0) + dir.
-      IF cur < -1 { SET cur TO n - 1. }
-      IF cur >= n { SET cur TO -1. }
-      SET prm[wkey] TO ROUND(cur, 0).
+      LOCAL univ IS _FMS_GET_WPT_UNIVERSE().
+      LOCAL wids IS univ["ids"].
+      LOCAL cur_id IS "".
+      IF prm:HASKEY(wkey) { SET cur_id TO prm[wkey]. }
+      LOCAL ci IS -1.
+      LOCAL si IS 0.
+      UNTIL si >= wids:LENGTH {
+        IF wids[si] = cur_id { SET ci TO si. }
+        SET si TO si + 1.
+      }
+      LOCAL ni IS ci + dir.
+      IF ni < -1 { SET ni TO wids:LENGTH - 1. }
+      IF ni >= wids:LENGTH { SET ni TO -1. }
+      IF ni < 0 { SET prm[wkey] TO "". }
+      ELSE { SET prm[wkey] TO wids[ni]. }
     }
   }
   IF t = LEG_APPROACH {
@@ -854,13 +909,10 @@ FUNCTION _FMS_LEG_LINE_TEXT {
     LOCAL slot IS 0.
     UNTIL slot >= FMS_WPT_SLOTS {
       LOCAL wkey IS "wpt" + slot.
-      IF p:HASKEY(wkey) AND ROUND(p[wkey], 0) >= 0 {
-        LOCAL widx IS ROUND(p[wkey], 0).
-        IF widx < CUSTOM_WPT_IDS:LENGTH {
-          LOCAL wname IS CUSTOM_WPT_IDS[widx].
-          IF wpts = "" { SET wpts TO wname. }
-          ELSE { SET wpts TO wpts + "+" + wname. }
-        }
+      IF p:HASKEY(wkey) AND p[wkey] <> "" {
+        LOCAL wname IS _FMS_WPT_DISPLAY_NAME(p[wkey]).
+        IF wpts = "" { SET wpts TO wname. }
+        ELSE { SET wpts TO wpts + "+" + wname. }
       }
       SET slot TO slot + 1.
     }

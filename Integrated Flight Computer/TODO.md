@@ -1,30 +1,27 @@
-# IFC Performance Review — TODO
+# IFC TODO
 
-## P1 — Cache facing/up/north vectors once per loop
-- [x] **P1a** — Add `IFC_FACING_FWD`, `IFC_FACING_STAR`, `IFC_FACING_TOP`, `IFC_UP_VEC`, `IFC_NORTH_VEC` globals to `ifc_state.ks`; reset in `IFC_INIT_STATE`
-- [x] **P1b** — Compute all five vectors once at the top of the main loop in `ifc_main.ks` before any phase function runs
-- [x] **P1c** — Rewrite `GET_COMPASS_HDG`, `GET_PITCH`, `GET_BANK` in `ifc_helpers.ks` to read the cached globals instead of querying `SHIP:FACING`/`SHIP:UP`/`SHIP:NORTH` directly
-- [x] **P1d** — Add `TELEM_COMPASS_HDG`, `TELEM_PITCH_DEG`, `TELEM_BANK_DEG` globals to `ifc_state.ks`; compute them once per loop in `ifc_main.ks` after the vector cache; replace all call-sites in `ifc_display.ks` and `ifc_logger.ks`
+## Feature: Cruise Speed Mode Popup (`ifc_gui.ks`)
+- [ ] Update handle layout comment at top of file
+- [ ] Simplify `_GUI_CRUISE_SPD_TEXT()` — numeric only, no "M" prefix
+- [ ] Simplify `_GUI_CRUISE_PARSE_SPD_INPUT()` — takes mode string, returns clamped number
+- [ ] `_GUI_BUILD_EDIT()`: add `spd_mode_pm` popup at [5], shift nav [5–7]→[6–8], nav-specific [8+]→[9+]
+- [ ] `_GUI_REFRESH_EDIT()`: refresh [5] popup index, update nav label index [6]→[7], shift nav-specific indices
+- [ ] `_GUI_TICK_EDIT()`: handle [5] popup CHANGED, update nav cycle buttons [5]/[7]→[6]/[8], shift nav-specific indices
+- [ ] `_GUI_COMMIT_EDIT_FIELDS()`: read mode from [5] popup, shift nav-specific indices
 
-## P2 — Cache ILS runway vectors on plate load
-- [x] **P2a** — Add `ILS_RWY_FWD`, `ILS_RWY_RIGHT` globals to `ifc_state.ks`; reset in `IFC_INIT_STATE`
-- [x] **P2b** — Compute them once in `IFC_LOAD_PLATE` (or equivalent plate-init path) from `ils["hdg"]`
-- [x] **P2c** — Replace the two `HEADING()` constructions inside `_COMPUTE_ILS_DEVIATIONS` with reads of `ILS_RWY_FWD`/`ILS_RWY_RIGHT`
+## Feature: New State Globals (`ifc_state.ks`)
+- [x] Add `FLIGHT_PLAN_DRAFT_COPY`, `GUI_INFLIGHT_MODE`, `GUI_INFLIGHT_COMMIT_PENDING` declarations
+- [x] Reset all three in `IFC_INIT_STATE()`
 
-## P3 — Deduplicate GEO_DISTANCE in approach
-- [x] **P3a** — Add `ILS_DIST_KM` global to `ifc_state.ks`; reset in `IFC_INIT_STATE`
-- [x] **P3b** — Compute `ILS_DIST_KM` once inside `_COMPUTE_ILS_DEVIATIONS` and store it
-- [x] **P3c** — Replace the two independent `GEO_DISTANCE` calls in `_CHECK_FLAP_DEPLOYMENT` and `_CHECK_APPROACH_SPOILERS` with reads of `ILS_DIST_KM`
+## Feature: End-of-Flight Confirmation
+- [x] `ifc_gui.ks`: add `_GUI_SHOW_END_CONFIRM()` — blocking kOS GUI dialog, returns TRUE/FALSE
+- [x] `ifc_main.ks`: `_RUN_FLIGHT_PLAN()` — add `draft_copy` param, save to `FLIGHT_PLAN_DRAFT_COPY` after init, track quit flag, return `"DONE"` or `"QUIT"`
+- [x] `ifc_main.ks`: `_IFC_INTERACTIVE_START()` — wrap in outer loop; on `"DONE"` call confirm dialog, save/restore `DRAFT_PLAN` across `IFC_INIT_STATE()`; on `"QUIT"` exit
+- [x] `ifc_main.ks`: update `RUN_IFC()` and `RUN_TAKEOFF_IFC()` to pass `LIST()` as `draft_copy`
 
-## P4 — Heading/pitch/bank as loop-level globals (display + logger)
-- [x] **P4a** — Remove direct `GET_COMPASS_HDG()`/`GET_PITCH()`/bank calls from `ifc_display.ks`; replace with `TELEM_COMPASS_HDG`, `TELEM_PITCH_DEG`, `TELEM_BANK_DEG`
-- [x] **P4b** — Remove direct calls from `ifc_logger.ks`; replace with telemetry globals
-
-## P5 — SHIP:ENGINES traversal in logger
-- [x] **P5a** — Add `TELEM_ENG_IGN_ON`, `TELEM_ENG_FLAMEOUTS` globals to `ifc_state.ks`; reset in `IFC_INIT_STATE`
-- [x] **P5b** — Populate them inside the existing engine iteration in `ASC_STATE_UPDATE` (ascent) and equivalent phase-level engine checks; fall back to a cheap one-time count for non-ascent phases
-- [x] **P5c** — Remove `SHIP:ENGINES` traversal from `LOGGER_WRITE`; read `TELEM_ENG_IGN_ON`/`TELEM_ENG_FLAMEOUTS` instead
-
-## P6 — Display string allocation reduction
-- [x] **P6a** — Replace `STR_REPEAT` loop in `ifc_ui.ks` with a lookup table of pre-built space strings (up to the terminal width)
-- [x] **P6b** — Replace CSV row string concatenation in `ifc_logger.ks` with `LIST` + `:JOIN(",")`
+## Feature: In-Flight Plan Editing
+- [x] `ifc_gui.ks`: add `_GUI_OPEN_INFLIGHT()` — populate `DRAFT_PLAN` from remaining `FLIGHT_PLAN_DRAFT_COPY` legs, rename COMMIT/DISCARD buttons, set `GUI_INFLIGHT_MODE`
+- [x] `ifc_gui.ks`: add `_GUI_TICK_INFLIGHT()` — delegate to `_GUI_TICK()`, handle ARM→commit / QUIT→discard
+- [x] `ifc_main.ks`: add `_IFC_SKIP_LEG()` function
+- [x] `ifc_main.ks`: in main loop — inflight commit splice handler + call `_GUI_TICK_INFLIGHT()` when `GUI_INFLIGHT_MODE`
+- [x] `ifc_menu.ks`: add "Edit Plan" and "Skip Leg" items to in-flight menu + dispatch handlers
