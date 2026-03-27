@@ -90,7 +90,14 @@ FUNCTION BUILD_AIRCRAFT_CONFIG {
     "has_nws",            TRUE,  // TRUE = aircraft has nose wheel steering
     "amo_enabled",        1,     // 1 enables AMO ground assist in pre-arm when has_nws=FALSE
     "diff_brake_strength",1.0,   // 0..1 per-side auto-brake strength used by AMO differential steering
+    "amo_engine_side_eps_m",0.25,// m lateral split epsilon for automatic left/right engine banking
+    "amo_engine_left_tag", "",    // optional part tag for left-side engines used by AMO differential thrust
+    "amo_engine_right_tag","",    // optional part tag for right-side engines used by AMO differential thrust
+    "amo_engine_module_name","",  // optional engine module override for thrust limiter binding (e.g., "ModuleEnginesFX")
+    "amo_engine_field_name","",   // optional thrust limiter field on that module (e.g., "thrustPercentage")
+    "amo_engine_field_base",-1,   // optional full-scale for amo_engine_field_name (-1 = auto infer)
     "abrk_default_strength",0.7, // 0..1 default wheel brake strength setting when not differentially steering
+    "abrk_nose_tag",      "",    // optional override: nose-gear tag family for nose-brake suppression (e.g., "ifc_nosegear")
     "abrk_module_name",   "",    // optional override: exact wheel module name to bind (e.g., "ModuleWheelBase")
     "abrk_field_name",    "",    // optional override: exact brake field name on that module (e.g., "brakeTweakable")
     "abrk_field_base",    -1,    // optional override: numeric full-scale value for abrk_field_name (-1 = auto infer)

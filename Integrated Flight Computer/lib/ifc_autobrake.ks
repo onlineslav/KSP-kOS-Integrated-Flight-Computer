@@ -16,6 +16,7 @@ FUNCTION ABRK_RESET {
   SET ABRK_WARNED_NO_PARTS TO FALSE.
   ABRK_LEFT_BINDINGS:CLEAR().
   ABRK_RIGHT_BINDINGS:CLEAR().
+  ABRK_NOSE_BINDINGS:CLEAR().
   SET ABRK_LAST_LEFT_CMD TO 0.
   SET ABRK_LAST_RIGHT_CMD TO 0.
 }
@@ -51,6 +52,22 @@ FUNCTION _ABRK_GET_GEAR_TAG_BASE {
     }
   }
   RETURN tag.
+}
+
+FUNCTION _ABRK_GET_NOSE_TAG_BASE {
+  // Optional explicit override.
+  LOCAL tag IS _ABRK_CFG_STR("abrk_nose_tag", "").
+  IF tag <> "" { RETURN tag. }
+
+  // Default: derive from main-gear base tag.
+  LOCAL main_tag IS _ABRK_GET_GEAR_TAG_BASE().
+  IF main_tag <> "" {
+    LOCAL low IS main_tag:TOLOWER.
+    IF low:FIND("maingear") >= 0 {
+      RETURN main_tag:REPLACE("maingear", "nosegear"):REPLACE("MAINGEAR", "NOSEGEAR"):REPLACE("MainGear", "NoseGear").
+    }
+  }
+  RETURN "ifc_nosegear".
 }
 
 FUNCTION _ABRK_TAG_VARIANTS {
@@ -386,15 +403,18 @@ FUNCTION ABRK_DISCOVER_PARTS {
 
   ABRK_LEFT_BINDINGS:CLEAR().
   ABRK_RIGHT_BINDINGS:CLEAR().
+  ABRK_NOSE_BINDINGS:CLEAR().
   SET ABRK_AVAILABLE TO FALSE.
   SET ABRK_DISCOVERED TO TRUE.
 
   LOCAL base_tag IS _ABRK_GET_GEAR_TAG_BASE().
   IF base_tag = "" { RETURN. }
+  LOCAL nose_tag IS _ABRK_GET_NOSE_TAG_BASE().
 
   LOCAL legacy_parts IS LIST().
   LOCAL left_parts IS LIST().
   LOCAL right_parts IS LIST().
+  LOCAL nose_parts IS LIST().
 
   // Explicit side tags + legacy unsided tags across ifc_/ifs_ families.
   IF SHIP:HASSUFFIX("PARTSTAGGED") {
@@ -415,6 +435,16 @@ FUNCTION ABRK_DISCOVER_PARTS {
       } ELSE {
         _ABRK_COLLECT_TAGGED_PARTS(tg, legacy_parts).
       }
+    }
+  }
+
+  // Optional nose-gear tag family for nose-brake suppression during differential steer.
+  IF SHIP:HASSUFFIX("PARTSTAGGED") AND nose_tag <> "" {
+    LOCAL nose_tags IS _ABRK_TAG_VARIANTS(nose_tag).
+    LOCAL nti IS 0.
+    UNTIL nti >= nose_tags:LENGTH {
+      _ABRK_COLLECT_TAGGED_PARTS(nose_tags[nti], nose_parts).
+      SET nti TO nti + 1.
     }
   }
 
@@ -439,6 +469,11 @@ FUNCTION ABRK_DISCOVER_PARTS {
   SET i TO 0.
   UNTIL i >= right_parts:LENGTH {
     _ABRK_ADD_PART_BINDING(right_parts[i], ABRK_RIGHT_BINDINGS).
+    SET i TO i + 1.
+  }
+  SET i TO 0.
+  UNTIL i >= nose_parts:LENGTH {
+    _ABRK_ADD_PART_BINDING(nose_parts[i], ABRK_NOSE_BINDINGS).
     SET i TO i + 1.
   }
 
@@ -515,6 +550,14 @@ FUNCTION ABRK_APPLY {
 
   _ABRK_APPLY_BANK(ABRK_LEFT_BINDINGS, left_cmd).
   _ABRK_APPLY_BANK(ABRK_RIGHT_BINDINGS, right_cmd).
+  // Keep nose gear free during differential steering to avoid fighting turn-in.
+  IF ABRK_NOSE_BINDINGS:LENGTH > 0 {
+    IF ABS(left_cmd - right_cmd) > 0.001 AND MAX(left_cmd, right_cmd) > 0.001 {
+      _ABRK_APPLY_BANK(ABRK_NOSE_BINDINGS, 0).
+    } ELSE {
+      _ABRK_APPLY_DEFAULT_BANK(ABRK_NOSE_BINDINGS).
+    }
+  }
   SET ABRK_LAST_LEFT_CMD TO left_cmd.
   SET ABRK_LAST_RIGHT_CMD TO right_cmd.
   RETURN TRUE.
@@ -524,6 +567,7 @@ FUNCTION ABRK_RELEASE {
   IF ABRK_AVAILABLE {
     _ABRK_APPLY_DEFAULT_BANK(ABRK_LEFT_BINDINGS).
     _ABRK_APPLY_DEFAULT_BANK(ABRK_RIGHT_BINDINGS).
+    _ABRK_APPLY_DEFAULT_BANK(ABRK_NOSE_BINDINGS).
   }
   SET ABRK_LAST_LEFT_CMD TO _ABRK_DEFAULT_STRENGTH().
   SET ABRK_LAST_RIGHT_CMD TO _ABRK_DEFAULT_STRENGTH().

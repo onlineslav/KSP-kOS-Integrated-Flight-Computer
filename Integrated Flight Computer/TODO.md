@@ -1,5 +1,25 @@
 # IFC TODO
 
+## Handoff: AMO Differential Steering (next session)
+
+### Status
+- [x] Differential braking path works and respects `diff_brake_strength`.
+- [x] Default brake strength baseline restored when not steering (`abrk_default_strength`).
+- [x] Nose-gear brake suppression added during differential steer (nose bindings forced to 0 while split braking is active).
+- [ ] Differential thrust still not functioning in flight tests.
+
+### Open Work (Diff Thrust)
+- [ ] Diagnose why AMO engine banks are not being applied even when engines are present.
+- [ ] Verify `_AMO_MAKE_ENGINE_ENTRY()` creates valid limiter bindings for this craft (suffix or module field path).
+- [ ] Confirm writes in `_AMO_SET_ENTRY_LIMIT_FRAC()` actually change per-engine limiter values at runtime.
+- [ ] If `ModuleEnginesFX` field writing is unreliable, add/try alternate limiter field/module fallbacks for this aircraft.
+- [ ] Add temporary debug logging in AMO discovery/apply path.
+- [ ] Re-test in KSP: A/D steering should set outside bank limiter to throttle fraction and inside bank to idle.
+
+### Files to revisit
+- `Integrated Flight Computer/lib/ifc_amo.ks`
+- `Integrated Flight Computer/aircraft/c_1000h_cfg.ks`
+- `Integrated Flight Computer/lib/ifc_display.ks`
 ## Feature: Cruise Speed Mode Popup (`ifc_gui.ks`)
 - [ ] Update handle layout comment at top of file
 - [ ] Simplify `_GUI_CRUISE_SPD_TEXT()` — numeric only, no "M" prefix
@@ -25,3 +45,5 @@
 - [x] `ifc_main.ks`: add `_IFC_SKIP_LEG()` function
 - [x] `ifc_main.ks`: in main loop — inflight commit splice handler + call `_GUI_TICK_INFLIGHT()` when `GUI_INFLIGHT_MODE`
 - [x] `ifc_menu.ks`: add "Edit Plan" and "Skip Leg" items to in-flight menu + dispatch handlers
+
+

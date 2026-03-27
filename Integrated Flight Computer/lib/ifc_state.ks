@@ -307,6 +307,7 @@ GLOBAL ABRK_AVAILABLE IS FALSE.       // TRUE when both left/right brake banks h
 GLOBAL ABRK_WARNED_NO_PARTS IS FALSE. // one-shot warning latch when no valid brake bindings are found
 GLOBAL ABRK_LEFT_BINDINGS IS LIST().  // LIST of LEXICON("module",module,"field",field_name,"base",numeric_base)
 GLOBAL ABRK_RIGHT_BINDINGS IS LIST(). // LIST of LEXICON("module",module,"field",field_name,"base",numeric_base)
+GLOBAL ABRK_NOSE_BINDINGS IS LIST().  // LIST of nose-gear brake bindings (suppressed during differential steer)
 GLOBAL ABRK_LAST_LEFT_CMD IS 0.       // last commanded left brake fraction [0..1]
 GLOBAL ABRK_LAST_RIGHT_CMD IS 0.      // last commanded right brake fraction [0..1]
 
@@ -772,6 +773,7 @@ FUNCTION IFC_INIT_STATE {
   SET ABRK_WARNED_NO_PARTS TO FALSE.
   ABRK_LEFT_BINDINGS:CLEAR().
   ABRK_RIGHT_BINDINGS:CLEAR().
+  ABRK_NOSE_BINDINGS:CLEAR().
   SET ABRK_LAST_LEFT_CMD TO 0.
   SET ABRK_LAST_RIGHT_CMD TO 0.
 

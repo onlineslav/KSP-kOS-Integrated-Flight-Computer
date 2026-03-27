@@ -122,6 +122,9 @@ FUNCTION DISPLAY_AMO_GROUND {
        "   BRK L/R " + ABRK_LEFT_BINDINGS:LENGTH + "/" + ABRK_RIGHT_BINDINGS:LENGTH, UI_PRI_TOP + 6).
   UI_P("  SteerIn " + ROUND(_AMO_STEER_INPUT(), 3) +
        "  Deadband " + ROUND(CLAMP(_AMO_CFG_NUM("amo_steer_deadband", AMO_STEER_DEADBAND, 0), 0, 1), 3), UI_PRI_TOP + 7).
+  LOCAL eng_seen IS 0.
+  IF SHIP:HASSUFFIX("ENGINES") { SET eng_seen TO SHIP:ENGINES:LENGTH. }
+  UI_P("  EnginesSeen " + eng_seen, UI_PRI_TOP + 8).
 }
 
 FUNCTION DISPLAY_PLAN_EDITOR {
