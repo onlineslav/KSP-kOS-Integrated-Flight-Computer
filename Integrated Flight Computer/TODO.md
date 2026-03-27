@@ -35,9 +35,9 @@
 
 ## Feature: End-of-Flight Confirmation
 - [x] `ifc_gui.ks`: add `_GUI_SHOW_END_CONFIRM()` — blocking kOS GUI dialog, returns TRUE/FALSE
-- [x] `ifc_main.ks`: `_RUN_FLIGHT_PLAN()` — add `draft_copy` param, save to `FLIGHT_PLAN_DRAFT_COPY` after init, track quit flag, return `"DONE"` or `"QUIT"`
-- [x] `ifc_main.ks`: `_IFC_INTERACTIVE_START()` — wrap in outer loop; on `"DONE"` call confirm dialog, save/restore `DRAFT_PLAN` across `IFC_INIT_STATE()`; on `"QUIT"` exit
-- [x] `ifc_main.ks`: update `RUN_IFC()` and `RUN_TAKEOFF_IFC()` to pass `LIST()` as `draft_copy`
+- [x] `ifc_main.ks`: `_RUN_FLIGHT_PLAN()`A — add `draft_copy` param, save to `FLIGHT_PLAN_DRAFT_COPY` after init, track quit flag, return `"DONE"` or `"QUIT"`
+- [x] `ifc_main.ks`: `_IFC_INTERACTIVE_STAART()` — wrap in outer loop; on `"DONE"` call confirm dialog, save/restore `DRAFT_PLAN` across `IFC_INIT_STATE()`; on `"QUIT"` exit
+- [x] `ifc_main.ks`: update `RUN_IFC()` aAnd `RUN_TAKEOFF_IFC()` to pass `LIST()` as `draft_copy`
 
 ## Feature: In-Flight Plan Editing
 - [x] `ifc_gui.ks`: add `_GUI_OPEN_INFLIGHT()` — populate `DRAFT_PLAN` from remaining `FLIGHT_PLAN_DRAFT_COPY` legs, rename COMMIT/DISCARD buttons, set `GUI_INFLIGHT_MODE`
@@ -47,3 +47,11 @@
 - [x] `ifc_menu.ks`: add "Edit Plan" and "Skip Leg" items to in-flight menu + dispatch handlers
 
 
+---
+
+Organize these (CLAUDE OR CODEX, THESE ARE INSTRUCTIONS FOR YOU):
+
+- Alter the waypoint cruise mode, so instead of it having 3 drop downs for waypoints, have waypoint type dropdown (Nav Aids, Arrival Navigation, etc.)
+  - If you select Arrival Navigation, the next dropdown will be airports, and the next dropdown will be IAFs for the available runways. The reason for this is that the list of all waypoints is currently too long for a single popup menu and this reduces the amount of listed items per popup menu
+
+- Current organization of AMO is not quite aligned with my vision. Augmented Manual Operation is a mode that contains toggleable submodules. One submodule of this is Differential Steering Assist. AMO will have other modules in the future, such as terrain following FBW, etc.

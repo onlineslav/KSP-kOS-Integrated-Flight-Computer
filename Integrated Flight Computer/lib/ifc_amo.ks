@@ -187,6 +187,30 @@ FUNCTION _AMO_SET_MODULE_FIELD {
 FUNCTION _AMO_MAKE_ENGINE_ENTRY {
   PARAMETER eng.
   IF eng = 0 { RETURN 0. }
+
+  // If the aircraft config names an explicit module+field, prefer that path
+  // over the THRUSTLIMIT suffix.  SET eng:THRUSTLIMIT is readable on all kOS
+  // Engine objects but may not actually change in-game thrust for engines that
+  // use ModuleEnginesFX or other modded modules — the module field write is the
+  // authoritative path when the config says so.
+  IF eng:HASSUFFIX("PART") {
+    LOCAL p IS eng:PART.
+    IF p <> 0 {
+      LOCAL forced_mod IS _AMO_CFG_STR("amo_engine_module_name", "").
+      IF forced_mod <> "" AND p:HASSUFFIX("GETMODULE") {
+        LOCAL mref IS p:GETMODULE(forced_mod).
+        IF mref <> 0 {
+          LOCAL fld IS _AMO_RESOLVE_THR_FIELD(mref).
+          IF fld <> "" {
+            LOCAL scale IS _AMO_THR_BASE_FOR_FIELD(fld).
+            LOCAL base_limit IS CLAMP(_AMO_GET_MODULE_FIELD(mref, fld, scale), 0, scale).
+            RETURN LEXICON("eng", eng, "mode", "field", "module", mref, "field", fld, "base_limit", base_limit, "scale", scale).
+          }
+        }
+      }
+    }
+  }
+
   IF eng:HASSUFFIX("THRUSTLIMIT") {
     LOCAL raw_limit IS eng:THRUSTLIMIT.
     LOCAL scale IS 100.
@@ -199,7 +223,7 @@ FUNCTION _AMO_MAKE_ENGINE_ENTRY {
   LOCAL p IS eng:PART.
   IF p = 0 { RETURN 0. }
 
-  // Optional forced module name from aircraft config.
+  // Fallback: scan all part modules for a thrust-limiter field.
   LOCAL forced_mod IS _AMO_CFG_STR("amo_engine_module_name", "").
   IF forced_mod <> "" AND p:HASSUFFIX("GETMODULE") {
     LOCAL mref IS p:GETMODULE(forced_mod).
@@ -337,6 +361,42 @@ FUNCTION _AMO_COLLECT_TAGGED_CANDIDATES {
   }
 }
 
+// Discover engine entries by ordered tags: tag_prefix + "_1", "_2", ... left to right.
+// Splits at floor(N/2): lower-indexed half → out_left, upper half → out_right.
+FUNCTION _AMO_DISCOVER_NUMBERED_ENGS {
+  PARAMETER tag_prefix, all_eng, out_left, out_right.
+  LOCAL found IS LIST().
+  LOCAL n IS 1.
+  UNTIL n > 20 {
+    LOCAL tagged IS SHIP:PARTSTAGGED(tag_prefix + "_" + n).
+    IF tagged:LENGTH = 0 { BREAK. }
+    LOCAL ti IS 0.
+    UNTIL ti >= tagged:LENGTH {
+      LOCAL tp IS tagged[ti].
+      SET ti TO ti + 1.
+      LOCAL ei IS 0.
+      UNTIL ei >= all_eng:LENGTH {
+        LOCAL eng IS all_eng[ei].
+        SET ei TO ei + 1.
+        IF eng <> 0 AND eng:HASSUFFIX("PART") AND eng:PART = tp {
+          LOCAL entry IS _AMO_MAKE_ENGINE_ENTRY(eng).
+          IF entry <> 0 { found:ADD(entry). }
+        }
+      }
+    }
+    SET n TO n + 1.
+  }
+  LOCAL total IS found:LENGTH.
+  IF total < 2 { RETURN. }
+  LOCAL left_count IS FLOOR(total / 2).
+  LOCAL i IS 0.
+  UNTIL i >= total {
+    IF i < left_count { out_left:ADD(found[i]). }
+    ELSE              { out_right:ADD(found[i]). }
+    SET i TO i + 1.
+  }
+}
+
 FUNCTION _AMO_DISCOVER_ENGINES {
   IF AMO_ENG_DISCOVERED AND AMO_DIFF_AVAILABLE { RETURN. }
 
@@ -349,6 +409,23 @@ FUNCTION _AMO_DISCOVER_ENGINES {
   LOCAL all_eng IS SHIP:ENGINES.
   IF all_eng:LENGTH <= 1 {
     SET AMO_ENG_DISCOVERED TO TRUE.
+    RETURN.
+  }
+
+  // Numbered-tag override: amo_engine_tag_prefix + "_1", "_2", ... ordered left to right.
+  // Lower half → left bank, upper half → right bank.  No geometry needed.
+  LOCAL tag_prefix IS _AMO_CFG_STR("amo_engine_tag_prefix", "").
+  IF tag_prefix <> "" AND SHIP:HASSUFFIX("PARTSTAGGED") {
+    _AMO_DISCOVER_NUMBERED_ENGS(tag_prefix, all_eng, AMO_LEFT_ENGS, AMO_RIGHT_ENGS).
+    SET AMO_ENG_DISCOVERED TO TRUE.
+    IF AMO_LEFT_ENGS:LENGTH > 0 AND AMO_RIGHT_ENGS:LENGTH > 0 {
+      SET AMO_DIFF_AVAILABLE TO TRUE.
+      LOCAL _dbg_mode IS "".
+      IF AMO_LEFT_ENGS[0]:HASKEY("mode") { SET _dbg_mode TO AMO_LEFT_ENGS[0]["mode"]. }
+      IFC_SET_ALERT("AMO eng (numbered): L=" + AMO_LEFT_ENGS:LENGTH + " R=" + AMO_RIGHT_ENGS:LENGTH + " mode=" + _dbg_mode, "INFO").
+    } ELSE {
+      IFC_SET_ALERT("AMO eng: numbered tags '" + tag_prefix + "_N' found L=" + AMO_LEFT_ENGS:LENGTH + " R=" + AMO_RIGHT_ENGS:LENGTH, "WARN").
+    }
     RETURN.
   }
 
@@ -432,6 +509,17 @@ FUNCTION _AMO_DISCOVER_ENGINES {
     SET AMO_DIFF_AVAILABLE TO TRUE.
   }
   SET AMO_ENG_DISCOVERED TO TRUE.
+
+  // One-shot discovery report — visible in terminal and alert bar.
+  LOCAL _amo_dbg_mode IS "".
+  IF AMO_LEFT_ENGS:LENGTH > 0 AND AMO_LEFT_ENGS[0]:HASKEY("mode") {
+    SET _amo_dbg_mode TO AMO_LEFT_ENGS[0]["mode"].
+  }
+  IF AMO_DIFF_AVAILABLE {
+    IFC_SET_ALERT("AMO eng: L=" + AMO_LEFT_ENGS:LENGTH + " R=" + AMO_RIGHT_ENGS:LENGTH + " mode=" + _amo_dbg_mode, "INFO").
+  } ELSE {
+    IFC_SET_ALERT("AMO eng: diff unavail L=" + AMO_LEFT_ENGS:LENGTH + " R=" + AMO_RIGHT_ENGS:LENGTH + " total=" + cands:LENGTH, "WARN").
+  }
 }
 
 FUNCTION AMO_RELEASE {
