@@ -81,10 +81,21 @@ FUNCTION RUN_CRUISE {
 
   _RUN_CRUISE_THROTTLE().
 
+  // Seed start-distance the first time this waypoint is targeted.
+  IF CRUISE_WP_START_DIST <= 0 { SET CRUISE_WP_START_DIST TO dist. }
+
   // Waypoint capture.
-  IF dist < FIX_CAPTURE_RADIUS {
+  // Guard: require the aircraft to have closed to 70 % of its starting distance
+  // to this waypoint (or be within 300 m as a failsafe).  For a normal far
+  // waypoint (start >> FIX_CAPTURE_RADIUS) this is invisible — the radius gate
+  // fires first.  For a close waypoint (e.g. a tight triangle where the next WP
+  // is already within FIX_CAPTURE_RADIUS when we switch to it), capture cannot
+  // fire until the aircraft has demonstrably approached it, preventing cascaded
+  // skipping regardless of the triangle's internal angles.
+  IF dist < FIX_CAPTURE_RADIUS AND (dist < 300 OR dist <= CRUISE_WP_START_DIST * 0.7) {
     SET IFC_ALERT_TEXT TO "CRUISE WPT: " + wp_id + "  (" + ROUND(dist) + " m)".
     SET IFC_ALERT_UT   TO TIME:SECONDS.
-    SET CRUISE_WP_INDEX TO CRUISE_WP_INDEX + 1.
+    SET CRUISE_WP_INDEX      TO CRUISE_WP_INDEX + 1.
+    SET CRUISE_WP_START_DIST TO 0.
   }
 }

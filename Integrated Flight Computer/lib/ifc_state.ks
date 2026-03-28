@@ -316,6 +316,7 @@ GLOBAL ABRK_LAST_RIGHT_CMD IS 0.      // last commanded right brake fraction [0.
 // ----------------------------
 GLOBAL CRUISE_WAYPOINTS   IS LIST().      // ordered list of beacon IDs to navigate
 GLOBAL CRUISE_WP_INDEX    IS 0.           // current index into CRUISE_WAYPOINTS
+GLOBAL CRUISE_WP_START_DIST IS 0.         // distance to current WP when it first became the active target
 GLOBAL CRUISE_ALT_M       IS 3000.        // target cruise altitude MSL (m)
 GLOBAL CRUISE_SPD_MODE    IS CRUISE_SPD_MODE_IAS. // IAS or MACH speed schedule mode for current cruise leg
 GLOBAL CRUISE_SPD_MACH    IS CRUISE_DEFAULT_MACH. // selected Mach target when CRUISE_SPD_MODE = MACH
@@ -815,8 +816,9 @@ FUNCTION IFC_INIT_STATE {
   SET GUI_EDIT_LAST_X TO 0.
   SET GUI_EDIT_LAST_Y TO 0.
 
-  SET CRUISE_WAYPOINTS  TO LIST().
-  SET CRUISE_WP_INDEX   TO 0.
+  SET CRUISE_WAYPOINTS     TO LIST().
+  SET CRUISE_WP_INDEX      TO 0.
+  SET CRUISE_WP_START_DIST TO 0.
   SET CRUISE_ALT_M      TO 3000.
   SET CRUISE_SPD_MODE   TO CRUISE_SPD_MODE_IAS.
   SET CRUISE_SPD_MACH   TO CRUISE_DEFAULT_MACH.
