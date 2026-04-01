@@ -15,6 +15,7 @@
 - Fix fix-skipping logic: only skip a fix when it is truly behind (10 deg cone).
 
 # Ideas
+- smart waypoint "capture radius" that is based on the speed of the aircraft or something? So that when it goes from one leg to another, it activates the next leg in time so that it is able to get onto the course properly (currently it's just set at 1.5km)
 - each ILS has a default GS, as well as a lower limit GS (if terrain is in the way), but GS can be set manually for each approach (so that spaceplanes that glide at high flight path angles can utilize them)
 - Add a bank angle limiter that fights AA - see if it can work
 - Have a "kOS augmented" manual FBW mode

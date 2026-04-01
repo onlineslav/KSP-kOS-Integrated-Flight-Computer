@@ -342,22 +342,29 @@ FUNCTION _BUILD_PLAN_FROM_DRAFT {
         "params", LEXICON("rwy_id", rwy))).
 
     } ELSE IF t = LEG_CRUISE {
-      LOCAL wpts IS LIST().
-      LOCAL spd_mode IS CRUISE_SPD_MODE_IAS.
-      LOCAL wi IS 0.
-      UNTIL wi >= FMS_WPT_SLOTS {
-        LOCAL wkey IS "wpt" + wi.
-        IF p:HASKEY(wkey) {
-          LOCAL wid IS p[wkey].
-          IF wid:TYPENAME = "String" AND wid <> "" AND NAV_BEACON_DB:HASKEY(wid) {
-            wpts:ADD(wid).
+      IF p:HASKEY("nav_type") {
+        // New FMS format: pass params through directly.
+        // _INIT_LEG handles nav_type / course_deg / dist_nm / time_min / wpt* keys.
+        plan:ADD(LEXICON("type", LEG_CRUISE, "params", p)).
+      } ELSE {
+        // Old flat format: reconstruct waypoints list from wpt0/1/2 slots.
+        LOCAL wpts IS LIST().
+        LOCAL spd_mode IS CRUISE_SPD_MODE_IAS.
+        LOCAL wi IS 0.
+        UNTIL wi >= FMS_WPT_SLOTS {
+          LOCAL wkey IS "wpt" + wi.
+          IF p:HASKEY(wkey) {
+            LOCAL wid IS p[wkey].
+            IF wid:TYPENAME = "String" AND wid <> "" AND NAV_BEACON_DB:HASKEY(wid) {
+              wpts:ADD(wid).
+            }
           }
+          SET wi TO wi + 1.
         }
-        SET wi TO wi + 1.
+        IF p:HASKEY("spd_mode") { SET spd_mode TO CRUISE_NORM_SPD_MODE(p["spd_mode"]). }
+        plan:ADD(LEXICON("type", LEG_CRUISE,
+          "params", LEXICON("waypoints", wpts, "alt_m", p["alt_m"], "spd_mode", spd_mode, "spd", p["spd"]))).
       }
-      IF p:HASKEY("spd_mode") { SET spd_mode TO CRUISE_NORM_SPD_MODE(p["spd_mode"]). }
-      plan:ADD(LEXICON("type", LEG_CRUISE,
-        "params", LEXICON("waypoints", wpts, "alt_m", p["alt_m"], "spd_mode", spd_mode, "spd", p["spd"]))).
 
     } ELSE IF t = LEG_APPROACH {
       _FMS_AP_NORMALISE_PARAMS(p).
@@ -485,9 +492,9 @@ FUNCTION _INIT_LEG {
       SET CRUISE_SPD_MACH TO CRUISE_DEFAULT_MACH.
       SET CRUISE_SPD_MPS TO CLAMP(spd, 10, 500).
     }
-    SET CRUISE_DEST_PLATE    TO 0.
-    SET CRUISE_WP_INDEX      TO 0.
-    SET CRUISE_WP_START_DIST TO 0.
+    SET CRUISE_DEST_PLATE TO 0.
+    SET CRUISE_WP_INDEX   TO 0.
+    SET CRUISE_WP_ARMED   TO FALSE.
     SET THR_INTEGRAL      TO 0.
     SET PREV_IAS          TO GET_IAS().
     SET A_ACTUAL_FILT     TO 0.

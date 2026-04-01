@@ -13,7 +13,7 @@
             "$type": "kOS.Safe.Encapsulation.StringValue"
         },
         {
-            "value": "KSC RH Traffic Pattern 09R",
+            "value": "KSC 09 -> 27L",
             "$type": "kOS.Safe.Encapsulation.StringValue"
         },
         {
@@ -89,7 +89,7 @@
                                     "$type": "kOS.Safe.Encapsulation.StringValue"
                                 },
                                 {
-                                    "value": 200,
+                                    "value": 250,
                                     "$type": "kOS.Safe.Encapsulation.ScalarIntValue"
                                 },
                                 {
@@ -99,6 +99,30 @@
                                 {
                                     "value": "course_dist",
                                     "$type": "kOS.Safe.Encapsulation.StringValue"
+                                },
+                                {
+                                    "value": "course_deg",
+                                    "$type": "kOS.Safe.Encapsulation.StringValue"
+                                },
+                                {
+                                    "value": 90,
+                                    "$type": "kOS.Safe.Encapsulation.ScalarIntValue"
+                                },
+                                {
+                                    "value": "dist_nm",
+                                    "$type": "kOS.Safe.Encapsulation.StringValue"
+                                },
+                                {
+                                    "value": 30,
+                                    "$type": "kOS.Safe.Encapsulation.ScalarIntValue"
+                                },
+                                {
+                                    "value": "time_min",
+                                    "$type": "kOS.Safe.Encapsulation.StringValue"
+                                },
+                                {
+                                    "value": 60,
+                                    "$type": "kOS.Safe.Encapsulation.ScalarIntValue"
                                 },
                                 {
                                     "value": "wpt0",
@@ -123,30 +147,6 @@
                                 {
                                     "value": "",
                                     "$type": "kOS.Safe.Encapsulation.StringValue"
-                                },
-                                {
-                                    "value": "course_deg",
-                                    "$type": "kOS.Safe.Encapsulation.StringValue"
-                                },
-                                {
-                                    "value": 180,
-                                    "$type": "kOS.Safe.Encapsulation.ScalarIntValue"
-                                },
-                                {
-                                    "value": "dist_nm",
-                                    "$type": "kOS.Safe.Encapsulation.StringValue"
-                                },
-                                {
-                                    "value": 5,
-                                    "$type": "kOS.Safe.Encapsulation.ScalarIntValue"
-                                },
-                                {
-                                    "value": "time_min",
-                                    "$type": "kOS.Safe.Encapsulation.StringValue"
-                                },
-                                {
-                                    "value": 2,
-                                    "$type": "kOS.Safe.Encapsulation.ScalarIntValue"
                                 }
                             ],
                             "$type": "kOS.Safe.Encapsulation.Lexicon"
@@ -191,7 +191,7 @@
                                     "$type": "kOS.Safe.Encapsulation.StringValue"
                                 },
                                 {
-                                    "value": 250,
+                                    "value": 200,
                                     "$type": "kOS.Safe.Encapsulation.ScalarIntValue"
                                 },
                                 {
@@ -199,31 +199,7 @@
                                     "$type": "kOS.Safe.Encapsulation.StringValue"
                                 },
                                 {
-                                    "value": "course_dist",
-                                    "$type": "kOS.Safe.Encapsulation.StringValue"
-                                },
-                                {
-                                    "value": "wpt0",
-                                    "$type": "kOS.Safe.Encapsulation.StringValue"
-                                },
-                                {
-                                    "value": "",
-                                    "$type": "kOS.Safe.Encapsulation.StringValue"
-                                },
-                                {
-                                    "value": "wpt1",
-                                    "$type": "kOS.Safe.Encapsulation.StringValue"
-                                },
-                                {
-                                    "value": "",
-                                    "$type": "kOS.Safe.Encapsulation.StringValue"
-                                },
-                                {
-                                    "value": "wpt2",
-                                    "$type": "kOS.Safe.Encapsulation.StringValue"
-                                },
-                                {
-                                    "value": "",
+                                    "value": "course_time",
                                     "$type": "kOS.Safe.Encapsulation.StringValue"
                                 },
                                 {
@@ -239,7 +215,7 @@
                                     "$type": "kOS.Safe.Encapsulation.StringValue"
                                 },
                                 {
-                                    "value": 18,
+                                    "value": 100,
                                     "$type": "kOS.Safe.Encapsulation.ScalarIntValue"
                                 },
                                 {
@@ -247,62 +223,8 @@
                                     "$type": "kOS.Safe.Encapsulation.StringValue"
                                 },
                                 {
-                                    "value": 60,
+                                    "value": 1,
                                     "$type": "kOS.Safe.Encapsulation.ScalarIntValue"
-                                }
-                            ],
-                            "$type": "kOS.Safe.Encapsulation.Lexicon"
-                        }
-                    ],
-                    "$type": "kOS.Safe.Encapsulation.Lexicon"
-                },
-                {
-                    "entries": [
-                        {
-                            "value": "type",
-                            "$type": "kOS.Safe.Encapsulation.StringValue"
-                        },
-                        {
-                            "value": "CRUISE",
-                            "$type": "kOS.Safe.Encapsulation.StringValue"
-                        },
-                        {
-                            "value": "params",
-                            "$type": "kOS.Safe.Encapsulation.StringValue"
-                        },
-                        {
-                            "entries": [
-                                {
-                                    "value": "alt_m",
-                                    "$type": "kOS.Safe.Encapsulation.StringValue"
-                                },
-                                {
-                                    "value": 1500,
-                                    "$type": "kOS.Safe.Encapsulation.ScalarIntValue"
-                                },
-                                {
-                                    "value": "spd_mode",
-                                    "$type": "kOS.Safe.Encapsulation.StringValue"
-                                },
-                                {
-                                    "value": "IAS",
-                                    "$type": "kOS.Safe.Encapsulation.StringValue"
-                                },
-                                {
-                                    "value": "spd",
-                                    "$type": "kOS.Safe.Encapsulation.StringValue"
-                                },
-                                {
-                                    "value": 200,
-                                    "$type": "kOS.Safe.Encapsulation.ScalarIntValue"
-                                },
-                                {
-                                    "value": "nav_type",
-                                    "$type": "kOS.Safe.Encapsulation.StringValue"
-                                },
-                                {
-                                    "value": "course_dist",
-                                    "$type": "kOS.Safe.Encapsulation.StringValue"
                                 },
                                 {
                                     "value": "wpt0",
@@ -327,30 +249,6 @@
                                 {
                                     "value": "",
                                     "$type": "kOS.Safe.Encapsulation.StringValue"
-                                },
-                                {
-                                    "value": "course_deg",
-                                    "$type": "kOS.Safe.Encapsulation.StringValue"
-                                },
-                                {
-                                    "value": 0,
-                                    "$type": "kOS.Safe.Encapsulation.ScalarIntValue"
-                                },
-                                {
-                                    "value": "dist_nm",
-                                    "$type": "kOS.Safe.Encapsulation.StringValue"
-                                },
-                                {
-                                    "value": 4,
-                                    "$type": "kOS.Safe.Encapsulation.ScalarIntValue"
-                                },
-                                {
-                                    "value": "time_min",
-                                    "$type": "kOS.Safe.Encapsulation.StringValue"
-                                },
-                                {
-                                    "value": 2,
-                                    "$type": "kOS.Safe.Encapsulation.ScalarIntValue"
                                 }
                             ],
                             "$type": "kOS.Safe.Encapsulation.Lexicon"
@@ -379,7 +277,7 @@
                                     "$type": "kOS.Safe.Encapsulation.StringValue"
                                 },
                                 {
-                                    "value": 3,
+                                    "value": 5,
                                     "$type": "kOS.Safe.Encapsulation.ScalarIntValue"
                                 },
                                 {
@@ -395,7 +293,7 @@
                                     "$type": "kOS.Safe.Encapsulation.StringValue"
                                 },
                                 {
-                                    "value": 3,
+                                    "value": 5,
                                     "$type": "kOS.Safe.Encapsulation.ScalarIntValue"
                                 }
                             ],

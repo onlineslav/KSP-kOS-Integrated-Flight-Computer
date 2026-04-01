@@ -11,6 +11,10 @@
         {
             "value": "KSC RH Traffic Pattern 09R",
             "$type": "kOS.Safe.Encapsulation.StringValue"
+        },
+        {
+            "value": "KSC 09 -> 27L",
+            "$type": "kOS.Safe.Encapsulation.StringValue"
         }
     ],
     "$type": "kOS.Safe.Encapsulation.ListValue"
