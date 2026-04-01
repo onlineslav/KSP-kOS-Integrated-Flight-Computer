@@ -39,6 +39,7 @@ RUNPATH(ifc_root + "lib/ifc_state.ks").
 RUNPATH(ifc_root + "lib/ifc_helpers.ks").
 RUNPATH(ifc_root + "lib/ifc_autobrake.ks").
 RUNPATH(ifc_root + "lib/ifc_amo.ks").
+RUNPATH(ifc_root + "lib/ifc_amo_vtol.ks").
 RUNPATH(ifc_root + "lib/ifc_autothrottle.ks").
 RUNPATH(ifc_root + "lib/ifc_autospoiler.ks").
 RUNPATH(ifc_root + "lib/ifc_ui.ks").

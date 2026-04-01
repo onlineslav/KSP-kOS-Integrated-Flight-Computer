@@ -453,6 +453,23 @@ GLOBAL AMO_DIFF_BRAKE_STRENGTH    IS 1.00. // 0..1 nominal per-side brake streng
 GLOBAL ABRK_DEFAULT_STRENGTH      IS 0.70. // 0..1 default per-wheel brake strength setting when differential braking is idle
 
 // ----------------------------
+// AMO VTOL assist
+// ----------------------------
+GLOBAL VTOL_VS_KP            IS 0.30.  // collective per (m/s) VS error
+GLOBAL VTOL_VS_KI            IS 0.04.  // collective per (m/s·s) VS error integral
+GLOBAL VTOL_VS_INTEGRAL_LIM  IS 0.40.  // anti-windup clamp on VS integral
+GLOBAL VTOL_ALT_KP           IS 0.40.  // (m/s) VS command per metre altitude error
+GLOBAL VTOL_MAX_VS           IS 8.0.   // m/s  max commanded vertical speed
+GLOBAL VTOL_YAW_SRV_GAIN     IS 8.0.   // deg  differential servo tilt per unit yaw input
+GLOBAL VTOL_ROLL_GAIN        IS 0.25.  // fraction of collective used as roll authority
+GLOBAL VTOL_PITCH_GAIN       IS 0.25.  // fraction of collective used as pitch authority
+GLOBAL VTOL_HOVER_LEARN_RATE IS 0.001. // rate at which hover_collective tracks actual collective
+GLOBAL VTOL_MAX_PODS         IS 8.     // max pod tags scanned during discovery
+GLOBAL VTOL_SRV_SPEED        IS 1.0.   // servo speed multiplier for baseline hover commands
+GLOBAL VTOL_SRV_YAW_SPEED    IS 2.0.   // servo speed multiplier for yaw differential commands
+GLOBAL VTOL_LAT_SIGN_THRESH  IS 0.15.  // m  lateral offset below which a pod is considered centerline
+
+// ----------------------------
 // UI event queue
 // ----------------------------
 GLOBAL IFC_EVENT_MAX            IS 16. // max retained alert/event entries

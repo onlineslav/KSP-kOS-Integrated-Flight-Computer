@@ -76,6 +76,11 @@ This mode allows the aircraft to be fully manually operatable, however pilot-inp
 
 ### Radar-based SLAM navigation (plotting course around terrain (horizontally or vertically))
 
+### VTOL Assist Mode
+
+
+
+
 # Bugs
 - Thrust reverser should throttle zero before disengaging (and wait for spool down) at end of landing so that it doesn't start accelerating the plane fwd when reversers are disengaged
 

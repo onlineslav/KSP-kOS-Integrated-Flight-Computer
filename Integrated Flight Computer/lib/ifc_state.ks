@@ -300,6 +300,26 @@ GLOBAL AMO_RIGHT_ENGS IS LIST().     // LIST of LEXICON("eng",Engine,"base_limit
 GLOBAL AMO_BRAKES_FORCED IS FALSE.   // TRUE when AMO enabled brakes this frame group (so release is safe)
 
 // ----------------------------
+// AMO VTOL assist state
+// ----------------------------
+GLOBAL VTOL_ACTIVE           IS FALSE.  // TRUE while VTOL assist is controlling engines/servos
+GLOBAL VTOL_DISCOVERED       IS FALSE.  // TRUE after geometry has been computed
+GLOBAL VTOL_DIFF_AVAILABLE   IS FALSE.  // TRUE when ≥2 engines found and geometry is valid
+GLOBAL VTOL_SRV_AVAIL        IS FALSE.  // TRUE when at least one IR servo was found
+GLOBAL VTOL_ENG_LIST         IS LIST(). // engine entries (same format as AMO entries), tag order
+GLOBAL VTOL_SRV_LIST         IS LIST(). // IR servo objects in tag order (0 if no servo for index)
+GLOBAL VTOL_ROLL_MIX         IS LIST(). // per-engine roll mixing coefficient [-1..1]
+GLOBAL VTOL_PITCH_MIX        IS LIST(). // per-engine pitch mixing coefficient [-1..1]
+GLOBAL VTOL_YAW_SRV_MIX      IS LIST(). // per-engine yaw servo sign: -1, 0, or +1
+GLOBAL VTOL_TRIM_OFFSET      IS LIST(). // per-engine throttle trim offset (0 for MVP)
+GLOBAL VTOL_HOVER_COLLECTIVE IS 0.50.  // collective that sustains hover; self-learned
+GLOBAL VTOL_COLLECTIVE       IS 0.     // current commanded collective (0..1)
+GLOBAL VTOL_VS_CMD           IS 0.     // commanded vertical speed (m/s)
+GLOBAL VTOL_VS_INTEGRAL      IS 0.     // integral accumulator for VS hold
+GLOBAL VTOL_ALT_HOLD         IS FALSE. // TRUE = altitude hold active
+GLOBAL VTOL_ALT_CMD          IS 0.     // target altitude AGL (m) when alt hold active
+
+// ----------------------------
 // Auto-brake (per-side wheel brake control via tagged main gear)
 // ----------------------------
 GLOBAL ABRK_DISCOVERED IS FALSE.      // TRUE once side-tagged brake modules are discovered
@@ -777,6 +797,23 @@ FUNCTION IFC_INIT_STATE {
   ABRK_NOSE_BINDINGS:CLEAR().
   SET ABRK_LAST_LEFT_CMD TO 0.
   SET ABRK_LAST_RIGHT_CMD TO 0.
+
+  SET VTOL_ACTIVE           TO FALSE.
+  SET VTOL_DISCOVERED       TO FALSE.
+  SET VTOL_DIFF_AVAILABLE   TO FALSE.
+  SET VTOL_SRV_AVAIL        TO FALSE.
+  VTOL_ENG_LIST:CLEAR().
+  VTOL_SRV_LIST:CLEAR().
+  VTOL_ROLL_MIX:CLEAR().
+  VTOL_PITCH_MIX:CLEAR().
+  VTOL_YAW_SRV_MIX:CLEAR().
+  VTOL_TRIM_OFFSET:CLEAR().
+  SET VTOL_HOVER_COLLECTIVE TO 0.50.
+  SET VTOL_COLLECTIVE       TO 0.
+  SET VTOL_VS_CMD           TO 0.
+  SET VTOL_VS_INTEGRAL      TO 0.
+  SET VTOL_ALT_HOLD         TO FALSE.
+  SET VTOL_ALT_CMD          TO 0.
 
   SET DRAFT_PLAN        TO LIST().
   SET FMS_LEG_CURSOR    TO 0.

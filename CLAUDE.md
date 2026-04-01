@@ -151,8 +151,10 @@ GEOPOSITION     GROUNDSPEED     HEADING         LATITUDE
 LONGITUDE       MASS            MAXTHRUST       NORTH
 OBT             PERIAPSIS       PROGRADE        RETROGRADE
 SENSORS         SHIPNAME        SRFPROGRADE     SRFRETROGRADE
-STATUS          UP              VELOCITY        VERTICALSPEED
+STATUS          SURFACESPEED    UP              VELOCITY
+VERTICALSPEED
 ```
+Note: `SURFACESPEED` is obsolete since kOS 0.18 (replaced by `GROUNDSPEED`) but remains a protected bound name.
 
 ### Flight Control Lock Targets (cannot be used as regular variables)
 
@@ -513,6 +515,12 @@ to state — they never call `LOCK THROTTLE` or `LOCK STEERING` directly.
 ## Claude Working Guidelines
 
 These rules govern how Claude should approach changes in this codebase.
+
+### Before starting any task
+0. Read CLAUDE.md (this file) first. In particular, cross-reference every new variable
+   and function name against the **kOS Reserved / Protected Names** section before writing
+   code. Single-letter names (`r`, `v`, `q`, `n`, `g`, etc.) are especially risky —
+   kOS built-ins include `R()`, `V()`, `Q()`. When in doubt, use a longer name.
 
 ### Before making any edit
 1. Read the full file being changed, not just the function in question.

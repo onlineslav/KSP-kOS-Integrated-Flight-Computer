@@ -575,20 +575,9 @@ FUNCTION AMO_RESET {
   SET AMO_BRAKES_FORCED TO FALSE.
 }
 
-FUNCTION AMO_TICK_PREARM {
-  IF NOT _AMO_ENABLED() {
-    AMO_RELEASE().
-    RETURN.
-  }
-  IF _AMO_HAS_NWS() {
-    AMO_RELEASE().
-    RETURN.
-  }
-  IF NOT _AMO_ON_GROUND() {
-    AMO_RELEASE().
-    RETURN.
-  }
-
+// Ground steering assist tick (extracted from old AMO_TICK_PREARM).
+// Called only when the enable/NWS/on-ground guards all pass.
+FUNCTION _AMO_GSTEER_TICK {
   _AMO_DISCOVER_ENGINES().
   ABRK_DISCOVER_PARTS().
 
@@ -647,4 +636,18 @@ FUNCTION AMO_TICK_PREARM {
   }
 
   SET AMO_ACTIVE TO TRUE.
+}
+
+// AMO pre-arm dispatcher.  Each module has its own enable guard.
+// Modules are independent: ground steering conditions do not block VTOL.
+FUNCTION AMO_TICK_PREARM {
+  // Ground Steering Assist module
+  IF _AMO_ENABLED() AND NOT _AMO_HAS_NWS() AND _AMO_ON_GROUND() {
+    _AMO_GSTEER_TICK().
+  } ELSE {
+    AMO_RELEASE().
+  }
+
+  // VTOL Assist module (defined in ifc_amo_vtol.ks)
+  VTOL_TICK_PREARM().
 }
