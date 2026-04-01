@@ -311,13 +311,14 @@ GLOBAL VTOL_SRV_LIST         IS LIST(). // IR servo objects in tag order (0 if n
 GLOBAL VTOL_ROLL_MIX         IS LIST(). // per-engine roll mixing coefficient [-1..1]
 GLOBAL VTOL_PITCH_MIX        IS LIST(). // per-engine pitch mixing coefficient [-1..1]
 GLOBAL VTOL_YAW_SRV_MIX      IS LIST(). // per-engine yaw servo sign: -1, 0, or +1
-GLOBAL VTOL_TRIM_OFFSET      IS LIST(). // per-engine throttle trim offset (0 for MVP)
-GLOBAL VTOL_HOVER_COLLECTIVE IS 0.50.  // collective that sustains hover; self-learned
-GLOBAL VTOL_COLLECTIVE       IS 0.     // current commanded collective (0..1)
-GLOBAL VTOL_VS_CMD           IS 0.     // commanded vertical speed (m/s)
-GLOBAL VTOL_VS_INTEGRAL      IS 0.     // integral accumulator for VS hold
-GLOBAL VTOL_ALT_HOLD         IS FALSE. // TRUE = altitude hold active
-GLOBAL VTOL_ALT_CMD          IS 0.     // target altitude AGL (m) when alt hold active
+GLOBAL VTOL_TRIM_OFFSET      IS LIST(). // per-engine base-limit trim offset; auto-computed to balance torque
+GLOBAL VTOL_MAX_THRUST       IS LIST(). // per-engine max thrust (kN) measured at discovery
+GLOBAL VTOL_HOVER_COLLECTIVE IS 0.50.  // collective that sustains hover; self-learned (autopilot use)
+GLOBAL VTOL_COLLECTIVE       IS 0.     // current commanded collective (0..1) (autopilot use)
+GLOBAL VTOL_VS_CMD           IS 0.     // commanded vertical speed (m/s) (autopilot use)
+GLOBAL VTOL_VS_INTEGRAL      IS 0.     // integral accumulator for VS hold (autopilot use)
+GLOBAL VTOL_ALT_HOLD         IS FALSE. // TRUE = altitude hold active (autopilot use)
+GLOBAL VTOL_ALT_CMD          IS 0.     // target altitude AGL (m) when alt hold active (autopilot use)
 
 // ----------------------------
 // Auto-brake (per-side wheel brake control via tagged main gear)
@@ -808,6 +809,7 @@ FUNCTION IFC_INIT_STATE {
   VTOL_PITCH_MIX:CLEAR().
   VTOL_YAW_SRV_MIX:CLEAR().
   VTOL_TRIM_OFFSET:CLEAR().
+  VTOL_MAX_THRUST:CLEAR().
   SET VTOL_HOVER_COLLECTIVE TO 0.50.
   SET VTOL_COLLECTIVE       TO 0.
   SET VTOL_VS_CMD           TO 0.
