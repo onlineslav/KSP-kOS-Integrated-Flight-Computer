@@ -44,7 +44,7 @@ class RunData:
     tau_down_t63_s: float
 
 
-def parse_engine_log(path: Path) -> Tuple[Dict[str, str], pd.DataFrame]:
+def parse_engine_log(path: Path, channel_idx: int = 1) -> Tuple[Dict[str, str], pd.DataFrame]:
     metadata: Dict[str, str] = {}
     data_lines: List[str] = []
 
@@ -73,6 +73,12 @@ def parse_engine_log(path: Path) -> Tuple[Dict[str, str], pd.DataFrame]:
         numeric = pd.to_numeric(df[c], errors="coerce")
         if numeric.notna().any():
             df[c] = numeric
+
+    if "channel_idx" in df.columns:
+        df["channel_idx"] = pd.to_numeric(df["channel_idx"], errors="coerce")
+        df = df[df["channel_idx"].round().astype("Int64") == int(channel_idx)].copy()
+    elif channel_idx != 1:
+        raise ValueError(f"Requested channel {channel_idx} but log has no channel_idx column: {path}")
 
     required = ["t_s", "cmd_throttle", "engine_thrust_kn"]
     for c in required:
@@ -247,13 +253,19 @@ def main() -> int:
         required=True,
         help="Add one run with explicit engine/intake diameters in meters.",
     )
+    parser.add_argument(
+        "--channel",
+        type=int,
+        default=1,
+        help="Channel index to analyze for multi-engine logs (default: 1).",
+    )
     parser.add_argument("--output", default="", help="Output JSON path.")
     args = parser.parse_args()
 
     runs: List[RunData] = []
     for csv_path, eng_d, int_d in args.run:
         p = Path(csv_path).expanduser().resolve()
-        md, df = parse_engine_log(p)
+        md, df = parse_engine_log(p, channel_idx=args.channel)
         segs = build_segments(df)
         steady_df = segment_steady_points(df, segs)
         tau_up, tau_down = median_taus(df, segs)

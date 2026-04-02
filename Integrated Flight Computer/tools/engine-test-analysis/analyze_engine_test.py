@@ -192,6 +192,34 @@ def load_engine_log(path: Path) -> Tuple[Dict[str, str], List[Dict[str, float]]]
     return metadata, rows
 
 
+def split_rows_by_channel(rows: Sequence[Dict[str, float]]) -> Dict[int, List[Dict[str, float]]]:
+    grouped: Dict[int, List[Dict[str, float]]] = {}
+    for r in rows:
+        raw_idx = r.get("channel_idx", 1.0)
+        if math.isnan(raw_idx):
+            ch = 1
+        else:
+            ch = int(round(raw_idx))
+            if ch <= 0:
+                ch = 1
+        grouped.setdefault(ch, []).append(r)
+
+    for ch, ch_rows in grouped.items():
+        ch_rows.sort(key=lambda x: x.get("t_s", float("nan")))
+        grouped[ch] = [r for r in ch_rows if not math.isnan(r.get("t_s", float("nan")))]
+    return grouped
+
+
+def channel_metadata(metadata: Dict[str, str], channel_idx: int) -> Dict[str, str]:
+    out = dict(metadata)
+    prefix = f"channel_{channel_idx}_"
+    for k, v in metadata.items():
+        if k.startswith(prefix):
+            out[k[len(prefix) :]] = v
+    out["channel_idx"] = str(channel_idx)
+    return out
+
+
 def build_segments(rows: Sequence[Dict[str, float]]) -> List[Segment]:
     segments: List[Segment] = []
     start = 0
@@ -355,6 +383,8 @@ def write_summary(
     lines.append("IFC Engine Test Analysis")
     lines.append("========================")
     lines.append(f"Source log: {source_log}")
+    if "channel_idx" in metadata:
+        lines.append(f"Channel: {metadata.get('channel_idx', '1')}")
     lines.append(f"Craft: {metadata.get('craft_name', 'UNKNOWN')}")
     lines.append(f"Engine part: {metadata.get('engine_part_name', 'UNKNOWN')} ({metadata.get('engine_part_title', 'UNKNOWN')})")
     lines.append(f"Intake part: {metadata.get('intake_part_name', 'UNKNOWN')} ({metadata.get('intake_part_title', 'UNKNOWN')})")
@@ -407,6 +437,7 @@ def write_summary(
 
 def build_model_dict(
     source_log: Path,
+    channel_idx: int,
     metadata: Dict[str, str],
     thrust_map: Dict[str, object],
     mdot_map: Dict[str, object],
@@ -416,6 +447,7 @@ def build_model_dict(
 ) -> Dict[str, object]:
     return {
         "source_log": str(source_log),
+        "channel_idx": channel_idx,
         "metadata": metadata,
         "thrust_steady_state_map": thrust_map,
         "massflow_steady_state_map": mdot_map,
@@ -483,29 +515,62 @@ def main() -> int:
 
     source_log = source_log.resolve()
     metadata, rows = load_engine_log(source_log)
-    segments = build_segments(rows)
-    step_metrics = compute_step_metrics(rows, segments)
-    steady_points = collect_steady_points(rows, segments)
+    rows_by_channel = split_rows_by_channel(rows)
+    channel_ids = sorted(rows_by_channel.keys())
+    multi_channel = len(channel_ids) > 1
 
-    thrust_map = fit_static_map(steady_points, "thrust_kn")
-    mdot_map = fit_static_map(steady_points, "mdot_kgps")
-    tau_up = summarize_tau(step_metrics, "up")
-    tau_down = summarize_tau(step_metrics, "down")
+    models_written: List[Tuple[int, Path, Path, Dict[str, object]]] = []
+    for ch in channel_ids:
+        ch_rows = rows_by_channel[ch]
+        if len(ch_rows) < 10:
+            continue
 
-    model = build_model_dict(source_log, metadata, thrust_map, mdot_map, tau_up, tau_down, step_metrics)
+        ch_md = channel_metadata(metadata, ch)
+        segments = build_segments(ch_rows)
+        step_metrics = compute_step_metrics(ch_rows, segments)
+        steady_points = collect_steady_points(ch_rows, segments)
 
-    model_path = source_log.with_name(source_log.stem + "_model.json")
-    summary_path = source_log.with_name(source_log.stem + "_summary.txt")
+        thrust_map = fit_static_map(steady_points, "thrust_kn")
+        mdot_map = fit_static_map(steady_points, "mdot_kgps")
+        tau_up = summarize_tau(step_metrics, "up")
+        tau_down = summarize_tau(step_metrics, "down")
 
-    model_path.write_text(json.dumps(model, indent=2), encoding="utf-8")
-    write_summary(summary_path, source_log, metadata, thrust_map, mdot_map, tau_up, tau_down, step_metrics)
+        model = build_model_dict(source_log, ch, ch_md, thrust_map, mdot_map, tau_up, tau_down, step_metrics)
 
-    print(f"Source log:   {source_log}")
-    print(f"Model JSON:   {model_path}")
-    print(f"Summary text: {summary_path}")
+        suffix = "" if not multi_channel else f"_ch{ch:02d}"
+        model_path = source_log.with_name(source_log.stem + suffix + "_model.json")
+        summary_path = source_log.with_name(source_log.stem + suffix + "_summary.txt")
+        model_path.write_text(json.dumps(model, indent=2), encoding="utf-8")
+        write_summary(summary_path, source_log, ch_md, thrust_map, mdot_map, tau_up, tau_down, step_metrics)
+        models_written.append((ch, model_path, summary_path, model))
 
-    if args.print_json:
-        print(json.dumps(model, indent=2))
+    if not models_written:
+        raise ValueError("No channel had enough valid samples to analyze.")
+
+    if multi_channel:
+        index = {
+            "source_log": str(source_log),
+            "channel_count": len(models_written),
+            "channels": [
+                {
+                    "channel_idx": ch,
+                    "model_json": str(model_path),
+                    "summary_txt": str(summary_path),
+                }
+                for ch, model_path, summary_path, _ in models_written
+            ],
+        }
+        index_path = source_log.with_name(source_log.stem + "_multi_model_index.json")
+        index_path.write_text(json.dumps(index, indent=2), encoding="utf-8")
+        print(f"Multi-channel index: {index_path}")
+
+    print(f"Source log: {source_log}")
+    for ch, model_path, summary_path, model in models_written:
+        print(f"Channel {ch}:")
+        print(f"  Model JSON:   {model_path}")
+        print(f"  Summary text: {summary_path}")
+        if args.print_json:
+            print(json.dumps(model, indent=2))
 
     return 0
 

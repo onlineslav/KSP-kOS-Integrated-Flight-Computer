@@ -30,6 +30,19 @@ Logs are written to:
 
 `0:/Integrated Flight Computer/engine test logs/engine_test_log_XXXXXXXX.csv`
 
+### Multi-engine test stands
+
+`engine_test.ks` now supports multiple engines/intakes in one run.
+
+- It discovers all `SHIP:ENGINES` entries (or a tagged engine if `ET_ENGINE_TAG` is set).
+- It pairs intakes to engines by matching part tag first (`1_25`, `0_750`, etc., with canonicalization so `1_25` and `1_250` are treated the same), then by first available intake.
+- One CSV row is written per channel per sample, with:
+  - `channel_idx`, `channel_key`, `channel_source`
+  - per-channel engine/intake identity (`*_part_uid`, `*_part_name`, `*_part_tag`, `*_diameter_m`)
+  - full per-channel telemetry (`engine_*`, `eng_mod_*`, `intake_*`, steady-state flags)
+
+Phase progression waits for steady-state across all active channels.
+
 ### Diameter ground truth via part tags
 
 Set the **engine part tag** and **intake part tag** in the SPH to the diameter text:
@@ -89,6 +102,12 @@ Outputs (next to the source CSV):
 - `*_summary.txt`
 - `*_model.json`
 
+For multi-channel logs, the CLI auto-splits by `channel_idx` and writes:
+
+- `*_chXX_summary.txt`
+- `*_chXX_model.json`
+- `*_multi_model_index.json`
+
 ---
 
 ## 2b) Build a Scale-Agnostic Model (multi-run)
@@ -104,6 +123,15 @@ python "Integrated Flight Computer/tools/engine-test-analysis/build_scale_agnost
 Output:
 
 - `Integrated Flight Computer/engine test logs/engine_scale_agnostic_model.json`
+
+If your logs are multi-channel, pick a channel explicitly:
+
+```powershell
+python "Integrated Flight Computer/tools/engine-test-analysis/build_scale_agnostic_model.py" `
+  --channel 2 `
+  --run "Integrated Flight Computer/engine test logs/engine_test_log_00000010.csv" 1.25 1.25 `
+  --run "Integrated Flight Computer/engine test logs/engine_test_log_00000011.csv" 0.75 0.75
+```
 
 Model form:
 
@@ -140,6 +168,9 @@ Open:
 ### In the notebook
 
 1. Set `LOG_PATH` to your target CSV (or enable auto-pick latest).
+1.5 Set `ANALYSIS_CHANNEL_IDX`:
+   - `None` = auto-select first channel for single-run analysis cells
+   - integer (for example `2`) = force channel selection
 2. Run all cells.
 3. Review:
    - key telemetry plots
@@ -149,7 +180,7 @@ Open:
    - normalized step-response overlays
 4. Check the **Steady-state reach check per phase** table.
 5. Use the **Multi-Run Pipeline (Auto-Scan All Logs)** section at the end.
-   It scans all `engine_test_log_*.csv`, groups runs by engine/intake combo, and fits scale laws using all available diameters in each combo.
+   It scans all `engine_test_log_*.csv`, expands multi-channel logs into per-channel runs, groups runs by engine/intake combo, and fits scale laws using all available diameters in each combo.
    You only edit the small config block in that cell.
 6. For old logs that do not contain `engine_diameter_m` / `intake_diameter_m`, use `PIPELINE_DIAMETER_OVERRIDES` in that cell.
 
