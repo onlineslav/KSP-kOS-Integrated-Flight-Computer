@@ -58,7 +58,7 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_yaw_gain",          8,
   "vtol_roll_gain",         0.25,
   "vtol_pitch_gain",        0.30,
-  "vtol_pitch_mix_sign",    1,   // +1: front engines increase on nose-up cmd (correct for downward-pointing hover engines)
+  "vtol_pitch_mix_sign",    1,   // +1: forward engines increase on nose-up cmd, aft engines decrease = corrective (CORRECT for fwd engines ahead of CoM)
   "vtol_level_roll_kp",     0.10,
   "vtol_level_roll_kd",     0.03,
   "vtol_level_roll_ki",     0.010,
@@ -266,7 +266,6 @@ IF NOT VTOL_DIFF_AVAILABLE {
 
     // ============================================================
     // PHASE 3 — Live VTOL loop
-    // Pilot controls physical throttle. kOS only sets limiters.
     // ============================================================
 
     SAS OFF.
@@ -341,6 +340,40 @@ IF NOT VTOL_DIFF_AVAILABLE {
     LOG "# vtol_test  craft=" + SHIP:NAME + "  UT=" + ROUND(TIME:SECONDS,1) TO log_file.
     LOG hdr TO log_file.
 
+    // ── One-time geometry snapshot ────────────────────────────
+    // Log CoM world position and per-engine offsets from CoM in
+    // ship body frame (fwd=toward nose, stbd=right, up=topvector).
+    // Use this to verify engine placement relative to CoM.
+    LOCAL geo_com      IS SHIP:POSITION.
+    LOCAL geo_fwd_vec  IS SHIP:FACING:FOREVECTOR.
+    LOCAL geo_stbd_vec IS SHIP:FACING:STARVECTOR.
+    LOCAL geo_up_vec   IS SHIP:FACING:TOPVECTOR.
+    LOG "# CoM_world: x=" + ROUND(geo_com:X,2) + "  y=" + ROUND(geo_com:Y,2) + "  z=" + ROUND(geo_com:Z,2) TO log_file.
+    LOG "# CoM_geo: lat=" + ROUND(SHIP:LATITUDE,5) + "  lng=" + ROUND(SHIP:LONGITUDE,5) + "  alt=" + ROUND(SHIP:ALTITUDE,2) TO log_file.
+    LOCAL geo_eng_tag IS "vtol_eng".
+    IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("vtol_eng_tag_prefix") {
+      SET geo_eng_tag TO ACTIVE_AIRCRAFT["vtol_eng_tag_prefix"].
+    }
+    LOCAL geo_i IS 1.
+    UNTIL geo_i > VTOL_ENG_LIST:LENGTH {
+      LOCAL geo_tagged IS SHIP:PARTSTAGGED(geo_eng_tag + "_" + geo_i).
+      IF geo_tagged:LENGTH > 0 {
+        LOCAL geo_p   IS geo_tagged[0].
+        LOCAL geo_off IS geo_p:POSITION - geo_com.
+        LOCAL geo_fwd  IS ROUND(VDOT(geo_off, geo_fwd_vec),  3).
+        LOCAL geo_stbd IS ROUND(VDOT(geo_off, geo_stbd_vec), 3).
+        LOCAL geo_up   IS ROUND(VDOT(geo_off, geo_up_vec),   3).
+        LOCAL geo_pmix IS ROUND(VTOL_PITCH_MIX[geo_i - 1], 4).
+        LOCAL geo_rmix IS ROUND(VTOL_ROLL_MIX[geo_i - 1],  4).
+        LOG ("# eng" + geo_i + ": fwd=" + geo_fwd + "m  stbd=" + geo_stbd + "m  up=" + geo_up +
+             "m  pitch_mix=" + geo_pmix + "  roll_mix=" + geo_rmix) TO log_file.
+      } ELSE {
+        LOG "# eng" + geo_i + ": tag not found" TO log_file.
+      }
+      SET geo_i TO geo_i + 1.
+    }
+    // ─────────────────────────────────────────────────────────
+
     LOCAL log_last_ut IS TIME:SECONDS.
     LOCAL log_rate    IS 0.2. // 5 Hz — enough resolution for VTOL tuning
     LOCAL arm_ut      IS TIME:SECONDS.
@@ -357,9 +390,7 @@ IF NOT VTOL_DIFF_AVAILABLE {
       // max capability, amplifying any existing imbalance.
       // Adaptive trim (_VTOL_ADAPT_TRIM) handles convergence instead.
 
-      VTOL_TICK_PREARM().
-
-      // ── Pilot inputs (read once, used by display + log) ────
+      // ── Pilot inputs (read once, passed to tick + used by display + log) ────
       LOCAL roll_disp  IS 0.
       LOCAL pitch_disp IS 0.
       LOCAL yaw_disp   IS 0.
@@ -371,6 +402,8 @@ IF NOT VTOL_DIFF_AVAILABLE {
         IF ctrl:HASSUFFIX("PILOTYAW")          { SET yaw_disp   TO ctrl:PILOTYAW. }
         IF ctrl:HASSUFFIX("PILOTMAINTHROTTLE") { SET thr_disp   TO ctrl:PILOTMAINTHROTTLE. }
       }
+
+      VTOL_TICK_PREARM().
 
       // ── Per-engine limits (computed once, used by display + log) ──
       // Use the same roll_cmd / pitch_cmd that VTOL_TICK_PREARM used:
