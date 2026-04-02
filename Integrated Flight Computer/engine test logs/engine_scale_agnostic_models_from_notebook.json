@@ -1,0 +1,898 @@
+{
+  "model_kind": "engine_tweakscale_agnostic_multi_combo_v1",
+  "source_log_dir": "F:\\Kerbal Space Program\\Ships\\Script\\Integrated Flight Computer\\engine test logs",
+  "log_glob": "engine_test_log_*.csv",
+  "combo_count": 1,
+  "models": [
+    {
+      "combo_key": "JetEngine|CircularIntake",
+      "reference_run": {
+        "label": "engine_test_log_00000003",
+        "log_path": "F:\\Kerbal Space Program\\Ships\\Script\\Integrated Flight Computer\\engine test logs\\engine_test_log_00000003.csv",
+        "engine_diameter_m": 2.5,
+        "intake_diameter_m": 2.5
+      },
+      "steady_map_reference": {
+        "thrust_vs_cmd": {
+          "poly_degree": 2,
+          "poly_coefficients": [
+            -331.89351301207785,
+            447.9295403338628,
+            3.319017470836741
+          ],
+          "rmse_kn": 15.597028022219451
+        },
+        "massflow_vs_cmd": {
+          "poly_degree": 2,
+          "poly_coefficients": [
+            -412.5711116441882,
+            556.8134650868092,
+            4.125814757486107
+          ],
+          "rmse_kgps": 19.388403029636912
+        }
+      },
+      "scale_laws": {
+        "thrust_gain_vs_engine_diameter": {
+          "form": "(D_engine / D_ref)^alpha_thrust",
+          "alpha_thrust": 2.0677402549199604
+        },
+        "massflow_gain_vs_engine_diameter": {
+          "form": "(D_engine / D_ref)^alpha_massflow",
+          "alpha_massflow": 2.0677390798721675
+        },
+        "tau_up_vs_engine_diameter": {
+          "form": "tau_up_ref * (D_engine / D_ref)^beta_tau_up",
+          "tau_up_ref_t63_s": 2.099999999999987,
+          "beta_tau_up": -0.6076005839959708
+        },
+        "tau_down_vs_engine_diameter": {
+          "form": "tau_down_ref * (D_engine / D_ref)^beta_tau_down",
+          "tau_down_ref_t63_s": 4.140000000000008,
+          "beta_tau_down": 0.2800225378314209
+        }
+      },
+      "diagnostics": {
+        "run_count": 3,
+        "runs": [
+          {
+            "label": "engine_test_log_00000003",
+            "log_path": "F:\\Kerbal Space Program\\Ships\\Script\\Integrated Flight Computer\\engine test logs\\engine_test_log_00000003.csv",
+            "engine_diameter_m": 2.5,
+            "intake_diameter_m": 2.5,
+            "tau_up_t63_s": 2.099999999999987,
+            "tau_down_t63_s": 4.140000000000008,
+            "prop_req_100": 0.0,
+            "thrust_gain_vs_ref": 1.0090162631067354,
+            "massflow_gain_vs_ref": 1.0090162900832753,
+            "per_cmd": [
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.25,
+                "thrust_obs_kn": 131.89701836734696,
+                "thrust_ref_kn": 94.55805799104758,
+                "thrust_gain": 1.3948786721046502,
+                "massflow_obs_kgps": 163.95891836734694,
+                "massflow_ref_kgps": 117.54348655142664,
+                "massflow_gain": 1.3948788076454837
+              },
+              {
+                "cmd": 0.5,
+                "thrust_obs_kn": 131.86405238095242,
+                "thrust_ref_kn": 144.31040938474868,
+                "thrust_gain": 0.9137528813281043,
+                "massflow_obs_kgps": 163.9179166666667,
+                "massflow_ref_kgps": 179.38976938984362,
+                "massflow_gain": 0.9137528702121579
+              },
+              {
+                "cmd": 0.75,
+                "thrust_obs_kn": 131.83225394736843,
+                "thrust_ref_kn": 152.57607165194005,
+                "thrust_gain": 0.8640427854775755,
+                "massflow_obs_kgps": 163.8783684210526,
+                "massflow_ref_kgps": 189.66466327273713,
+                "massflow_gain": 0.8640427035446033
+              },
+              {
+                "cmd": 1.0,
+                "thrust_obs_kn": 131.80134647887328,
+                "thrust_ref_kn": 119.3550447926217,
+                "thrust_gain": 1.1042796448853665,
+                "massflow_obs_kgps": 163.83995774647883,
+                "massflow_ref_kgps": 148.36816820010708,
+                "massflow_gain": 1.1042797099543928
+              }
+            ],
+            "warnings": [
+              "0.5 and 1.0 throttle steady thrust are nearly identical; likely airflow/prop-limit saturation.",
+              "prop requirement met at 100% is low (0.000); possible intake/prop-limit."
+            ]
+          },
+          {
+            "label": "engine_test_log_00000002",
+            "log_path": "F:\\Kerbal Space Program\\Ships\\Script\\Integrated Flight Computer\\engine test logs\\engine_test_log_00000002.csv",
+            "engine_diameter_m": 1.25,
+            "intake_diameter_m": 1.25,
+            "tau_up_t63_s": 3.1799999999999997,
+            "tau_down_t63_s": 3.4200000000000017,
+            "prop_req_100": 0.0,
+            "thrust_gain_vs_ref": 0.25229148682307345,
+            "massflow_gain_vs_ref": 0.25229129952543955,
+            "per_cmd": [
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.25,
+                "thrust_obs_kn": 27.412424271844664,
+                "thrust_ref_kn": 94.55805799104758,
+                "thrust_gain": 0.2899004574992432,
+                "massflow_obs_kgps": 34.075893203883496,
+                "massflow_ref_kgps": 117.54348655142664,
+                "massflow_gain": 0.28990031012033063
+              },
+              {
+                "cmd": 0.5,
+                "thrust_obs_kn": 32.97130549450549,
+                "thrust_ref_kn": 144.31040938474868,
+                "thrust_gain": 0.22847489405008947,
+                "massflow_obs_kgps": 40.986054945054946,
+                "massflow_ref_kgps": 179.38976938984362,
+                "massflow_gain": 0.22847487392653631
+              },
+              {
+                "cmd": 0.75,
+                "thrust_obs_kn": 32.96299156626506,
+                "thrust_ref_kn": 152.57607165194005,
+                "thrust_gain": 0.21604299553249065,
+                "massflow_obs_kgps": 40.97567469879518,
+                "massflow_ref_kgps": 189.66466327273713,
+                "massflow_gain": 0.21604274613807373
+              },
+              {
+                "cmd": 1.0,
+                "thrust_obs_kn": 32.9548922077922,
+                "thrust_ref_kn": 119.3550447926217,
+                "thrust_gain": 0.2761080795960575,
+                "massflow_obs_kgps": 40.96559740259742,
+                "massflow_ref_kgps": 148.36816820010708,
+                "massflow_gain": 0.2761077251243428
+              }
+            ],
+            "warnings": [
+              "0.5 and 1.0 throttle steady thrust are nearly identical; likely airflow/prop-limit saturation.",
+              "prop requirement met at 100% is low (0.000); possible intake/prop-limit."
+            ]
+          },
+          {
+            "label": "engine_test_log_00000001",
+            "log_path": "F:\\Kerbal Space Program\\Ships\\Script\\Integrated Flight Computer\\engine test logs\\engine_test_log_00000001.csv",
+            "engine_diameter_m": 0.75,
+            "intake_diameter_m": 0.75,
+            "tau_up_t63_s": 4.379999999999999,
+            "tau_down_t63_s": 2.9499999999999957,
+            "prop_req_100": 0.0,
+            "thrust_gain_vs_ref": 0.08031586031474319,
+            "massflow_gain_vs_ref": 0.08031604592811925,
+            "per_cmd": [
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.0,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.0,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.013069230769230765,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.016307692307692308,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.013069230769230765,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.016307692307692308,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.013069230769230765,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.016307692307692308,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.014576190476190473,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.018071428571428575,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.013069230769230765,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.016307692307692308,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.013069230769230765,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.016307692307692308,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.014576190476190473,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.018071428571428575,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.014576190476190473,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.018071428571428575,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.014576190476190473,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.018071428571428575,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.016318181818181815,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.020295454545454547,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.014576190476190473,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.018071428571428575,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.017602173913043476,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.02189130434782609,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.017602173913043476,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.02189130434782609,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.016318181818181815,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.020295454545454547,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.016318181818181815,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.020295454545454547,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.016318181818181815,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.020295454545454547,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.016318181818181815,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.020295454545454547,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.017602173913043476,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.02189130434782609,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.017602173913043476,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.02189130434782609,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.0,
+                "thrust_obs_kn": 0.017602173913043476,
+                "thrust_ref_kn": 3.319017470836741,
+                "thrust_gain": null,
+                "massflow_obs_kgps": 0.02189130434782609,
+                "massflow_ref_kgps": 4.125814757486107,
+                "massflow_gain": null
+              },
+              {
+                "cmd": 0.25,
+                "thrust_obs_kn": 7.410469736842104,
+                "thrust_ref_kn": 94.55805799104758,
+                "thrust_gain": 0.07836952126854911,
+                "massflow_obs_kgps": 9.211868421052632,
+                "massflow_ref_kgps": 117.54348655142664,
+                "massflow_gain": 0.07836987562064814
+              },
+              {
+                "cmd": 0.5,
+                "thrust_obs_kn": 11.87129166666667,
+                "thrust_ref_kn": 144.31040938474868,
+                "thrust_gain": 0.08226219936093727,
+                "massflow_obs_kgps": 14.757000000000003,
+                "massflow_ref_kgps": 179.38976938984362,
+                "massflow_gain": 0.08226221623559035
+              },
+              {
+                "cmd": 0.75,
+                "thrust_obs_kn": 11.868648863636365,
+                "thrust_ref_kn": 152.57607165194005,
+                "thrust_gain": 0.07778840243515636,
+                "massflow_obs_kgps": 14.753818181818179,
+                "massflow_ref_kgps": 189.66466327273713,
+                "massflow_gain": 0.07778896673336688
+              },
+              {
+                "cmd": 1.0,
+                "thrust_obs_kn": 11.866258536585367,
+                "thrust_ref_kn": 119.3550447926217,
+                "thrust_gain": 0.09941983229282753,
+                "massflow_obs_kgps": 14.750878048780486,
+                "massflow_ref_kgps": 148.36816820010708,
+                "massflow_gain": 0.09942077352391171
+              }
+            ],
+            "warnings": [
+              "0.5 and 1.0 throttle steady thrust are nearly identical; likely airflow/prop-limit saturation.",
+              "prop requirement met at 100% is low (0.000); possible intake/prop-limit."
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "skipped_logs": [],
+  "skipped_combos": []
+}

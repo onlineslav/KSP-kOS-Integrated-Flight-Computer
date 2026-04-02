@@ -9,8 +9,11 @@
 //   build feed-forward models.
 //
 // Recommended setup:
-//   - Tag test engine part: engine_test_engine
-//   - Tag paired intake part: engine_test_intake
+//   - Optional selector tags (if needed for multi-engine craft):
+//       ET_ENGINE_TAG / ET_INTAKE_TAG
+//   - Diameter ground-truth tags on selected parts:
+//       "1_25" -> 1.25 m
+//       "0_750" -> 0.750 m
 //
 // Fallback behavior:
 //   - If engine tag is missing, first SHIP:ENGINES entry is used.
@@ -25,18 +28,13 @@ GLOBAL ET_ROOT IS "0:/Integrated Flight Computer/".
 GLOBAL ET_LOG_DIR IS ET_ROOT + "engine test logs".
 GLOBAL ET_COUNTER_PATH IS ET_LOG_DIR + "/counter.txt".
 
-GLOBAL ET_ENGINE_TAG IS "engine_test_engine".
-GLOBAL ET_INTAKE_TAG IS "engine_test_intake".
+// Optional selector tags. Leave blank for single-engine test stands.
+GLOBAL ET_ENGINE_TAG IS "".
+GLOBAL ET_INTAKE_TAG IS "".
 
 GLOBAL ET_STAGE_ON_ARM IS TRUE.
 GLOBAL ET_PRETEST_IDLE_HOLD_S IS 2.0.
 GLOBAL ET_SAMPLE_DT IS 0.10. // 10 Hz
-
-// Manual geometry metadata overrides (set > 0 to log explicit diameters/scale).
-// Keep at -1 to leave unspecified.
-GLOBAL ET_ENGINE_DIAMETER_M_MANUAL IS -1.
-GLOBAL ET_INTAKE_DIAMETER_M_MANUAL IS -1.
-GLOBAL ET_SCALE_FACTOR_MANUAL IS -1.
 
 // Phase progression gate:
 // - stay in each phase for at least ET_PHASE_MIN_HOLD_S
@@ -216,6 +214,7 @@ FUNCTION ET_FIND_PART_BY_UID {
 
 FUNCTION ET_FIND_PART_BY_TAG {
   PARAMETER tag_name.
+  IF tag_name = "" { RETURN 0. }
   IF NOT SHIP:HASSUFFIX("PARTSTAGGED") { RETURN 0. }
   LOCAL tagged IS SHIP:PARTSTAGGED(tag_name).
   IF tagged:LENGTH <= 0 { RETURN 0. }
@@ -243,6 +242,30 @@ FUNCTION ET_PART_UID_TXT {
   IF p = 0 { RETURN "NONE". }
   IF p:HASSUFFIX("UID") { RETURN "" + p:UID. }
   RETURN "UNKNOWN_UID".
+}
+
+FUNCTION ET_PART_TAG_TEXT {
+  PARAMETER p.
+  IF p = 0 { RETURN "". }
+  IF p:HASSUFFIX("TAG") { RETURN ("" + p:TAG):TRIM. }
+  RETURN "".
+}
+
+FUNCTION ET_PARSE_DIAMETER_TAG {
+  PARAMETER raw_tag.
+  LOCAL s IS ("" + raw_tag):TRIM.
+  IF s = "" { RETURN -1. }
+
+  SET s TO s:TOLOWER.
+  SET s TO s:REPLACE("_", ".").
+  SET s TO s:REPLACE(",", ".").
+  SET s TO s:REPLACE("m", "").
+  SET s TO s:TRIM.
+
+  LOCAL parsed IS s:TONUMBER(-1).
+  IF parsed <= 0 { RETURN -1. }
+  // Canonicalize so tags like "1_25" and "1_250" map identically.
+  RETURN ROUND(parsed, 6).
 }
 
 FUNCTION ET_CURRENT_THROTTLE {
@@ -293,6 +316,12 @@ FUNCTION ET_CLEAN_FIELD_NAME {
       SET s TO s:SUBSTRING(0, p).
     }
   }
+  IF s:CONTAINS(", is ") {
+    LOCAL p2 IS s:FIND(", is ").
+    IF p2 >= 0 {
+      SET s TO s:SUBSTRING(0, p2).
+    }
+  }
 
   IF s:LENGTH > 0 {
     LOCAL last_ch IS s:SUBSTRING(s:LENGTH - 1, 1).
@@ -329,14 +358,9 @@ FUNCTION ET_READ_FIELD_NUM {
   UNTIL i >= candidates:LENGTH {
     LOCAL candidate IS candidates[i].
     IF candidate <> "" {
-      LOCAL can_read IS FALSE.
-      // Candidate[0] is the exact string sourced from ALLFIELDS.
-      // Some modules reject HASFIELD() for that decorated label but
-      // still allow GETFIELD() reads.
-      IF i = 0 {
-        SET can_read TO TRUE.
-      } ELSE {
-        SET can_read TO (NOT module_obj:HASSUFFIX("HASFIELD")) OR module_obj:HASFIELD(candidate).
+      LOCAL can_read IS TRUE.
+      IF module_obj:HASSUFFIX("HASFIELD") {
+        SET can_read TO module_obj:HASFIELD(candidate).
       }
       IF can_read {
         LOCAL raw IS module_obj:GETFIELD(candidate).
@@ -359,11 +383,9 @@ FUNCTION ET_READ_FIELD_TEXT {
   UNTIL i >= candidates:LENGTH {
     LOCAL candidate IS candidates[i].
     IF candidate <> "" {
-      LOCAL can_read IS FALSE.
-      IF i = 0 {
-        SET can_read TO TRUE.
-      } ELSE {
-        SET can_read TO (NOT module_obj:HASSUFFIX("HASFIELD")) OR module_obj:HASFIELD(candidate).
+      LOCAL can_read IS TRUE.
+      IF module_obj:HASSUFFIX("HASFIELD") {
+        SET can_read TO module_obj:HASFIELD(candidate).
       }
       IF can_read {
         RETURN "" + module_obj:GETFIELD(candidate).
@@ -418,6 +440,8 @@ FUNCTION ET_NORMALIZE_FIELD_KEY {
   PARAMETER raw_text.
   LOCAL s IS ("" + raw_text):TOLOWER.
   SET s TO s:REPLACE(" ", "").
+  SET s TO s:REPLACE(",", "").
+  SET s TO s:REPLACE(":", "").
   SET s TO s:REPLACE(".", "").
   SET s TO s:REPLACE("_", "").
   SET s TO s:REPLACE("-", "").
@@ -440,18 +464,20 @@ FUNCTION ET_FIND_ENGINE_FIELD_BINDINGS {
   LOCAL i IS 0.
   UNTIL i >= names:LENGTH {
     LOCAL field_name IS "" + names[i].
-    LOCAL field_lc IS field_name:TOLOWER.
-    LOCAL field_norm IS ET_NORMALIZE_FIELD_KEY(field_name).
+    LOCAL field_clean IS ET_CLEAN_FIELD_NAME(field_name).
+    IF field_clean = "" { SET field_clean TO field_name. }
+    LOCAL field_lc IS field_clean:TOLOWER.
+    LOCAL field_norm IS ET_NORMALIZE_FIELD_KEY(field_clean).
 
     IF ET_FIELD_ENG_FUEL_FLOW = "" {
       IF field_lc:CONTAINS("fuel flow") OR field_norm:CONTAINS("fuelflow") {
-        SET ET_FIELD_ENG_FUEL_FLOW TO field_name.
+        SET ET_FIELD_ENG_FUEL_FLOW TO field_clean.
       }
     }
 
     IF ET_FIELD_ENG_THRUST = "" {
       IF field_norm:CONTAINS("thrust") AND NOT field_norm:CONTAINS("limiter") {
-        SET ET_FIELD_ENG_THRUST TO field_name.
+        SET ET_FIELD_ENG_THRUST TO field_clean.
       }
     }
 
@@ -460,13 +486,13 @@ FUNCTION ET_FIND_ENGINE_FIELD_BINDINGS {
       LOCAL has_met IS field_norm:CONTAINS("met") OR field_norm:CONTAINS("satisfied").
       LOCAL has_prop IS field_norm:CONTAINS("prop") OR field_norm:CONTAINS("propellant").
       IF has_req AND has_met AND has_prop {
-        SET ET_FIELD_ENG_PROP_REQ_MET TO field_name.
+        SET ET_FIELD_ENG_PROP_REQ_MET TO field_clean.
       }
     }
 
     IF ET_FIELD_ENG_THROTTLE = "" {
       IF field_lc:CONTAINS("throttle") AND NOT field_lc:CONTAINS("limiter") {
-        SET ET_FIELD_ENG_THROTTLE TO field_name.
+        SET ET_FIELD_ENG_THROTTLE TO field_clean.
       }
     }
 
@@ -479,7 +505,9 @@ FUNCTION ET_FIND_ENGINE_FIELD_BINDINGS {
     SET i TO 0.
     UNTIL i >= names:LENGTH {
       LOCAL fallback_name IS "" + names[i].
-      LOCAL fallback_norm IS ET_NORMALIZE_FIELD_KEY(fallback_name).
+      LOCAL fallback_clean IS ET_CLEAN_FIELD_NAME(fallback_name).
+      IF fallback_clean = "" { SET fallback_clean TO fallback_name. }
+      LOCAL fallback_norm IS ET_NORMALIZE_FIELD_KEY(fallback_clean).
       LOCAL fallback_hit IS FALSE.
       IF fallback_norm:CONTAINS("propreqmet") { SET fallback_hit TO TRUE. }
       IF fallback_norm:CONTAINS("proprequirementmet") { SET fallback_hit TO TRUE. }
@@ -490,7 +518,7 @@ FUNCTION ET_FIND_ENGINE_FIELD_BINDINGS {
         }
       }
       IF fallback_hit {
-        SET ET_FIELD_ENG_PROP_REQ_MET TO fallback_name.
+        SET ET_FIELD_ENG_PROP_REQ_MET TO fallback_clean.
         BREAK.
       }
       SET i TO i + 1.
@@ -533,12 +561,14 @@ FUNCTION ET_FIND_PROP_REQ_BINDING_ON_PART {
         LOCAL j IS 0.
         UNTIL j >= fields:LENGTH {
           LOCAL field_name IS "" + fields[j].
-          IF ET_FIELD_LOOKS_PROP_REQ_MET(field_name) {
-            RETURN LEXICON("module_name", module_name, "field_name", field_name).
+          LOCAL field_clean IS ET_CLEAN_FIELD_NAME(field_name).
+          IF field_clean = "" { SET field_clean TO field_name. }
+          IF ET_FIELD_LOOKS_PROP_REQ_MET(field_clean) {
+            RETURN LEXICON("module_name", module_name, "field_name", field_clean).
           }
 
           // Weaker score-based fallback if literal match isn't found.
-          LOCAL n IS ET_NORMALIZE_FIELD_KEY(field_name).
+          LOCAL n IS ET_NORMALIZE_FIELD_KEY(field_clean).
           LOCAL score IS 0.
           IF n:CONTAINS("prop") OR n:CONTAINS("propellant") { SET score TO score + 2. }
           IF n:CONTAINS("require") OR n:CONTAINS("req") { SET score TO score + 2. }
@@ -548,7 +578,7 @@ FUNCTION ET_FIND_PROP_REQ_BINDING_ON_PART {
           IF score > best_score {
             SET best_score TO score.
             SET best_module TO module_name.
-            SET best_field TO field_name.
+            SET best_field TO field_clean.
           }
           SET j TO j + 1.
         }
@@ -805,7 +835,7 @@ FUNCTION ET_FIND_INTAKE_PART {
 }
 
 FUNCTION ET_LOG_METADATA {
-  PARAMETER log_file, engine_part, intake_part, engine_module_name, intake_module_name, source_txt, engine_scale_info, intake_scale_info.
+  PARAMETER log_file, engine_part, intake_part, engine_module_name, intake_module_name, source_txt, engine_diameter_m, intake_diameter_m.
 
   LOG "# engine_test_version=1" TO log_file.
   LOG "# craft_name=" + ET_SANITIZE_TXT(SHIP:NAME) TO log_file.
@@ -816,20 +846,15 @@ FUNCTION ET_LOG_METADATA {
   LOG "# engine_part_title=" + ET_PART_TITLE(engine_part) TO log_file.
   LOG "# engine_part_name=" + ET_PART_NAME(engine_part) TO log_file.
   LOG "# engine_part_uid=" + ET_PART_UID_TXT(engine_part) TO log_file.
+  LOG "# engine_part_tag=" + ET_SANITIZE_TXT(ET_PART_TAG_TEXT(engine_part)) TO log_file.
   LOG "# intake_part_title=" + ET_PART_TITLE(intake_part) TO log_file.
   LOG "# intake_part_name=" + ET_PART_NAME(intake_part) TO log_file.
   LOG "# intake_part_uid=" + ET_PART_UID_TXT(intake_part) TO log_file.
+  LOG "# intake_part_tag=" + ET_SANITIZE_TXT(ET_PART_TAG_TEXT(intake_part)) TO log_file.
   LOG "# engine_module_name=" + ET_SANITIZE_TXT(engine_module_name) TO log_file.
   LOG "# intake_module_name=" + ET_SANITIZE_TXT(intake_module_name) TO log_file.
-  LOG "# engine_diameter_m_manual=" + ROUND(ET_ENGINE_DIAMETER_M_MANUAL, 6) TO log_file.
-  LOG "# intake_diameter_m_manual=" + ROUND(ET_INTAKE_DIAMETER_M_MANUAL, 6) TO log_file.
-  LOG "# scale_factor_manual=" + ROUND(ET_SCALE_FACTOR_MANUAL, 6) TO log_file.
-  LOG "# engine_tweakscale_module_name=" + ET_SANITIZE_TXT(engine_scale_info["module_name"]) TO log_file.
-  LOG "# engine_tweakscale_field_name=" + ET_SANITIZE_TXT(engine_scale_info["field_name"]) TO log_file.
-  LOG "# engine_tweakscale_value=" + ROUND(engine_scale_info["value"], 6) TO log_file.
-  LOG "# intake_tweakscale_module_name=" + ET_SANITIZE_TXT(intake_scale_info["module_name"]) TO log_file.
-  LOG "# intake_tweakscale_field_name=" + ET_SANITIZE_TXT(intake_scale_info["field_name"]) TO log_file.
-  LOG "# intake_tweakscale_value=" + ROUND(intake_scale_info["value"], 6) TO log_file.
+  LOG "# engine_diameter_m=" + ROUND(engine_diameter_m, 6) TO log_file.
+  LOG "# intake_diameter_m=" + ROUND(intake_diameter_m, 6) TO log_file.
   LOG "# engine_field_fuel_flow=" + ET_SANITIZE_TXT(ET_FIELD_ENG_FUEL_FLOW) TO log_file.
   LOG "# engine_field_thrust=" + ET_SANITIZE_TXT(ET_FIELD_ENG_THRUST) TO log_file.
   LOG "# engine_field_prop_req_met=" + ET_SANITIZE_TXT(ET_FIELD_ENG_PROP_REQ_MET) TO log_file.
@@ -851,12 +876,14 @@ FUNCTION ET_LOG_HEADER {
 FUNCTION ET_PHASE_PROFILE {
   RETURN LIST(
     LEXICON("name", "idle_baseline", "cmd", 0.00),
-    LEXICON("name", "up_full_1",    "cmd", 1.00),
+    LEXICON("name", "up_25",        "cmd", 0.25),
     LEXICON("name", "down_idle_1",  "cmd", 0.00),
-    LEXICON("name", "up_half",      "cmd", 0.50),
+    LEXICON("name", "up_50",        "cmd", 0.50),
     LEXICON("name", "down_idle_2",  "cmd", 0.00),
-    LEXICON("name", "up_full_2",    "cmd", 1.00),
-    LEXICON("name", "down_idle_3",  "cmd", 0.00)
+    LEXICON("name", "up_75",        "cmd", 0.75),
+    LEXICON("name", "down_idle_3",  "cmd", 0.00),
+    LEXICON("name", "up_100",       "cmd", 1.00),
+    LEXICON("name", "down_idle_4",  "cmd", 0.00)
   ).
 }
 
@@ -906,8 +933,10 @@ FUNCTION RUN_ENGINE_TEST {
     SET prop_req_module_obj TO ET_RESOLVE_MODULE(engine_part, prop_req_module_name).
   }
 
-  LOCAL engine_scale_info IS ET_RESOLVE_TWEAKSCALE_INFO(engine_part).
-  LOCAL intake_scale_info IS ET_RESOLVE_TWEAKSCALE_INFO(intake_part).
+  LOCAL engine_tag_txt IS ET_PART_TAG_TEXT(engine_part).
+  LOCAL intake_tag_txt IS ET_PART_TAG_TEXT(intake_part).
+  LOCAL engine_diameter_m IS ET_PARSE_DIAMETER_TAG(engine_tag_txt).
+  LOCAL intake_diameter_m IS ET_PARSE_DIAMETER_TAG(intake_tag_txt).
 
   LOCAL log_file IS ET_BUILD_LOG_FILE().
 
@@ -925,11 +954,16 @@ FUNCTION RUN_ENGINE_TEST {
   PRINT "Engine field thrust: " + ET_SANITIZE_TXT(ET_FIELD_ENG_THRUST).
   PRINT "Engine field prop req: " + ET_SANITIZE_TXT(ET_FIELD_ENG_PROP_REQ_MET).
   PRINT "Engine prop req module: " + ET_SANITIZE_TXT(ET_FIELD_ENG_PROP_REQ_MET_MODULE).
-  PRINT "Manual engine diameter (m): " + ROUND(ET_ENGINE_DIAMETER_M_MANUAL, 6).
-  PRINT "Manual intake diameter (m): " + ROUND(ET_INTAKE_DIAMETER_M_MANUAL, 6).
-  PRINT "Manual scale factor: " + ROUND(ET_SCALE_FACTOR_MANUAL, 6).
-  PRINT "Engine TweakScale: " + ROUND(engine_scale_info["value"], 6).
-  PRINT "Intake TweakScale: " + ROUND(intake_scale_info["value"], 6).
+  PRINT "Engine diameter tag: " + ET_SANITIZE_TXT(engine_tag_txt).
+  PRINT "Engine diameter (m): " + ROUND(engine_diameter_m, 6).
+  PRINT "Intake diameter tag: " + ET_SANITIZE_TXT(intake_tag_txt).
+  PRINT "Intake diameter (m): " + ROUND(intake_diameter_m, 6).
+  IF engine_diameter_m <= 0 {
+    PRINT "WARNING: engine diameter tag invalid/missing (expected format like 1_25).".
+  }
+  IF intake_diameter_m <= 0 {
+    PRINT "WARNING: intake diameter tag invalid/missing (expected format like 1_25).".
+  }
   IF ET_FIELD_ENG_FUEL_FLOW = "" {
     PRINT "NOTE: fuel-flow field not found pre-arm (will retry after stage).".
   }
@@ -978,14 +1012,10 @@ FUNCTION RUN_ENGINE_TEST {
     PRINT "WARNING: prop requirement field not found (prop steady gate disabled).".
   }
 
-  ET_LOG_METADATA(log_file, engine_part, intake_part, engine_module_name, intake_module_name, source_txt, engine_scale_info, intake_scale_info).
-  LOCAL engine_tweakscale_obj IS ET_RESOLVE_MODULE(engine_part, engine_scale_info["module_name"]).
-  LOCAL intake_tweakscale_obj IS ET_RESOLVE_MODULE(intake_part, intake_scale_info["module_name"]).
+  ET_LOG_METADATA(log_file, engine_part, intake_part, engine_module_name, intake_module_name, source_txt, engine_diameter_m, intake_diameter_m).
   ET_LOG_MODULE_FIELD_LIST(log_file, engine_module_obj, "engine_module").
   ET_LOG_MODULE_FIELD_LIST(log_file, prop_req_module_obj, "prop_req_module").
   ET_LOG_MODULE_FIELD_LIST(log_file, intake_module_obj, "intake_module").
-  ET_LOG_MODULE_FIELD_LIST(log_file, engine_tweakscale_obj, "engine_tweakscale_module").
-  ET_LOG_MODULE_FIELD_LIST(log_file, intake_tweakscale_obj, "intake_tweakscale_module").
   ET_LOG_HEADER(log_file).
 
   BRAKES ON.
@@ -1211,7 +1241,7 @@ FUNCTION RUN_ENGINE_TEST {
         ROUND(eng_thrust_limit, 4),
         ROUND(eng_mod_fuel_flow, 6),
         ROUND(eng_mod_thrust, 6),
-        ROUND(eng_mod_prop_req_met, 0),
+        ROUND(eng_mod_prop_req_met, 6),
         ROUND(eng_mod_throttle, 6),
         ROUND(eng_mod_spool, 6),
         CHOOSE 1 IF steady_thrust_ok ELSE 0,

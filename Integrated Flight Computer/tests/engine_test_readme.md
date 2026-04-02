@@ -30,23 +30,21 @@ Logs are written to:
 
 `0:/Integrated Flight Computer/engine test logs/engine_test_log_XXXXXXXX.csv`
 
-Metadata now also records detected TweakScale values for the engine and intake parts
-when a TweakScale module is present.
+### Diameter ground truth via part tags
 
-### Manual geometry metadata (recommended for scale studies)
+Set the **engine part tag** and **intake part tag** in the SPH to the diameter text:
 
-If TweakScale values resolve as `-1`, set these constants near the top of
-`Integrated Flight Computer/tests/engine_test.ks` before each run:
+- `"1_25"` => `1.25 m`
+- `"0_750"` => `0.750 m`
 
-- `ET_ENGINE_DIAMETER_M_MANUAL`
-- `ET_INTAKE_DIAMETER_M_MANUAL`
-- `ET_SCALE_FACTOR_MANUAL`
+Arbitrary sizes are supported using the same underscore format.
 
-These are logged in CSV metadata as:
+These are logged as:
 
-- `engine_diameter_m_manual`
-- `intake_diameter_m_manual`
-- `scale_factor_manual`
+- `engine_part_tag`
+- `intake_part_tag`
+- `engine_diameter_m`
+- `intake_diameter_m`
 
 ### Phase progression behavior
 
@@ -62,6 +60,12 @@ Each phase now:
 3. keeps those checks stable for `ET_STEADY_HOLD_S` (default 4 s) before advancing
 
 There is also a safety timeout (`ET_PHASE_MAX_WAIT_S`) to prevent endless waiting.
+
+### Default phase sequence
+
+The default sequence is now:
+
+`idle -> 25% -> 0% -> 50% -> 0% -> 75% -> 0% -> 100% -> 0%`
 
 ---
 
@@ -87,7 +91,7 @@ Outputs (next to the source CSV):
 
 ---
 
-## 2b) Build a TweakScale-Agnostic Model (multi-run)
+## 2b) Build a Scale-Agnostic Model (multi-run)
 
 Use the multi-run fitter with explicit diameters:
 
@@ -144,8 +148,10 @@ Open:
    - steady-state map plot
    - normalized step-response overlays
 4. Check the **Steady-state reach check per phase** table.
-5. Use the **Multi-Run Pipeline (Single Notebook Entry Point)** section at the end to process multiple logs and build a scale-agnostic model in one run.
-   Only edit `PIPELINE_RUNS` and execute that cell.
+5. Use the **Multi-Run Pipeline (Auto-Scan All Logs)** section at the end.
+   It scans all `engine_test_log_*.csv`, groups runs by engine/intake combo, and fits scale laws using all available diameters in each combo.
+   You only edit the small config block in that cell.
+6. For old logs that do not contain `engine_diameter_m` / `intake_diameter_m`, use `PIPELINE_DIAMETER_OVERRIDES` in that cell.
 
 ---
 
@@ -202,5 +208,3 @@ python -m pip install matplotlib
 ### Missing module-derived channels (`-1` values)
 
 That means the module field name was not resolved for this engine/intake module. Core vessel channels are still usable; module field probing can be expanded per part/module.
-
-For scale experiments, this is why manual geometry metadata fields were added.
