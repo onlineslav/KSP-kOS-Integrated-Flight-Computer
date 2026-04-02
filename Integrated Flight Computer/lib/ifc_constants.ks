@@ -460,9 +460,13 @@ GLOBAL VTOL_VS_KI            IS 0.04.  // collective per (m/s·s) VS error integ
 GLOBAL VTOL_VS_INTEGRAL_LIM  IS 0.40.  // anti-windup clamp on VS integral
 GLOBAL VTOL_ALT_KP           IS 0.40.  // (m/s) VS command per metre altitude error
 GLOBAL VTOL_MAX_VS           IS 8.0.   // m/s  max commanded vertical speed
+GLOBAL VTOL_COLLECTIVE_MAX   IS 0.90.  // reserve headroom for differential attitude authority
+GLOBAL VTOL_COLLECTIVE_UP_SLEW_PER_S IS 0.35. // /s max collective rise (spool-friendly)
+GLOBAL VTOL_COLLECTIVE_DN_SLEW_PER_S IS 2.50. // /s max collective fall (fast authority recovery)
 GLOBAL VTOL_YAW_SRV_GAIN     IS 8.0.   // deg  differential servo tilt per unit yaw input
 GLOBAL VTOL_ROLL_GAIN        IS 0.25.  // fraction of collective used as roll authority
 GLOBAL VTOL_PITCH_GAIN       IS 0.25.  // fraction of collective used as pitch authority
+GLOBAL VTOL_PITCH_MIX_SIGN   IS -1.0.  // pitch mix polarity; -1 means aft pods increase for nose-up correction
 GLOBAL VTOL_HOVER_LEARN_RATE IS 0.001. // rate at which hover_collective tracks actual collective
 GLOBAL VTOL_MAX_PODS         IS 8.     // max pod tags scanned during discovery
 GLOBAL VTOL_SRV_SPEED        IS 1.0.   // servo speed multiplier for baseline hover commands
@@ -471,10 +475,31 @@ GLOBAL VTOL_LAT_SIGN_THRESH  IS 0.15.  // m  lateral offset below which a pod is
 GLOBAL VTOL_TRIM_RATE        IS 0.005. // limit change per degree of pitch error per second
 GLOBAL VTOL_TRIM_DEADBAND    IS 0.05.  // pilot input magnitude below which auto systems engage
 GLOBAL VTOL_TRIM_PITCH_CLAMP IS 15.0.  // max pitch error (deg) considered by trim integrator
+GLOBAL VTOL_TRIM_RATE_LEAD_S IS 0.25.  // s of angular-rate lead added into trim error
+GLOBAL VTOL_TRIM_ACTIVITY_MIN IS 0.35. // minimum adaptive-trim activity scale during large excursions
 GLOBAL VTOL_LEVEL_ROLL_KP   IS 0.10.  // roll authority fraction per degree of bank (full at 10°)
 GLOBAL VTOL_LEVEL_ROLL_KD   IS 0.03.  // roll authority per deg/s roll rate (damp oscillation)
+GLOBAL VTOL_LEVEL_ROLL_KI   IS 0.010. // roll integral authority per deg*s bank error (steady bias removal)
 GLOBAL VTOL_LEVEL_PITCH_KP  IS 0.40.  // pitch authority fraction per degree of pitch (full at 2.5°)
 GLOBAL VTOL_LEVEL_PITCH_KD  IS 0.03.  // pitch authority per deg/s pitch rate (damp divergence)
+GLOBAL VTOL_LEVEL_PITCH_KI  IS 0.015. // pitch integral authority per deg*s pitch error (steady bias removal)
+GLOBAL VTOL_LEVEL_I_LIM     IS 40.0.  // deg*s clamp for level-hold integrators
+GLOBAL VTOL_LEVEL_ON_GROUND_DEFAULT IS FALSE. // TRUE = allow auto-level while LANDED/PRELAUNCH
+GLOBAL VTOL_LEVEL_MIN_AGL_M IS 0.8. // min AGL for auto-level when ground-leveling is disabled
+GLOBAL VTOL_GROUND_CONTACT_AGL_M IS 1.5. // treat as ground-contact only below this AGL
+GLOBAL VTOL_GROUND_CONTACT_VS_MAX IS 0.7. // m/s; must also be below this VS to count as ground-contact
+GLOBAL VTOL_STATIC_TRIM_DISCOVERY_DEFAULT IS TRUE. // TRUE = enable geometry-based static trim at discovery
+GLOBAL VTOL_STATIC_TRIM_BASE_MIN IS 0.25. // discovery trim base lower clamp (avoid immediate limiter floor)
+GLOBAL VTOL_DIFF_COLLECTIVE_MIN IS 0.12. // no roll/pitch differential below this collective
+GLOBAL VTOL_TRIM_MIN_AGL_M IS 1.5. // adaptive trim runs only above this AGL
+GLOBAL VTOL_TRIM_MIN_OFFSET IS -0.85. // lower clamp for adaptive trim offset
+GLOBAL VTOL_TRIM_MAX_OFFSET IS 0.0. // upper clamp for adaptive trim offset
+GLOBAL VTOL_TRIM_ACTIVE_PITCH_MAX IS 6.0. // adaptive trim only while |pitch| is below this
+GLOBAL VTOL_TRIM_ACTIVE_RATE_MAX IS 8.0. // adaptive trim only while |pitch_rate| is below this
+GLOBAL VTOL_TRIM_ROLL_RATE IS 0.0015. // limit change per degree of bank error per second
+GLOBAL VTOL_TRIM_BANK_CLAMP IS 12.0. // max bank error (deg) considered by trim integrator
+GLOBAL VTOL_TRIM_ACTIVE_BANK_MAX IS 8.0. // adaptive trim only while |bank| is below this
+GLOBAL VTOL_TRIM_ACTIVE_ROLL_RATE_MAX IS 12.0. // adaptive trim only while |roll_rate| is below this
 
 // ----------------------------
 // UI event queue

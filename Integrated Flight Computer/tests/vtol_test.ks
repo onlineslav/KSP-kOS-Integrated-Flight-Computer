@@ -56,9 +56,41 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_hover_angle",       90,
   "vtol_cruise_angle",      0,
   "vtol_yaw_gain",          8,
+  "vtol_roll_gain",         0.25,
+  "vtol_pitch_gain",        0.30,
+  "vtol_pitch_mix_sign",    1,   // +1: front engines increase on nose-up cmd (correct for downward-pointing hover engines)
+  "vtol_level_roll_kp",     0.10,
+  "vtol_level_roll_kd",     0.03,
+  "vtol_level_roll_ki",     0.010,
+  "vtol_level_pitch_kp",    0.12,
+  "vtol_level_pitch_kd",    0.06,
+  "vtol_level_pitch_ki",    0.015,
+  "vtol_level_i_lim",       40.0,
+  "vtol_level_on_ground",   FALSE,
+  "vtol_level_min_agl_m",   0.8,
+  "vtol_ground_contact_agl_m", 1.5,
+  "vtol_ground_contact_vs_max", 0.7,
+  "vtol_static_trim_discovery", FALSE,  // disabled: slow-spool jets can't recover from large startup offsets
+  "vtol_diff_collective_min",   0.12,
+  "vtol_trim_min_agl_m",        0.0,   // allow adaptive trim from first collective application
+  "vtol_trim_rate",             0.003,
+  "vtol_trim_roll_rate",        0.001,
+  "vtol_trim_rate_lead_s",      0.25,
+  "vtol_trim_activity_min",     0.35,
+  "vtol_trim_min_offset",       -0.85,
+  "vtol_trim_max_offset",       0.0,
+  "vtol_trim_active_pitch_max", 8.0,
+  "vtol_trim_active_rate_max",  12.0,
+  "vtol_trim_bank_clamp",       10.0,
+  "vtol_trim_active_bank_max",  8.0,
+  "vtol_trim_active_roll_rate_max", 16.0,
+  "vtol_static_trim_base_min",  0.30,
   "vtol_vs_kp",             0.30,
   "vtol_vs_ki",             0.04,
-  "vtol_max_vs",            8.0,
+  "vtol_max_vs",            6.0,
+  "vtol_collective_max",    1.0,   // raised: allows VS hold to compensate when differential reduces total thrust
+  "vtol_collective_up_slew_per_s", 0.35,
+  "vtol_collective_dn_slew_per_s", 3.00,
   "vtol_alt_kp",            0.40,
   "vtol_hover_collective",  0.77
 ).
@@ -285,7 +317,7 @@ IF NOT VTOL_DIFF_AVAILABLE {
                  "collective,hover_coll,vs_integral," +
                  "pilot_roll,pilot_pitch,pilot_yaw,pilot_thr," +
                  "roll_cmd,pitch_cmd,pitch_rate_degs,roll_rate_degs," +
-                 "gndspd_ms,ship_status".
+                 "gndspd_ms,ship_status,alloc_alpha,alloc_shift".
     LOCAL hdr_ei IS 0.
     UNTIL hdr_ei >= VTOL_ENG_LIST:LENGTH {
       SET hdr TO hdr + ",eng" + (hdr_ei+1) + "_lim".
@@ -348,20 +380,56 @@ IF NOT VTOL_DIFF_AVAILABLE {
       LOCAL disp_roll_rate  IS -VDOT(disp_ang_vel, SHIP:FACING:FOREVECTOR) * (180 / CONSTANT:PI).
       LOCAL disp_roll_cmd  IS roll_disp.
       LOCAL disp_pitch_cmd IS pitch_disp.
-      IF ABS(roll_disp) < VTOL_TRIM_DEADBAND {
-        LOCAL disp_bank IS ARCSIN(CLAMP(-VDOT(SHIP:FACING:STARVECTOR, SHIP:UP:VECTOR), -1, 1)).
-        SET disp_roll_cmd TO CLAMP(-disp_bank * VTOL_LEVEL_ROLL_KP - disp_roll_rate * VTOL_LEVEL_ROLL_KD, -1, 1).
+      LOCAL disp_level_roll_kp  IS _AMO_CFG_NUM("vtol_level_roll_kp", VTOL_LEVEL_ROLL_KP, 0).
+      LOCAL disp_level_roll_kd  IS _AMO_CFG_NUM("vtol_level_roll_kd", VTOL_LEVEL_ROLL_KD, 0).
+      LOCAL disp_level_roll_ki  IS _AMO_CFG_NUM("vtol_level_roll_ki", VTOL_LEVEL_ROLL_KI, 0).
+      LOCAL disp_level_pitch_kp IS _AMO_CFG_NUM("vtol_level_pitch_kp", VTOL_LEVEL_PITCH_KP, 0).
+      LOCAL disp_level_pitch_kd IS _AMO_CFG_NUM("vtol_level_pitch_kd", VTOL_LEVEL_PITCH_KD, 0).
+      LOCAL disp_level_pitch_ki IS _AMO_CFG_NUM("vtol_level_pitch_ki", VTOL_LEVEL_PITCH_KI, 0).
+      LOCAL disp_level_on_ground IS _AMO_CFG_BOOL("vtol_level_on_ground", VTOL_LEVEL_ON_GROUND_DEFAULT).
+      LOCAL disp_level_min_agl IS _AMO_CFG_NUM("vtol_level_min_agl_m", VTOL_LEVEL_MIN_AGL_M, 0).
+      LOCAL disp_ground_agl IS _AMO_CFG_NUM("vtol_ground_contact_agl_m", VTOL_GROUND_CONTACT_AGL_M, 0).
+      LOCAL disp_is_grounded IS _VTOL_EFFECTIVE_GROUNDED(disp_ground_agl).
+      LOCAL disp_level_active IS TRUE.
+      IF NOT disp_level_on_ground {
+        IF disp_is_grounded OR GET_AGL() < disp_level_min_agl {
+          SET disp_level_active TO FALSE.
+        }
       }
-      IF ABS(pitch_disp) < VTOL_TRIM_DEADBAND {
+      IF disp_level_active AND ABS(roll_disp) < VTOL_TRIM_DEADBAND {
+        LOCAL disp_bank IS ARCSIN(CLAMP(-VDOT(SHIP:FACING:STARVECTOR, SHIP:UP:VECTOR), -1, 1)).
+        SET disp_roll_cmd TO CLAMP(
+          -disp_bank * disp_level_roll_kp
+          + disp_roll_rate * disp_level_roll_kd
+          + VTOL_LEVEL_ROLL_INT * disp_level_roll_ki,
+          -1, 1).
+      }
+      IF disp_level_active AND ABS(pitch_disp) < VTOL_TRIM_DEADBAND {
         LOCAL disp_pitch_ang IS 90 - VANG(SHIP:FACING:FOREVECTOR, SHIP:UP:VECTOR).
-        SET disp_pitch_cmd TO CLAMP(-disp_pitch_ang * VTOL_LEVEL_PITCH_KP - disp_pitch_rate * VTOL_LEVEL_PITCH_KD, -1, 1).
+        SET disp_pitch_cmd TO CLAMP(
+          -disp_pitch_ang * disp_level_pitch_kp
+          + disp_pitch_rate * disp_level_pitch_kd
+          + VTOL_LEVEL_PITCH_INT * disp_level_pitch_ki,
+          -1, 1).
       }
       LOCAL eng_limits IS LIST().
+      LOCAL disp_alloc_alpha IS VTOL_ALLOC_ALPHA.
+      LOCAL disp_alloc_shift IS VTOL_ALLOC_SHIFT.
+      LOCAL disp_diff_min IS _AMO_CFG_NUM("vtol_diff_collective_min", VTOL_DIFF_COLLECTIVE_MIN, 0).
+      LOCAL disp_diff_scale IS 1.
+      IF VTOL_COLLECTIVE <= disp_diff_min {
+        SET disp_diff_scale TO 0.
+      } ELSE {
+        LOCAL disp_span IS 1.0 - disp_diff_min.
+        IF disp_span < 0.01 { SET disp_span TO 0.01. }
+        SET disp_diff_scale TO CLAMP((VTOL_COLLECTIVE - disp_diff_min) / disp_span, 0, 1).
+      }
       LOCAL eng_ei IS 0.
       UNTIL eng_ei >= VTOL_ENG_LIST:LENGTH {
-        LOCAL eng_lim IS VTOL_COLLECTIVE * (1.0 + VTOL_TRIM_OFFSET[eng_ei])
-                    + disp_roll_cmd  * VTOL_ROLL_MIX[eng_ei]
-                    + disp_pitch_cmd * VTOL_PITCH_MIX[eng_ei].
+        LOCAL disp_base IS VTOL_COLLECTIVE * (1.0 + VTOL_TRIM_OFFSET[eng_ei]).
+        LOCAL disp_diff IS disp_diff_scale * (disp_roll_cmd  * VTOL_ROLL_MIX[eng_ei]
+                                            + disp_pitch_cmd * VTOL_PITCH_MIX[eng_ei]).
+        LOCAL eng_lim IS disp_base + disp_alloc_shift + disp_alloc_alpha * disp_diff.
         eng_limits:ADD(CLAMP(eng_lim, 0, 1)).
         SET eng_ei TO eng_ei + 1.
       }
@@ -399,6 +467,7 @@ IF NOT VTOL_DIFF_AVAILABLE {
 
       LOCAL vsi_s IS _FMT(VTOL_VS_INTEGRAL, 7, 3).
       PRINT ("VS_I:" + vsi_s + "   Thr(pilot):" + _FMT_PCT(thr_disp) + "          ") AT(0, disp_row). SET disp_row TO disp_row + 1.
+      PRINT ("Alloc: a=" + _FMT(disp_alloc_alpha, 5, 3) + "  s=" + _FMT(disp_alloc_shift, 6, 3) + "          ") AT(0, disp_row). SET disp_row TO disp_row + 1.
 
       PRINT ("Roll:" + _FMT(roll_disp,6,3) + "  Pitch:" + _FMT(pitch_disp,6,3) +
              "  Yaw:" + _FMT(yaw_disp,6,3) + "  Thr:" + _FMT(thr_disp,5,2) + "  ") AT(0, disp_row). SET disp_row TO disp_row + 1.
@@ -492,7 +561,9 @@ IF NOT VTOL_DIFF_AVAILABLE {
           ROUND(disp_pitch_rate,         3),
           ROUND(disp_roll_rate,          3),
           ROUND(SHIP:GROUNDSPEED,        3),
-          SHIP:STATUS
+          SHIP:STATUS,
+          ROUND(disp_alloc_alpha,        4),
+          ROUND(disp_alloc_shift,        4)
         ).
         LOCAL li IS 0.
         UNTIL li >= eng_limits:LENGTH {

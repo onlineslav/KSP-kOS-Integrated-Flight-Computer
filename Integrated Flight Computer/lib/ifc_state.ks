@@ -320,6 +320,10 @@ GLOBAL VTOL_VS_CMD           IS 0.     // commanded vertical speed (m/s) (autopi
 GLOBAL VTOL_VS_INTEGRAL      IS 0.     // integral accumulator for VS hold (autopilot use)
 GLOBAL VTOL_ALT_HOLD         IS FALSE. // TRUE = altitude hold active (autopilot use)
 GLOBAL VTOL_ALT_CMD          IS 0.     // target altitude AGL (m) when alt hold active (autopilot use)
+GLOBAL VTOL_ALLOC_ALPHA      IS 1.0.   // last differential allocation scale actually applied
+GLOBAL VTOL_ALLOC_SHIFT      IS 0.0.   // last common-mode shift applied by bounded allocator
+GLOBAL VTOL_LEVEL_ROLL_INT   IS 0.0.   // level-hold roll integral state (deg*s error)
+GLOBAL VTOL_LEVEL_PITCH_INT  IS 0.0.   // level-hold pitch integral state (deg*s error)
 
 // ----------------------------
 // Auto-brake (per-side wheel brake control via tagged main gear)
