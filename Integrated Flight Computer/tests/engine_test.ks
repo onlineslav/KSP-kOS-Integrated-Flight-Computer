@@ -32,17 +32,34 @@ GLOBAL ET_STAGE_ON_ARM IS TRUE.
 GLOBAL ET_PRETEST_IDLE_HOLD_S IS 2.0.
 GLOBAL ET_SAMPLE_DT IS 0.10. // 10 Hz
 
-// Per-phase hold durations (s).
-// Increased from the first-run defaults so each step has more time to settle.
-GLOBAL ET_HOLD_IDLE_BASELINE_S IS 12.0.
-GLOBAL ET_HOLD_UP_FULL_1_S IS 24.0.
-GLOBAL ET_HOLD_DOWN_IDLE_1_S IS 24.0.
-GLOBAL ET_HOLD_UP_HALF_S IS 24.0.
-GLOBAL ET_HOLD_DOWN_IDLE_2_S IS 20.0.
-GLOBAL ET_HOLD_UP_FULL_2_S IS 24.0.
-GLOBAL ET_HOLD_DOWN_IDLE_3_S IS 30.0.
+// Manual geometry metadata overrides (set > 0 to log explicit diameters/scale).
+// Keep at -1 to leave unspecified.
+GLOBAL ET_ENGINE_DIAMETER_M_MANUAL IS -1.
+GLOBAL ET_INTAKE_DIAMETER_M_MANUAL IS -1.
+GLOBAL ET_SCALE_FACTOR_MANUAL IS -1.
+
+// Phase progression gate:
+// - stay in each phase for at least ET_PHASE_MIN_HOLD_S
+// - then advance once all steady-state checks pass for ET_STEADY_HOLD_S
+GLOBAL ET_PHASE_MIN_HOLD_S IS 10.0.
+GLOBAL ET_STEADY_WINDOW_S IS 4.0.
+GLOBAL ET_STEADY_HOLD_S IS 4.0.
+// Safety timeout to prevent infinite waits if a channel never settles.
+GLOBAL ET_PHASE_MAX_WAIT_S IS 120.0.
+GLOBAL ET_PROP_SIGNAL_GRACE_S IS 6.0.
+
+// Steady-state thresholds.
+GLOBAL ET_STEADY_THRUST_SPREAD_KN IS 0.25.
+GLOBAL ET_STEADY_FUEL_FLOW_SPREAD IS 0.0015.
 
 GLOBAL ET_CMD_THROTTLE IS 0.
+
+// Resolved engine module field names (auto-discovered at runtime).
+GLOBAL ET_FIELD_ENG_FUEL_FLOW IS "".
+GLOBAL ET_FIELD_ENG_THRUST IS "".
+GLOBAL ET_FIELD_ENG_PROP_REQ_MET IS "".
+GLOBAL ET_FIELD_ENG_PROP_REQ_MET_MODULE IS "".
+GLOBAL ET_FIELD_ENG_THROTTLE IS "".
 
 GLOBAL ET_ENG_FUEL_FLOW_FIELDS IS LIST(
   "Fuel Flow",
@@ -99,6 +116,21 @@ GLOBAL ET_INT_AREA_FIELDS IS LIST(
   "Area",
   "intakeArea",
   "intake area"
+).
+
+GLOBAL ET_TWEAKSCALE_FIELDS IS LIST(
+  "currentScale",
+  "CurrentScale",
+  "current scale",
+  "Current Scale",
+  "tweakScale",
+  "TweakScale",
+  "scale",
+  "Scale",
+  "defaultScale",
+  "DefaultScale",
+  "size",
+  "Size"
 ).
 
 FUNCTION ET_CLAMP {
@@ -245,14 +277,290 @@ FUNCTION ET_BUILD_LOG_FILE {
   RETURN ET_LOG_DIR + "/engine_test_log_" + seq_str + ".csv".
 }
 
+FUNCTION ET_CLEAN_FIELD_NAME {
+  PARAMETER raw_name.
+  LOCAL s IS ("" + raw_name):TRIM.
+  IF s = "" { RETURN "". }
+
+  SET s TO s:REPLACE("(settable)", "").
+  SET s TO s:REPLACE("(readonly)", "").
+  SET s TO s:REPLACE("(read-only)", "").
+  SET s TO s:TRIM.
+
+  IF s:CONTAINS("_ is ") {
+    LOCAL p IS s:FIND("_ is ").
+    IF p >= 0 {
+      SET s TO s:SUBSTRING(0, p).
+    }
+  }
+
+  IF s:LENGTH > 0 {
+    LOCAL last_ch IS s:SUBSTRING(s:LENGTH - 1, 1).
+    IF last_ch = "_" {
+      SET s TO s:SUBSTRING(0, s:LENGTH - 1).
+    }
+  }
+
+  RETURN s:TRIM.
+}
+
+FUNCTION ET_FIELD_CANDIDATES {
+  PARAMETER raw_name.
+  LOCAL out IS LIST().
+  LOCAL original IS ("" + raw_name):TRIM.
+  LOCAL cleaned IS ET_CLEAN_FIELD_NAME(original).
+
+  IF original <> "" { out:ADD(original). }
+  IF cleaned <> "" AND cleaned <> original { out:ADD(cleaned). }
+  IF cleaned <> "" {
+    LOCAL deperiod IS cleaned:REPLACE(".", ""):TRIM.
+    IF deperiod <> "" AND deperiod <> cleaned { out:ADD(deperiod). }
+  }
+  RETURN out.
+}
+
 FUNCTION ET_READ_FIELD_NUM {
   PARAMETER module_obj, field_name, fallback.
   IF module_obj = 0 { RETURN fallback. }
   IF field_name = "" { RETURN fallback. }
   IF NOT module_obj:HASSUFFIX("GETFIELD") { RETURN fallback. }
-  IF module_obj:HASSUFFIX("HASFIELD") AND NOT module_obj:HASFIELD(field_name) { RETURN fallback. }
-  LOCAL raw IS module_obj:GETFIELD(field_name).
-  RETURN ("" + raw):TONUMBER(fallback).
+  LOCAL candidates IS ET_FIELD_CANDIDATES(field_name).
+  LOCAL i IS 0.
+  UNTIL i >= candidates:LENGTH {
+    LOCAL candidate IS candidates[i].
+    IF candidate <> "" {
+      LOCAL can_read IS FALSE.
+      // Candidate[0] is the exact string sourced from ALLFIELDS.
+      // Some modules reject HASFIELD() for that decorated label but
+      // still allow GETFIELD() reads.
+      IF i = 0 {
+        SET can_read TO TRUE.
+      } ELSE {
+        SET can_read TO (NOT module_obj:HASSUFFIX("HASFIELD")) OR module_obj:HASFIELD(candidate).
+      }
+      IF can_read {
+        LOCAL raw IS module_obj:GETFIELD(candidate).
+        LOCAL parsed IS ET_PARSE_NUMERIC_TEXT(raw, fallback).
+        IF parsed <> fallback { RETURN parsed. }
+      }
+    }
+    SET i TO i + 1.
+  }
+  RETURN fallback.
+}
+
+FUNCTION ET_READ_FIELD_TEXT {
+  PARAMETER module_obj, field_name, fallback.
+  IF module_obj = 0 { RETURN fallback. }
+  IF field_name = "" { RETURN fallback. }
+  IF NOT module_obj:HASSUFFIX("GETFIELD") { RETURN fallback. }
+  LOCAL candidates IS ET_FIELD_CANDIDATES(field_name).
+  LOCAL i IS 0.
+  UNTIL i >= candidates:LENGTH {
+    LOCAL candidate IS candidates[i].
+    IF candidate <> "" {
+      LOCAL can_read IS FALSE.
+      IF i = 0 {
+        SET can_read TO TRUE.
+      } ELSE {
+        SET can_read TO (NOT module_obj:HASSUFFIX("HASFIELD")) OR module_obj:HASFIELD(candidate).
+      }
+      IF can_read {
+        RETURN "" + module_obj:GETFIELD(candidate).
+      }
+    }
+    SET i TO i + 1.
+  }
+  RETURN fallback.
+}
+
+FUNCTION ET_TEXT_IS_TRUE {
+  PARAMETER raw_text.
+  LOCAL s IS ("" + raw_text):TOLOWER:TRIM.
+  RETURN s = "true" OR s = "1" OR s = "yes" OR s = "on".
+}
+
+FUNCTION ET_TEXT_IS_FALSE {
+  PARAMETER raw_text.
+  LOCAL s IS ("" + raw_text):TOLOWER:TRIM.
+  RETURN s = "false" OR s = "0" OR s = "no" OR s = "off".
+}
+
+FUNCTION ET_READ_FIELD_BOOL01 {
+  PARAMETER module_obj, field_name, fallback.
+  IF module_obj = 0 { RETURN fallback. }
+  IF field_name = "" { RETURN fallback. }
+  LOCAL txt IS ET_READ_FIELD_TEXT(module_obj, field_name, "").
+  IF txt = "" { RETURN fallback. }
+  IF ET_TEXT_IS_TRUE(txt) { RETURN 1. }
+  IF ET_TEXT_IS_FALSE(txt) { RETURN 0. }
+
+  // Many KSP module fields expose percentages like "100.00%".
+  // Normalize those to 0..1 so they can be used as steady-state gates.
+  LOCAL cleaned IS txt:REPLACE("%", ""):TRIM.
+  LOCAL parsed IS cleaned:TONUMBER(fallback).
+  IF parsed = fallback { RETURN fallback. }
+
+  IF txt:CONTAINS("%") OR parsed > 1 {
+    SET parsed TO parsed / 100.0.
+  }
+  RETURN ET_CLAMP(parsed, 0, 1).
+}
+
+FUNCTION ET_FIELD_NAME_CONTAINS {
+  PARAMETER field_name, needle.
+  IF field_name = "" { RETURN FALSE. }
+  IF needle = "" { RETURN FALSE. }
+  RETURN field_name:TOLOWER:CONTAINS(needle:TOLOWER).
+}
+
+FUNCTION ET_NORMALIZE_FIELD_KEY {
+  PARAMETER raw_text.
+  LOCAL s IS ("" + raw_text):TOLOWER.
+  SET s TO s:REPLACE(" ", "").
+  SET s TO s:REPLACE(".", "").
+  SET s TO s:REPLACE("_", "").
+  SET s TO s:REPLACE("-", "").
+  SET s TO s:REPLACE("(", "").
+  SET s TO s:REPLACE(")", "").
+  SET s TO s:REPLACE("/", "").
+  RETURN s.
+}
+
+FUNCTION ET_FIND_ENGINE_FIELD_BINDINGS {
+  PARAMETER module_obj.
+  SET ET_FIELD_ENG_FUEL_FLOW TO "".
+  SET ET_FIELD_ENG_THRUST TO "".
+  SET ET_FIELD_ENG_PROP_REQ_MET TO "".
+  SET ET_FIELD_ENG_THROTTLE TO "".
+
+  IF module_obj = 0 OR NOT module_obj:HASSUFFIX("ALLFIELDS") { RETURN. }
+
+  LOCAL names IS module_obj:ALLFIELDS.
+  LOCAL i IS 0.
+  UNTIL i >= names:LENGTH {
+    LOCAL field_name IS "" + names[i].
+    LOCAL field_lc IS field_name:TOLOWER.
+    LOCAL field_norm IS ET_NORMALIZE_FIELD_KEY(field_name).
+
+    IF ET_FIELD_ENG_FUEL_FLOW = "" {
+      IF field_lc:CONTAINS("fuel flow") OR field_norm:CONTAINS("fuelflow") {
+        SET ET_FIELD_ENG_FUEL_FLOW TO field_name.
+      }
+    }
+
+    IF ET_FIELD_ENG_THRUST = "" {
+      IF field_norm:CONTAINS("thrust") AND NOT field_norm:CONTAINS("limiter") {
+        SET ET_FIELD_ENG_THRUST TO field_name.
+      }
+    }
+
+    IF ET_FIELD_ENG_PROP_REQ_MET = "" {
+      LOCAL has_req IS field_norm:CONTAINS("require") OR field_norm:CONTAINS("req").
+      LOCAL has_met IS field_norm:CONTAINS("met") OR field_norm:CONTAINS("satisfied").
+      LOCAL has_prop IS field_norm:CONTAINS("prop") OR field_norm:CONTAINS("propellant").
+      IF has_req AND has_met AND has_prop {
+        SET ET_FIELD_ENG_PROP_REQ_MET TO field_name.
+      }
+    }
+
+    IF ET_FIELD_ENG_THROTTLE = "" {
+      IF field_lc:CONTAINS("throttle") AND NOT field_lc:CONTAINS("limiter") {
+        SET ET_FIELD_ENG_THROTTLE TO field_name.
+      }
+    }
+
+    SET i TO i + 1.
+  }
+
+  // Fallback: if no explicit prop*requirement*met field was found,
+  // but a requirement/met field exists, use it.
+  IF ET_FIELD_ENG_PROP_REQ_MET = "" {
+    SET i TO 0.
+    UNTIL i >= names:LENGTH {
+      LOCAL fallback_name IS "" + names[i].
+      LOCAL fallback_norm IS ET_NORMALIZE_FIELD_KEY(fallback_name).
+      LOCAL fallback_hit IS FALSE.
+      IF fallback_norm:CONTAINS("propreqmet") { SET fallback_hit TO TRUE. }
+      IF fallback_norm:CONTAINS("proprequirementmet") { SET fallback_hit TO TRUE. }
+      IF fallback_norm:CONTAINS("propellantreqmet") { SET fallback_hit TO TRUE. }
+      IF NOT fallback_hit {
+        IF fallback_norm:CONTAINS("prop") AND fallback_norm:CONTAINS("req") AND fallback_norm:CONTAINS("met") {
+          SET fallback_hit TO TRUE.
+        }
+      }
+      IF fallback_hit {
+        SET ET_FIELD_ENG_PROP_REQ_MET TO fallback_name.
+        BREAK.
+      }
+      SET i TO i + 1.
+    }
+  }
+}
+
+FUNCTION ET_FIELD_LOOKS_PROP_REQ_MET {
+  PARAMETER field_name.
+  IF field_name = "" { RETURN FALSE. }
+
+  LOCAL n IS ET_NORMALIZE_FIELD_KEY(field_name).
+  LOCAL has_prop IS n:CONTAINS("prop") OR n:CONTAINS("propellant").
+  LOCAL has_req IS n:CONTAINS("require") OR n:CONTAINS("req").
+  LOCAL has_met IS n:CONTAINS("met") OR n:CONTAINS("satisfied").
+
+  IF has_prop AND has_req AND has_met { RETURN TRUE. }
+  IF n:CONTAINS("propreqmet") { RETURN TRUE. }
+  IF n:CONTAINS("proprequirementmet") { RETURN TRUE. }
+  IF n:CONTAINS("propellantreqmet") { RETURN TRUE. }
+  RETURN FALSE.
+}
+
+FUNCTION ET_FIND_PROP_REQ_BINDING_ON_PART {
+  PARAMETER p.
+  IF p = 0 { RETURN LEXICON("module_name", "", "field_name", ""). }
+
+  LOCAL modules IS ET_PART_MODULE_ENTRIES(p).
+  LOCAL best_module IS "".
+  LOCAL best_field IS "".
+  LOCAL best_score IS -1.
+
+  LOCAL i IS 0.
+  UNTIL i >= modules:LENGTH {
+    LOCAL module_name IS ET_ENTRY_NAME(modules[i]).
+    IF module_name <> "" {
+      LOCAL module_obj IS ET_RESOLVE_MODULE(p, module_name).
+      IF module_obj <> 0 AND module_obj:HASSUFFIX("ALLFIELDS") {
+        LOCAL fields IS module_obj:ALLFIELDS.
+        LOCAL j IS 0.
+        UNTIL j >= fields:LENGTH {
+          LOCAL field_name IS "" + fields[j].
+          IF ET_FIELD_LOOKS_PROP_REQ_MET(field_name) {
+            RETURN LEXICON("module_name", module_name, "field_name", field_name).
+          }
+
+          // Weaker score-based fallback if literal match isn't found.
+          LOCAL n IS ET_NORMALIZE_FIELD_KEY(field_name).
+          LOCAL score IS 0.
+          IF n:CONTAINS("prop") OR n:CONTAINS("propellant") { SET score TO score + 2. }
+          IF n:CONTAINS("require") OR n:CONTAINS("req") { SET score TO score + 2. }
+          IF n:CONTAINS("met") OR n:CONTAINS("satisfied") { SET score TO score + 2. }
+          IF n:CONTAINS("ratio") OR n:CONTAINS("percent") { SET score TO score + 1. }
+
+          IF score > best_score {
+            SET best_score TO score.
+            SET best_module TO module_name.
+            SET best_field TO field_name.
+          }
+          SET j TO j + 1.
+        }
+      }
+    }
+    SET i TO i + 1.
+  }
+
+  IF best_score >= 4 {
+    RETURN LEXICON("module_name", best_module, "field_name", best_field).
+  }
+  RETURN LEXICON("module_name", "", "field_name", "").
 }
 
 FUNCTION ET_READ_FIRST_FIELD_NUM {
@@ -268,6 +576,115 @@ FUNCTION ET_READ_FIRST_FIELD_NUM {
     SET i TO i + 1.
   }
   RETURN fallback.
+}
+
+FUNCTION ET_FIND_FIELD_NAME_CONTAINS {
+  PARAMETER module_obj, needle.
+  IF module_obj = 0 { RETURN "". }
+  IF needle = "" { RETURN "". }
+  IF NOT module_obj:HASSUFFIX("ALLFIELDS") { RETURN "". }
+
+  LOCAL fields IS module_obj:ALLFIELDS.
+  LOCAL i IS 0.
+  UNTIL i >= fields:LENGTH {
+    LOCAL f_name IS "" + fields[i].
+    IF f_name:TOLOWER:CONTAINS(needle:TOLOWER) { RETURN f_name. }
+    SET i TO i + 1.
+  }
+  RETURN "".
+}
+
+FUNCTION ET_PARSE_NUMERIC_TEXT {
+  PARAMETER raw_text, fallback.
+  LOCAL s IS ("" + raw_text):TRIM.
+  IF s = "" { RETURN fallback. }
+
+  LOCAL direct_val IS s:TONUMBER(fallback).
+  IF direct_val <> fallback { RETURN direct_val. }
+
+  // Common formatting seen in PAW/module fields (e.g. "1.875x", "2.5m", "100.00%").
+  SET s TO s:TOLOWER.
+  SET s TO s:REPLACE("%", "").
+  SET s TO s:REPLACE("x", "").
+  SET s TO s:REPLACE("m", "").
+  SET s TO s:REPLACE("scale", "").
+  SET s TO s:REPLACE("current", "").
+  SET s TO s:REPLACE(":", "").
+  SET s TO s:TRIM.
+
+  RETURN s:TONUMBER(fallback).
+}
+
+FUNCTION ET_RESOLVE_TWEAKSCALE_INFO {
+  PARAMETER p.
+  IF p = 0 {
+    RETURN LEXICON("module_name", "", "field_name", "", "value", -1).
+  }
+
+  LOCAL module_name IS ET_FIND_MODULE_NAME_CONTAINS(p, "tweakscale").
+  IF module_name = "" {
+    RETURN LEXICON("module_name", "", "field_name", "", "value", -1).
+  }
+
+  LOCAL module_obj IS ET_RESOLVE_MODULE(p, module_name).
+  IF module_obj = 0 {
+    RETURN LEXICON("module_name", module_name, "field_name", "", "value", -1).
+  }
+
+  LOCAL field_name IS "".
+  LOCAL i IS 0.
+  IF module_obj:HASSUFFIX("HASFIELD") {
+    UNTIL i >= ET_TWEAKSCALE_FIELDS:LENGTH {
+      LOCAL candidate IS ET_TWEAKSCALE_FIELDS[i].
+      IF module_obj:HASFIELD(candidate) {
+        SET field_name TO candidate.
+        BREAK.
+      }
+      SET i TO i + 1.
+    }
+  }
+
+  IF field_name = "" { SET field_name TO ET_FIND_FIELD_NAME_CONTAINS(module_obj, "current scale"). }
+  IF field_name = "" { SET field_name TO ET_FIND_FIELD_NAME_CONTAINS(module_obj, "currentscale"). }
+  IF field_name = "" { SET field_name TO ET_FIND_FIELD_NAME_CONTAINS(module_obj, "tweakscale"). }
+  IF field_name = "" { SET field_name TO ET_FIND_FIELD_NAME_CONTAINS(module_obj, "scale"). }
+
+  LOCAL scale_val IS -1.
+  IF field_name <> "" {
+    LOCAL raw_scale_txt IS ET_READ_FIELD_TEXT(module_obj, field_name, "").
+    SET scale_val TO ET_PARSE_NUMERIC_TEXT(raw_scale_txt, -1).
+    IF scale_val < 0 {
+      SET scale_val TO ET_READ_FIELD_NUM(module_obj, field_name, -1).
+    }
+  }
+
+  RETURN LEXICON(
+    "module_name", module_name,
+    "field_name", field_name,
+    "value", scale_val
+  ).
+}
+
+FUNCTION ET_CLIP_LIST_LEN {
+  PARAMETER target_list, max_len.
+  UNTIL target_list:LENGTH <= max_len {
+    target_list:REMOVE(0).
+  }
+}
+
+FUNCTION ET_LIST_SPREAD {
+  PARAMETER target_list.
+  IF target_list:LENGTH <= 0 { RETURN -1. }
+  LOCAL min_v IS target_list[0].
+  LOCAL max_v IS target_list[0].
+  LOCAL i IS 1.
+  UNTIL i >= target_list:LENGTH {
+    LOCAL sample_val IS target_list[i].
+    IF sample_val < min_v { SET min_v TO sample_val. }
+    IF sample_val > max_v { SET max_v TO sample_val. }
+    SET i TO i + 1.
+  }
+  RETURN max_v - min_v.
 }
 
 FUNCTION ET_PART_RESOURCE_AMOUNT {
@@ -388,7 +805,7 @@ FUNCTION ET_FIND_INTAKE_PART {
 }
 
 FUNCTION ET_LOG_METADATA {
-  PARAMETER log_file, engine_part, intake_part, engine_module_name, intake_module_name, source_txt.
+  PARAMETER log_file, engine_part, intake_part, engine_module_name, intake_module_name, source_txt, engine_scale_info, intake_scale_info.
 
   LOG "# engine_test_version=1" TO log_file.
   LOG "# craft_name=" + ET_SANITIZE_TXT(SHIP:NAME) TO log_file.
@@ -404,22 +821,42 @@ FUNCTION ET_LOG_METADATA {
   LOG "# intake_part_uid=" + ET_PART_UID_TXT(intake_part) TO log_file.
   LOG "# engine_module_name=" + ET_SANITIZE_TXT(engine_module_name) TO log_file.
   LOG "# intake_module_name=" + ET_SANITIZE_TXT(intake_module_name) TO log_file.
+  LOG "# engine_diameter_m_manual=" + ROUND(ET_ENGINE_DIAMETER_M_MANUAL, 6) TO log_file.
+  LOG "# intake_diameter_m_manual=" + ROUND(ET_INTAKE_DIAMETER_M_MANUAL, 6) TO log_file.
+  LOG "# scale_factor_manual=" + ROUND(ET_SCALE_FACTOR_MANUAL, 6) TO log_file.
+  LOG "# engine_tweakscale_module_name=" + ET_SANITIZE_TXT(engine_scale_info["module_name"]) TO log_file.
+  LOG "# engine_tweakscale_field_name=" + ET_SANITIZE_TXT(engine_scale_info["field_name"]) TO log_file.
+  LOG "# engine_tweakscale_value=" + ROUND(engine_scale_info["value"], 6) TO log_file.
+  LOG "# intake_tweakscale_module_name=" + ET_SANITIZE_TXT(intake_scale_info["module_name"]) TO log_file.
+  LOG "# intake_tweakscale_field_name=" + ET_SANITIZE_TXT(intake_scale_info["field_name"]) TO log_file.
+  LOG "# intake_tweakscale_value=" + ROUND(intake_scale_info["value"], 6) TO log_file.
+  LOG "# engine_field_fuel_flow=" + ET_SANITIZE_TXT(ET_FIELD_ENG_FUEL_FLOW) TO log_file.
+  LOG "# engine_field_thrust=" + ET_SANITIZE_TXT(ET_FIELD_ENG_THRUST) TO log_file.
+  LOG "# engine_field_prop_req_met=" + ET_SANITIZE_TXT(ET_FIELD_ENG_PROP_REQ_MET) TO log_file.
+  LOG "# engine_field_prop_req_module=" + ET_SANITIZE_TXT(ET_FIELD_ENG_PROP_REQ_MET_MODULE) TO log_file.
+  LOG "# engine_field_throttle=" + ET_SANITIZE_TXT(ET_FIELD_ENG_THROTTLE) TO log_file.
+  LOG "# phase_min_hold_s=" + ROUND(ET_PHASE_MIN_HOLD_S, 3) TO log_file.
+  LOG "# steady_window_s=" + ROUND(ET_STEADY_WINDOW_S, 3) TO log_file.
+  LOG "# steady_hold_s=" + ROUND(ET_STEADY_HOLD_S, 3) TO log_file.
+  LOG "# phase_max_wait_s=" + ROUND(ET_PHASE_MAX_WAIT_S, 3) TO log_file.
+  LOG "# steady_thrust_spread_kn=" + ROUND(ET_STEADY_THRUST_SPREAD_KN, 6) TO log_file.
+  LOG "# steady_fuel_flow_spread=" + ROUND(ET_STEADY_FUEL_FLOW_SPREAD, 6) TO log_file.
 }
 
 FUNCTION ET_LOG_HEADER {
   PARAMETER log_file.
-  LOG "t_s,phase_idx,phase_name,phase_t_s,dt_s,cmd_throttle,act_throttle,pressure_atm,engine_ignition,engine_flameout,engine_thrust_kn,engine_avail_thrust_kn,engine_max_thrust_kn,engine_massflow_tps,engine_massflow_kgps,engine_isp_s,engine_ispat_s,engine_thrustlimit,eng_mod_fuel_flow,eng_mod_thrust,eng_mod_throttle,eng_mod_spool,intake_air_amt,intake_air_max,int_mod_airflow,int_mod_speed,int_mod_area,ship_mass_t,ship_thrust_kn,ship_avail_thrust_kn,ship_vertspd_mps,ship_groundspeed_mps,ship_airspeed_mps,ship_mach,ship_alt_m,ship_agl_m,ship_dyn_pressure_pa,ship_status" TO log_file.
+  LOG "t_s,phase_idx,phase_name,phase_t_s,dt_s,cmd_throttle,act_throttle,pressure_atm,engine_ignition,engine_flameout,engine_thrust_kn,engine_avail_thrust_kn,engine_max_thrust_kn,engine_massflow_tps,engine_massflow_kgps,engine_isp_s,engine_ispat_s,engine_thrustlimit,eng_mod_fuel_flow,eng_mod_thrust,eng_mod_prop_req_met,eng_mod_throttle,eng_mod_spool,phase_steady_thrust_ok,phase_steady_fuel_ok,phase_steady_prop_ok,phase_steady_all_ok,intake_air_amt,intake_air_max,int_mod_airflow,int_mod_speed,int_mod_area,ship_mass_t,ship_thrust_kn,ship_avail_thrust_kn,ship_vertspd_mps,ship_groundspeed_mps,ship_airspeed_mps,ship_mach,ship_alt_m,ship_agl_m,ship_dyn_pressure_pa,ship_status" TO log_file.
 }
 
 FUNCTION ET_PHASE_PROFILE {
   RETURN LIST(
-    LEXICON("name", "idle_baseline", "cmd", 0.00, "hold_s", ET_HOLD_IDLE_BASELINE_S),
-    LEXICON("name", "up_full_1",    "cmd", 1.00, "hold_s", ET_HOLD_UP_FULL_1_S),
-    LEXICON("name", "down_idle_1",  "cmd", 0.00, "hold_s", ET_HOLD_DOWN_IDLE_1_S),
-    LEXICON("name", "up_half",      "cmd", 0.50, "hold_s", ET_HOLD_UP_HALF_S),
-    LEXICON("name", "down_idle_2",  "cmd", 0.00, "hold_s", ET_HOLD_DOWN_IDLE_2_S),
-    LEXICON("name", "up_full_2",    "cmd", 1.00, "hold_s", ET_HOLD_UP_FULL_2_S),
-    LEXICON("name", "down_idle_3",  "cmd", 0.00, "hold_s", ET_HOLD_DOWN_IDLE_3_S)
+    LEXICON("name", "idle_baseline", "cmd", 0.00),
+    LEXICON("name", "up_full_1",    "cmd", 1.00),
+    LEXICON("name", "down_idle_1",  "cmd", 0.00),
+    LEXICON("name", "up_half",      "cmd", 0.50),
+    LEXICON("name", "down_idle_2",  "cmd", 0.00),
+    LEXICON("name", "up_full_2",    "cmd", 1.00),
+    LEXICON("name", "down_idle_3",  "cmd", 0.00)
   ).
 }
 
@@ -456,6 +893,21 @@ FUNCTION RUN_ENGINE_TEST {
 
   LOCAL engine_module_obj IS ET_RESOLVE_MODULE(engine_part, engine_module_name).
   LOCAL intake_module_obj IS ET_RESOLVE_MODULE(intake_part, intake_module_name).
+  ET_FIND_ENGINE_FIELD_BINDINGS(engine_module_obj).
+  SET ET_FIELD_ENG_PROP_REQ_MET_MODULE TO engine_module_name.
+
+  LOCAL prop_req_binding IS ET_FIND_PROP_REQ_BINDING_ON_PART(engine_part).
+  LOCAL prop_req_module_name IS ET_FIELD_ENG_PROP_REQ_MET_MODULE.
+  LOCAL prop_req_module_obj IS engine_module_obj.
+  IF prop_req_binding["field_name"] <> "" {
+    SET ET_FIELD_ENG_PROP_REQ_MET TO prop_req_binding["field_name"].
+    SET prop_req_module_name TO prop_req_binding["module_name"].
+    SET ET_FIELD_ENG_PROP_REQ_MET_MODULE TO prop_req_module_name.
+    SET prop_req_module_obj TO ET_RESOLVE_MODULE(engine_part, prop_req_module_name).
+  }
+
+  LOCAL engine_scale_info IS ET_RESOLVE_TWEAKSCALE_INFO(engine_part).
+  LOCAL intake_scale_info IS ET_RESOLVE_TWEAKSCALE_INFO(intake_part).
 
   LOCAL log_file IS ET_BUILD_LOG_FILE().
 
@@ -468,6 +920,24 @@ FUNCTION RUN_ENGINE_TEST {
     PRINT "Intake name: " + ET_PART_NAME(intake_part).
   } ELSE {
     PRINT "Intake part: NONE (logging intake module fields disabled)".
+  }
+  PRINT "Engine field fuel flow: " + ET_SANITIZE_TXT(ET_FIELD_ENG_FUEL_FLOW).
+  PRINT "Engine field thrust: " + ET_SANITIZE_TXT(ET_FIELD_ENG_THRUST).
+  PRINT "Engine field prop req: " + ET_SANITIZE_TXT(ET_FIELD_ENG_PROP_REQ_MET).
+  PRINT "Engine prop req module: " + ET_SANITIZE_TXT(ET_FIELD_ENG_PROP_REQ_MET_MODULE).
+  PRINT "Manual engine diameter (m): " + ROUND(ET_ENGINE_DIAMETER_M_MANUAL, 6).
+  PRINT "Manual intake diameter (m): " + ROUND(ET_INTAKE_DIAMETER_M_MANUAL, 6).
+  PRINT "Manual scale factor: " + ROUND(ET_SCALE_FACTOR_MANUAL, 6).
+  PRINT "Engine TweakScale: " + ROUND(engine_scale_info["value"], 6).
+  PRINT "Intake TweakScale: " + ROUND(intake_scale_info["value"], 6).
+  IF ET_FIELD_ENG_FUEL_FLOW = "" {
+    PRINT "NOTE: fuel-flow field not found pre-arm (will retry after stage).".
+  }
+  IF ET_FIELD_ENG_THRUST = "" {
+    PRINT "NOTE: thrust field not found pre-arm (will retry after stage).".
+  }
+  IF ET_FIELD_ENG_PROP_REQ_MET = "" {
+    PRINT "NOTE: prop requirement field not found pre-arm (will retry after stage).".
   }
   PRINT "Log file: " + log_file.
   PRINT "".
@@ -489,9 +959,33 @@ FUNCTION RUN_ENGINE_TEST {
     WAIT 0.5.
   }
 
-  ET_LOG_METADATA(log_file, engine_part, intake_part, engine_module_name, intake_module_name, source_txt).
+  // Some engine module fields are only present after the engine is active.
+  ET_FIND_ENGINE_FIELD_BINDINGS(engine_module_obj).
+  SET ET_FIELD_ENG_PROP_REQ_MET_MODULE TO engine_module_name.
+  SET prop_req_module_name TO ET_FIELD_ENG_PROP_REQ_MET_MODULE.
+  SET prop_req_module_obj TO engine_module_obj.
+  SET prop_req_binding TO ET_FIND_PROP_REQ_BINDING_ON_PART(engine_part).
+  IF prop_req_binding["field_name"] <> "" {
+    SET ET_FIELD_ENG_PROP_REQ_MET TO prop_req_binding["field_name"].
+    SET prop_req_module_name TO prop_req_binding["module_name"].
+    SET ET_FIELD_ENG_PROP_REQ_MET_MODULE TO prop_req_module_name.
+    SET prop_req_module_obj TO ET_RESOLVE_MODULE(engine_part, prop_req_module_name).
+  }
+
+  PRINT "Post-stage prop req field: " + ET_SANITIZE_TXT(ET_FIELD_ENG_PROP_REQ_MET).
+  PRINT "Post-stage prop req module: " + ET_SANITIZE_TXT(ET_FIELD_ENG_PROP_REQ_MET_MODULE).
+  IF ET_FIELD_ENG_PROP_REQ_MET = "" {
+    PRINT "WARNING: prop requirement field not found (prop steady gate disabled).".
+  }
+
+  ET_LOG_METADATA(log_file, engine_part, intake_part, engine_module_name, intake_module_name, source_txt, engine_scale_info, intake_scale_info).
+  LOCAL engine_tweakscale_obj IS ET_RESOLVE_MODULE(engine_part, engine_scale_info["module_name"]).
+  LOCAL intake_tweakscale_obj IS ET_RESOLVE_MODULE(intake_part, intake_scale_info["module_name"]).
   ET_LOG_MODULE_FIELD_LIST(log_file, engine_module_obj, "engine_module").
+  ET_LOG_MODULE_FIELD_LIST(log_file, prop_req_module_obj, "prop_req_module").
   ET_LOG_MODULE_FIELD_LIST(log_file, intake_module_obj, "intake_module").
+  ET_LOG_MODULE_FIELD_LIST(log_file, engine_tweakscale_obj, "engine_tweakscale_module").
+  ET_LOG_MODULE_FIELD_LIST(log_file, intake_tweakscale_obj, "intake_tweakscale_module").
   ET_LOG_HEADER(log_file).
 
   BRAKES ON.
@@ -521,16 +1015,26 @@ FUNCTION RUN_ENGINE_TEST {
     LOCAL step_info IS profile[p_idx].
     LOCAL phase_name IS step_info["name"].
     LOCAL cmd_target IS ET_CLAMP(step_info["cmd"], 0, 1).
-    LOCAL hold_s IS step_info["hold_s"].
     LOCAL phase_start_ut IS TIME:SECONDS.
+    LOCAL phase_window_n IS MAX(3, ROUND(ET_STEADY_WINDOW_S / ET_SAMPLE_DT, 0)).
+    LOCAL thrust_hist IS LIST().
+    LOCAL fuel_hist IS LIST().
+    LOCAL prop_hist IS LIST().
+    LOCAL require_prop_signal IS ET_FIELD_ENG_PROP_REQ_MET <> "".
+    LOCAL prop_signal_seen IS FALSE.
+    LOCAL prop_signal_disabled_logged IS FALSE.
+    LOCAL steady_start_ut IS -1.
+    LOCAL phase_done IS FALSE.
+    LOCAL phase_done_reason IS "".
 
     SET ET_CMD_THROTTLE TO cmd_target.
 
     LOCAL phase_line IS "Phase " + (p_idx + 1) + "/" + profile:LENGTH + ": " + phase_name
-      + "  cmd=" + ROUND(cmd_target, 3) + "  hold=" + ROUND(hold_s, 1) + "s".
+      + "  cmd=" + ROUND(cmd_target, 3)
+      + "  min=" + ROUND(ET_PHASE_MIN_HOLD_S, 1) + "s + steady".
     PRINT phase_line AT(0, 4).
 
-    UNTIL (TIME:SECONDS - phase_start_ut) >= hold_s OR NOT test_running {
+    UNTIL phase_done OR NOT test_running {
       LOCAL now IS TIME:SECONDS.
       LOCAL elapsed_since_sample IS now - sample_last_ut.
       LOCAL wait_s IS ET_SAMPLE_DT - elapsed_since_sample.
@@ -592,16 +1096,94 @@ FUNCTION RUN_ENGINE_TEST {
         SET eng_thrust_limit TO engine_obj:THRUSTLIMIT.
       }
 
-      LOCAL eng_mod_fuel_flow IS ET_READ_FIRST_FIELD_NUM(engine_module_obj, ET_ENG_FUEL_FLOW_FIELDS, -1).
-      LOCAL eng_mod_thrust IS ET_READ_FIRST_FIELD_NUM(engine_module_obj, ET_ENG_THRUST_FIELDS, -1).
-      LOCAL eng_mod_throttle IS ET_READ_FIRST_FIELD_NUM(engine_module_obj, ET_ENG_THROTTLE_FIELDS, -1).
+      // Last-chance dynamic binding: some engines expose prop-requirement
+      // fields only after throttle and airflow are established.
+      IF ET_FIELD_ENG_PROP_REQ_MET = "" {
+        SET prop_req_binding TO ET_FIND_PROP_REQ_BINDING_ON_PART(engine_part).
+        IF prop_req_binding["field_name"] <> "" {
+          SET ET_FIELD_ENG_PROP_REQ_MET TO prop_req_binding["field_name"].
+          SET prop_req_module_name TO prop_req_binding["module_name"].
+          SET ET_FIELD_ENG_PROP_REQ_MET_MODULE TO prop_req_module_name.
+          SET prop_req_module_obj TO ET_RESOLVE_MODULE(engine_part, prop_req_module_name).
+        }
+      }
+
+      LOCAL eng_mod_fuel_flow IS ET_READ_FIELD_NUM(engine_module_obj, ET_FIELD_ENG_FUEL_FLOW, -1).
+      LOCAL eng_mod_thrust IS ET_READ_FIELD_NUM(engine_module_obj, ET_FIELD_ENG_THRUST, -1).
+      LOCAL eng_mod_prop_req_met IS ET_READ_FIELD_BOOL01(prop_req_module_obj, ET_FIELD_ENG_PROP_REQ_MET, -1).
+      LOCAL eng_mod_throttle IS ET_READ_FIELD_BOOL01(engine_module_obj, ET_FIELD_ENG_THROTTLE, -1).
       LOCAL eng_mod_spool IS ET_READ_FIRST_FIELD_NUM(engine_module_obj, ET_ENG_SPOOL_FIELDS, -1).
+      IF eng_mod_prop_req_met >= 0 { SET prop_signal_seen TO TRUE. }
 
       LOCAL intake_air_amt IS ET_PART_RESOURCE_AMOUNT(intake_part, "IntakeAir").
       LOCAL intake_air_max IS ET_PART_RESOURCE_MAX(intake_part, "IntakeAir").
       LOCAL int_mod_airflow IS ET_READ_FIRST_FIELD_NUM(intake_module_obj, ET_INT_AIRFLOW_FIELDS, -1).
       LOCAL int_mod_speed IS ET_READ_FIRST_FIELD_NUM(intake_module_obj, ET_INT_SPEED_FIELDS, -1).
       LOCAL int_mod_area IS ET_READ_FIRST_FIELD_NUM(intake_module_obj, ET_INT_AREA_FIELDS, -1).
+
+      LOCAL steady_thrust_sig IS eng_thrust.
+      IF eng_mod_thrust >= 0 { SET steady_thrust_sig TO eng_mod_thrust. }
+      LOCAL steady_fuel_sig IS eng_mod_fuel_flow.
+      IF steady_fuel_sig < 0 AND eng_mdot_tps >= 0 { SET steady_fuel_sig TO eng_mdot_tps. }
+      LOCAL steady_prop_sig IS eng_mod_prop_req_met.
+
+      IF steady_thrust_sig >= 0 {
+        thrust_hist:ADD(steady_thrust_sig).
+        ET_CLIP_LIST_LEN(thrust_hist, phase_window_n).
+      }
+      IF steady_fuel_sig >= 0 {
+        fuel_hist:ADD(steady_fuel_sig).
+        ET_CLIP_LIST_LEN(fuel_hist, phase_window_n).
+      }
+      IF steady_prop_sig >= 0 {
+        prop_hist:ADD(steady_prop_sig).
+        ET_CLIP_LIST_LEN(prop_hist, phase_window_n).
+      }
+
+      LOCAL thrust_spread IS ET_LIST_SPREAD(thrust_hist).
+      LOCAL fuel_spread IS ET_LIST_SPREAD(fuel_hist).
+      LOCAL prop_spread IS ET_LIST_SPREAD(prop_hist).
+      LOCAL steady_thrust_ok IS FALSE.
+      LOCAL steady_fuel_ok IS FALSE.
+      LOCAL steady_prop_ok IS TRUE.
+
+      IF thrust_hist:LENGTH >= phase_window_n AND thrust_spread >= 0 AND thrust_spread <= ET_STEADY_THRUST_SPREAD_KN {
+        SET steady_thrust_ok TO TRUE.
+      }
+      IF fuel_hist:LENGTH >= phase_window_n AND fuel_spread >= 0 AND fuel_spread <= ET_STEADY_FUEL_FLOW_SPREAD {
+        SET steady_fuel_ok TO TRUE.
+      }
+      IF require_prop_signal {
+        IF NOT prop_signal_seen AND phase_t_s >= ET_PROP_SIGNAL_GRACE_S {
+          SET require_prop_signal TO FALSE.
+          IF NOT prop_signal_disabled_logged {
+            LOG "# note phase=" + phase_name + " prop_signal_unreadable_disable_gate_at_s=" + ROUND(phase_t_s, 2) TO log_file.
+            SET prop_signal_disabled_logged TO TRUE.
+          }
+        }
+      }
+      IF require_prop_signal {
+        SET steady_prop_ok TO FALSE.
+        IF prop_hist:LENGTH >= phase_window_n AND prop_spread >= 0 AND prop_spread <= 0.01 {
+          SET steady_prop_ok TO TRUE.
+        }
+      }
+
+      LOCAL steady_all_ok IS steady_thrust_ok AND steady_fuel_ok AND steady_prop_ok.
+      IF steady_all_ok {
+        IF steady_start_ut < 0 { SET steady_start_ut TO now. }
+      } ELSE {
+        SET steady_start_ut TO -1.
+      }
+
+      IF phase_t_s >= ET_PHASE_MIN_HOLD_S AND steady_start_ut >= 0 AND (now - steady_start_ut) >= ET_STEADY_HOLD_S {
+        SET phase_done TO TRUE.
+        SET phase_done_reason TO "steady".
+      }
+      IF NOT phase_done AND ET_PHASE_MAX_WAIT_S > 0 AND phase_t_s >= ET_PHASE_MAX_WAIT_S {
+        SET phase_done TO TRUE.
+        SET phase_done_reason TO "timeout".
+      }
 
       LOCAL ship_q IS 0.
       IF SHIP:HASSUFFIX("Q") { SET ship_q TO SHIP:Q. }
@@ -629,8 +1211,13 @@ FUNCTION RUN_ENGINE_TEST {
         ROUND(eng_thrust_limit, 4),
         ROUND(eng_mod_fuel_flow, 6),
         ROUND(eng_mod_thrust, 6),
+        ROUND(eng_mod_prop_req_met, 0),
         ROUND(eng_mod_throttle, 6),
         ROUND(eng_mod_spool, 6),
+        CHOOSE 1 IF steady_thrust_ok ELSE 0,
+        CHOOSE 1 IF steady_fuel_ok ELSE 0,
+        CHOOSE 1 IF steady_prop_ok ELSE 0,
+        CHOOSE 1 IF steady_all_ok ELSE 0,
         ROUND(intake_air_amt, 6),
         ROUND(intake_air_max, 6),
         ROUND(int_mod_airflow, 6),
@@ -651,6 +1238,16 @@ FUNCTION RUN_ENGINE_TEST {
 
       LOG row:JOIN(",") TO log_file.
     }
+
+    IF phase_done_reason = "" {
+      SET phase_done_reason TO "aborted".
+    }
+    LOCAL phase_done_msg IS "# phase_done idx=" + (p_idx + 1)
+      + " name=" + ET_SANITIZE_TXT(phase_name)
+      + " reason=" + phase_done_reason
+      + " phase_t_s=" + ROUND(TIME:SECONDS - phase_start_ut, 3).
+    LOG phase_done_msg TO log_file.
+    PRINT "Phase done: " + phase_name + " (" + phase_done_reason + ")" AT(0, 5).
 
     SET p_idx TO p_idx + 1.
   }

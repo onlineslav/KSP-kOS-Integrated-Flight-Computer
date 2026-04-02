@@ -1,0 +1,137 @@
+{
+  "model_kind": "engine_tweakscale_agnostic_v1",
+  "reference_run": {
+    "log_path": "F:\\Kerbal Space Program\\Ships\\Script\\Integrated Flight Computer\\engine test logs\\engine_test_log_00000001.csv",
+    "engine_diameter_m": 1.25,
+    "intake_diameter_m": 1.25
+  },
+  "steady_map_reference": {
+    "thrust_vs_cmd": {
+      "poly_degree": 2,
+      "poly_coefficients": [
+        -65.8388486666667,
+        98.75865966666674,
+        8.20464079523654e-15
+      ]
+    },
+    "massflow_vs_cmd": {
+      "poly_degree": 2,
+      "poly_coefficients": [
+        -81.84315333333342,
+        122.76519666666677,
+        8.20464079523654e-15
+      ]
+    }
+  },
+  "scale_laws": {
+    "thrust_gain_vs_engine_diameter": {
+      "form": "(D_engine / D_ref) ^ alpha_thrust",
+      "alpha_thrust": 1.9966816026624998
+    },
+    "massflow_gain_vs_engine_diameter": {
+      "form": "(D_engine / D_ref) ^ alpha_massflow",
+      "alpha_massflow": 1.9966666309861
+    },
+    "tau_up_vs_engine_diameter": {
+      "form": "tau_up_ref * (D_engine / D_ref) ^ beta_tau_up",
+      "tau_up_ref_t63_s": 1.8000000000000682,
+      "beta_tau_up": -0.4627582624408104
+    },
+    "tau_down_vs_engine_diameter": {
+      "form": "tau_down_ref * (D_engine / D_ref) ^ beta_tau_down",
+      "tau_down_ref_t63_s": 4.439999999999941,
+      "beta_tau_down": 0.46569983352622535
+    }
+  },
+  "diagnostics": {
+    "run_count": 2,
+    "runs": [
+      {
+        "log_path": "F:\\Kerbal Space Program\\Ships\\Script\\Integrated Flight Computer\\engine test logs\\engine_test_log_00000001.csv",
+        "engine_diameter_m": 1.25,
+        "intake_diameter_m": 1.25,
+        "tau_up_t63_s": 1.8000000000000682,
+        "tau_down_t63_s": 4.439999999999941,
+        "thrust_gain_vs_ref": 0.9999999999999987,
+        "massflow_gain_vs_ref": 0.9999999999999992,
+        "per_cmd": [
+          {
+            "cmd": 0.0,
+            "thrust_obs_kn": 0.0,
+            "thrust_ref_kn": 8.20464079523654e-15,
+            "thrust_gain": null,
+            "massflow_obs_kgps": 0.0,
+            "massflow_ref_kgps": 8.20464079523654e-15,
+            "massflow_gain": null
+          },
+          {
+            "cmd": 0.5,
+            "thrust_obs_kn": 32.91961766666666,
+            "thrust_ref_kn": 32.9196176666667,
+            "thrust_gain": 0.9999999999999987,
+            "massflow_obs_kgps": 40.921809999999994,
+            "massflow_ref_kgps": 40.921810000000036,
+            "massflow_gain": 0.999999999999999
+          },
+          {
+            "cmd": 1.0,
+            "thrust_obs_kn": 32.919811,
+            "thrust_ref_kn": 32.919811000000045,
+            "thrust_gain": 0.9999999999999987,
+            "massflow_obs_kgps": 40.922043333333335,
+            "massflow_ref_kgps": 40.922043333333356,
+            "massflow_gain": 0.9999999999999994
+          }
+        ],
+        "warnings": [
+          "0.5 and 1.0 throttle steady thrust are nearly identical; likely airflow/prop-limit saturation."
+        ]
+      },
+      {
+        "log_path": "F:\\Kerbal Space Program\\Ships\\Script\\Integrated Flight Computer\\engine test logs\\engine_test_log_00000002.csv",
+        "engine_diameter_m": 0.75,
+        "intake_diameter_m": 0.75,
+        "tau_up_t63_s": 2.280000000000001,
+        "tau_down_t63_s": 3.5,
+        "thrust_gain_vs_ref": 0.3606107615718982,
+        "massflow_gain_vs_ref": 0.3606135195032345,
+        "per_cmd": [
+          {
+            "cmd": 0.0,
+            "thrust_obs_kn": 0.015459126984126981,
+            "thrust_ref_kn": 8.20464079523654e-15,
+            "thrust_gain": null,
+            "massflow_obs_kgps": 0.019174603174603178,
+            "massflow_ref_kgps": 8.20464079523654e-15,
+            "massflow_gain": null
+          },
+          {
+            "cmd": 0.5,
+            "thrust_obs_kn": 11.871105084745764,
+            "thrust_ref_kn": 32.9196176666667,
+            "thrust_gain": 0.3606088383209276,
+            "massflow_obs_kgps": 14.756999999999998,
+            "massflow_ref_kgps": 40.921810000000036,
+            "massflow_gain": 0.3606145475969901
+          },
+          {
+            "cmd": 1.0,
+            "thrust_obs_kn": 11.871301428571428,
+            "thrust_ref_kn": 32.919811000000045,
+            "thrust_gain": 0.36061268482286885,
+            "massflow_obs_kgps": 14.757000000000001,
+            "massflow_ref_kgps": 40.922043333333356,
+            "massflow_gain": 0.360612491409479
+          }
+        ],
+        "warnings": [
+          "0.5 and 1.0 throttle steady thrust are nearly identical; likely airflow/prop-limit saturation."
+        ]
+      }
+    ],
+    "notes": [
+      "This model assumes throttle-shape invariance across scales and captures scale effects as gain/tau exponents.",
+      "If warnings mention saturation, collect cleaner runs (adequate intake airflow, clear separation between 0.5 and 1.0 steady thrust)."
+    ]
+  }
+}

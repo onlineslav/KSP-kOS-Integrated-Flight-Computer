@@ -30,6 +30,39 @@ Logs are written to:
 
 `0:/Integrated Flight Computer/engine test logs/engine_test_log_XXXXXXXX.csv`
 
+Metadata now also records detected TweakScale values for the engine and intake parts
+when a TweakScale module is present.
+
+### Manual geometry metadata (recommended for scale studies)
+
+If TweakScale values resolve as `-1`, set these constants near the top of
+`Integrated Flight Computer/tests/engine_test.ks` before each run:
+
+- `ET_ENGINE_DIAMETER_M_MANUAL`
+- `ET_INTAKE_DIAMETER_M_MANUAL`
+- `ET_SCALE_FACTOR_MANUAL`
+
+These are logged in CSV metadata as:
+
+- `engine_diameter_m_manual`
+- `intake_diameter_m_manual`
+- `scale_factor_manual`
+
+### Phase progression behavior
+
+The test script no longer advances phases on fixed per-phase timers.
+
+Each phase now:
+
+1. runs for at least `ET_PHASE_MIN_HOLD_S` (default 10 s), then
+2. waits until steady-state checks pass for:
+   - thrust
+   - fuel flow
+   - prop requirement met (when that module field is available)
+3. keeps those checks stable for `ET_STEADY_HOLD_S` (default 4 s) before advancing
+
+There is also a safety timeout (`ET_PHASE_MAX_WAIT_S`) to prevent endless waiting.
+
 ---
 
 ## 2) Analyze with Python (CLI)
@@ -51,6 +84,28 @@ Outputs (next to the source CSV):
 
 - `*_summary.txt`
 - `*_model.json`
+
+---
+
+## 2b) Build a TweakScale-Agnostic Model (multi-run)
+
+Use the multi-run fitter with explicit diameters:
+
+```powershell
+python "Integrated Flight Computer/tools/engine-test-analysis/build_scale_agnostic_model.py" `
+  --run "Integrated Flight Computer/engine test logs/engine_test_log_00000001.csv" 1.25 1.25 `
+  --run "Integrated Flight Computer/engine test logs/engine_test_log_00000002.csv" 0.75 0.75
+```
+
+Output:
+
+- `Integrated Flight Computer/engine test logs/engine_scale_agnostic_model.json`
+
+Model form:
+
+- steady thrust map at reference size: `T_ref(u)`
+- scale law: `T(u, D) = T_ref(u) * (D / D_ref)^alpha_thrust`
+- spool laws: `tau_up/down(D) = tau_ref_up/down * (D / D_ref)^beta_up/down`
 
 ---
 
@@ -89,6 +144,8 @@ Open:
    - steady-state map plot
    - normalized step-response overlays
 4. Check the **Steady-state reach check per phase** table.
+5. Use the **Multi-Run Pipeline (Single Notebook Entry Point)** section at the end to process multiple logs and build a scale-agnostic model in one run.
+   Only edit `PIPELINE_RUNS` and execute that cell.
 
 ---
 
@@ -145,3 +202,5 @@ python -m pip install matplotlib
 ### Missing module-derived channels (`-1` values)
 
 That means the module field name was not resolved for this engine/intake module. Core vessel channels are still usable; module field probing can be expanded per part/module.
+
+For scale experiments, this is why manual geometry metadata fields were added.
