@@ -466,7 +466,7 @@ GLOBAL VTOL_COLLECTIVE_DN_SLEW_PER_S IS 2.50. // /s max collective fall (fast au
 GLOBAL VTOL_YAW_SRV_GAIN     IS 8.0.   // deg  differential servo tilt per unit yaw input
 GLOBAL VTOL_ROLL_GAIN        IS 0.25.  // fraction of collective used as roll authority
 GLOBAL VTOL_PITCH_GAIN       IS 0.25.  // fraction of collective used as pitch authority
-GLOBAL VTOL_PITCH_MIX_SIGN   IS -1.0.  // pitch mix polarity; -1 means aft pods increase for nose-up correction
+GLOBAL VTOL_PITCH_MIX_SIGN   IS 1.0.   // pitch mix polarity; +1 means forward engines increase on nose-up correction (correct for fwd engines ahead of CoM)
 GLOBAL VTOL_HOVER_LEARN_RATE IS 0.001. // rate at which hover_collective tracks actual collective
 GLOBAL VTOL_MAX_PODS         IS 8.     // max pod tags scanned during discovery
 GLOBAL VTOL_SRV_SPEED        IS 1.0.   // servo speed multiplier for baseline hover commands
@@ -489,7 +489,7 @@ GLOBAL VTOL_LEVEL_MIN_AGL_M IS 0.8. // min AGL for auto-level when ground-leveli
 GLOBAL VTOL_GROUND_CONTACT_AGL_M IS 1.5. // treat as ground-contact only below this AGL
 GLOBAL VTOL_GROUND_CONTACT_VS_MAX IS 0.7. // m/s; must also be below this VS to count as ground-contact
 GLOBAL VTOL_STATIC_TRIM_DISCOVERY_DEFAULT IS TRUE. // TRUE = enable geometry-based static trim at discovery
-GLOBAL VTOL_STATIC_TRIM_BASE_MIN IS 0.25. // discovery trim base lower clamp (avoid immediate limiter floor)
+GLOBAL VTOL_STATIC_TRIM_BASE_MIN IS 0.23. // discovery trim base lower clamp; computed ~0.23 for forward engines ahead of CoM
 GLOBAL VTOL_DIFF_COLLECTIVE_MIN IS 0.12. // no roll/pitch differential below this collective
 GLOBAL VTOL_TRIM_MIN_AGL_M IS 1.5. // adaptive trim runs only above this AGL
 GLOBAL VTOL_TRIM_MIN_OFFSET IS -0.85. // lower clamp for adaptive trim offset

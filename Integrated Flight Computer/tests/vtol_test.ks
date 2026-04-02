@@ -70,7 +70,7 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_level_min_agl_m",   0.8,
   "vtol_ground_contact_agl_m", 1.5,
   "vtol_ground_contact_vs_max", 0.7,
-  "vtol_static_trim_discovery", FALSE,  // disabled: slow-spool jets can't recover from large startup offsets
+  "vtol_static_trim_discovery", TRUE,   // enabled: computes static trim to balance pitch torque on ground
   "vtol_diff_collective_min",   0.12,
   "vtol_trim_min_agl_m",        0.0,   // allow adaptive trim from first collective application
   "vtol_trim_rate",             0.003,
@@ -84,7 +84,7 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_trim_bank_clamp",       10.0,
   "vtol_trim_active_bank_max",  8.0,
   "vtol_trim_active_roll_rate_max", 16.0,
-  "vtol_static_trim_base_min",  0.30,
+  "vtol_static_trim_base_min",  0.23,   // lowered to allow discovery to find ~0.23 aft trim (torque balance)
   "vtol_vs_kp",             0.30,
   "vtol_vs_ki",             0.04,
   "vtol_max_vs",            6.0,
