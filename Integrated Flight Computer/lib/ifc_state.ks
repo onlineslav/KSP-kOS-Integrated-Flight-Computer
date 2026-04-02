@@ -313,7 +313,8 @@ GLOBAL VTOL_PITCH_MIX        IS LIST(). // per-engine pitch mixing coefficient [
 GLOBAL VTOL_YAW_SRV_MIX      IS LIST(). // per-engine yaw servo sign: -1, 0, or +1
 GLOBAL VTOL_TRIM_OFFSET      IS LIST(). // per-engine base-limit trim offset; auto-computed to balance torque
 GLOBAL VTOL_MAX_THRUST       IS LIST(). // per-engine max thrust (kN) measured at discovery
-GLOBAL VTOL_HOVER_COLLECTIVE IS 0.50.  // collective that sustains hover; self-learned (autopilot use)
+GLOBAL VTOL_HOVER_COLLECTIVE        IS 0.50.  // collective that sustains hover; self-learned (autopilot use)
+GLOBAL VTOL_HOVER_COLLECTIVE_SEEDED IS FALSE. // TRUE once config vtol_hover_collective has been applied
 GLOBAL VTOL_COLLECTIVE       IS 0.     // current commanded collective (0..1) (autopilot use)
 GLOBAL VTOL_VS_CMD           IS 0.     // commanded vertical speed (m/s) (autopilot use)
 GLOBAL VTOL_VS_INTEGRAL      IS 0.     // integral accumulator for VS hold (autopilot use)
@@ -810,10 +811,11 @@ FUNCTION IFC_INIT_STATE {
   VTOL_YAW_SRV_MIX:CLEAR().
   VTOL_TRIM_OFFSET:CLEAR().
   VTOL_MAX_THRUST:CLEAR().
-  SET VTOL_HOVER_COLLECTIVE TO 0.50.
-  SET VTOL_COLLECTIVE       TO 0.
-  SET VTOL_VS_CMD           TO 0.
-  SET VTOL_VS_INTEGRAL      TO 0.
+  SET VTOL_HOVER_COLLECTIVE        TO 0.50.
+  SET VTOL_HOVER_COLLECTIVE_SEEDED TO FALSE.
+  SET VTOL_COLLECTIVE              TO 0.
+  SET VTOL_VS_CMD                  TO 0.
+  SET VTOL_VS_INTEGRAL             TO 0.
   SET VTOL_ALT_HOLD         TO FALSE.
   SET VTOL_ALT_CMD          TO 0.
 

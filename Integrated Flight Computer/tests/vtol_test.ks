@@ -59,7 +59,8 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_vs_kp",             0.30,
   "vtol_vs_ki",             0.04,
   "vtol_max_vs",            8.0,
-  "vtol_alt_kp",            0.40
+  "vtol_alt_kp",            0.40,
+  "vtol_hover_collective",  0.77
 ).
 
 // ── State init ─────────────────────────────────────────────
@@ -116,6 +117,16 @@ FUNCTION SPACE_PAD {
 // PHASE 1 — Geometry & IR diagnostic report (NO throttle changes)
 // ============================================================
 
+// ── Auto-stage to activate engines ────────────────────────
+// Stage once immediately to fire whatever action group/stage
+// has the engines. The trim_computed logic below waits for
+// actual thrust before locking in geometry.
+CLEARSCREEN.
+PRINT "====== VTOL TEST — STAGING ============" AT(0, 0).
+PRINT "Staging to activate engines..."         AT(0, 1).
+STAGE.
+WAIT 0.5.
+
 VTOL_DISCOVER().
 
 CLEARSCREEN.
@@ -134,9 +145,9 @@ IF NOT VTOL_DIFF_AVAILABLE {
   PRINT "Need >= 2 engines tagged vtol_eng_1 .."  AT(0, diag_row). SET diag_row TO diag_row + 1.
   PRINT "Engine tags found: " + VTOL_ENG_LIST:LENGTH AT(0, diag_row). SET diag_row TO diag_row + 1.
   PRINT ""                                         AT(0, diag_row). SET diag_row TO diag_row + 1.
-  PRINT "Press any key to exit."                  AT(0, diag_row).
-  WAIT UNTIL TERMINAL:INPUT:HASCHAR.
-  IF TERMINAL:INPUT:HASCHAR { LOCAL _c IS TERMINAL:INPUT:GETCHAR(). }
+  PRINT "Exiting in 5 seconds..."                 AT(0, diag_row).
+  WAIT 5.
+  SET test_running TO FALSE.
 } ELSE {
 
   LOCAL srv_ct IS 0.
@@ -172,90 +183,54 @@ IF NOT VTOL_DIFF_AVAILABLE {
   }
 
   LOCAL pause_row IS diag_row + VTOL_ENG_LIST:LENGTH + 1.
-  PRINT "Press any key to continue to ARM ..." AT(0, pause_row).
-  WAIT UNTIL TERMINAL:INPUT:HASCHAR.
-  IF TERMINAL:INPUT:HASCHAR { LOCAL _c2 IS TERMINAL:INPUT:GETCHAR(). }
+  PRINT "Auto-arming in 4 seconds..."             AT(0, pause_row).
+  WAIT 4.
 
   // ============================================================
-  // PHASE 2 — Arm confirmation (throttle still untouched here)
+  // PRE-PHASE 3 — Re-discover with engines running to get
+  // accurate MAXTHRUST so auto-trim offsets are correct.
+  // (First discovery ran before engines fully spooled → MAXTHRUST=0
+  //  → tau_p=0 → no trim → front/rear imbalance uncorrected.)
   // ============================================================
 
   CLEARSCREEN.
-  PRINT "======================================" AT(0, 0).
-  PRINT "         VTOL ARM CONFIRMATION        " AT(0, 1).
-  PRINT "======================================" AT(0, 2).
-  PRINT ""                                       AT(0, 3).
-  PRINT "Arming VTOL will:"                      AT(0, 4).
-  PRINT "  - Set per-engine thrust limiters"     AT(0, 5).
-  PRINT "  - Servos move to hover position"      AT(0, 6).
-  PRINT ""                                       AT(0, 7).
-  PRINT "YOU control the throttle."              AT(0, 8).
-  PRINT "kOS controls only the limiters."        AT(0, 9).
-  PRINT ""                                       AT(0, 10).
-  PRINT "Pitch/Roll stick = attitude"            AT(0, 11).
-  PRINT "Yaw stick        = servo tilt"          AT(0, 12).
-  PRINT "Throttle         = overall power"       AT(0, 13).
-  PRINT "** START ENGINES before pressing A! **"  AT(0, 14).
-  PRINT ""                                       AT(0, 15).
-  PRINT "Press A to ARM VTOL."                   AT(0, 16).
-  PRINT "Any other key to EXIT without arming."  AT(0, 17).
+  PRINT "====== VTOL — CALIBRATION =============" AT(0, 0).
+  PRINT "Re-scanning engines (should be running)" AT(0, 1).
+  VTOL_RESET().
+  VTOL_DISCOVER().
 
-  WAIT UNTIL TERMINAL:INPUT:HASCHAR.
-  LOCAL arm_key IS TERMINAL:INPUT:GETCHAR().
+  LOCAL cal_row IS 3.
 
-  IF arm_key <> "a" AND arm_key <> "A" {
-    CLEARSCREEN.
-    PRINT "Exiting without arming." AT(0, 0).
-    WAIT 2.
-    SET test_running TO FALSE.
-  } ELSE {
-
-    // ============================================================
-    // PRE-PHASE 3 — Re-discover with engines running to get
-    // accurate MAXTHRUST so auto-trim offsets are correct.
-    // (First discovery ran before ARM with engines off → MAXTHRUST=0
-    //  → tau_p=0 → no trim → front/rear imbalance uncorrected.)
-    // ============================================================
-
-    CLEARSCREEN.
-    PRINT "====== VTOL — CALIBRATION =============" AT(0, 0).
-    PRINT "Re-scanning engines (should be running)" AT(0, 1).
-    VTOL_RESET().
-    VTOL_DISCOVER().
-
-    LOCAL cal_row IS 3.
-
-    // Warn if engines are still not producing thrust.
-    LOCAL cal_all_zero IS TRUE.
-    LOCAL cal_ck IS 0.
-    UNTIL cal_ck >= VTOL_MAX_THRUST:LENGTH {
-      IF VTOL_MAX_THRUST[cal_ck] > 0.01 { SET cal_all_zero TO FALSE. }
-      SET cal_ck TO cal_ck + 1.
-    }
-    IF cal_all_zero {
-      PRINT "WARNING: MAXTHRUST = 0 for all engines!" AT(0, cal_row). SET cal_row TO cal_row + 1.
-      PRINT "Are engines running? Trim will be wrong." AT(0, cal_row). SET cal_row TO cal_row + 1.
-      SET cal_row TO cal_row + 1.
-    }
-
-    // Show per-engine max thrust, trim offset, and pitch mixing.
-    // Trim offset is only nonzero when MAXTHRUST > 0 at discovery.
-    PRINT "  N  MAXTHRUST_kN  TRIM_OFFSET  PITCH_MIX  " AT(0, cal_row). SET cal_row TO cal_row + 1.
-    PRINT "  -  ------------  -----------  ---------  " AT(0, cal_row). SET cal_row TO cal_row + 1.
-    LOCAL cal_ci IS 0.
-    UNTIL cal_ci >= VTOL_ENG_LIST:LENGTH {
-      LOCAL cal_mt IS _FMT(VTOL_MAX_THRUST[cal_ci], 12, 2).
-      LOCAL cal_tr IS _FMT(VTOL_TRIM_OFFSET[cal_ci], 11, 4).
-      LOCAL cal_pm IS _FMT(VTOL_PITCH_MIX[cal_ci], 9, 3).
-      PRINT ("  " + (cal_ci+1) + "  " + cal_mt + "  " + cal_tr + "  " + cal_pm + "  ") AT(0, cal_row).
-      SET cal_row TO cal_row + 1.
-      SET cal_ci TO cal_ci + 1.
-    }
-
+  // Warn if engines are still not producing thrust.
+  LOCAL cal_all_zero IS TRUE.
+  LOCAL cal_ck IS 0.
+  UNTIL cal_ck >= VTOL_MAX_THRUST:LENGTH {
+    IF VTOL_MAX_THRUST[cal_ck] > 0.01 { SET cal_all_zero TO FALSE. }
+    SET cal_ck TO cal_ck + 1.
+  }
+  IF cal_all_zero {
+    PRINT "WARNING: MAXTHRUST = 0 for all engines!" AT(0, cal_row). SET cal_row TO cal_row + 1.
+    PRINT "Engines still spooling — that is OK."    AT(0, cal_row). SET cal_row TO cal_row + 1.
     SET cal_row TO cal_row + 1.
-    PRINT "Press any key to enter live loop ..."     AT(0, cal_row).
-    WAIT UNTIL TERMINAL:INPUT:HASCHAR.
-    IF TERMINAL:INPUT:HASCHAR { LOCAL _c3 IS TERMINAL:INPUT:GETCHAR(). }
+  }
+
+  // Show per-engine max thrust, trim offset, and pitch mixing.
+  // Trim offset is only nonzero when MAXTHRUST > 0 at discovery.
+  PRINT "  N  MAXTHRUST_kN  TRIM_OFFSET  PITCH_MIX  " AT(0, cal_row). SET cal_row TO cal_row + 1.
+  PRINT "  -  ------------  -----------  ---------  " AT(0, cal_row). SET cal_row TO cal_row + 1.
+  LOCAL cal_ci IS 0.
+  UNTIL cal_ci >= VTOL_ENG_LIST:LENGTH {
+    LOCAL cal_mt IS _FMT(VTOL_MAX_THRUST[cal_ci], 12, 2).
+    LOCAL cal_tr IS _FMT(VTOL_TRIM_OFFSET[cal_ci], 11, 4).
+    LOCAL cal_pm IS _FMT(VTOL_PITCH_MIX[cal_ci], 9, 3).
+    PRINT ("  " + (cal_ci+1) + "  " + cal_mt + "  " + cal_tr + "  " + cal_pm + "  ") AT(0, cal_row).
+    SET cal_row TO cal_row + 1.
+    SET cal_ci TO cal_ci + 1.
+  }
+
+  SET cal_row TO cal_row + 1.
+  PRINT "Entering live loop in 3 seconds..."       AT(0, cal_row).
+  WAIT 3.
 
     // ============================================================
     // PHASE 3 — Live VTOL loop
@@ -308,11 +283,18 @@ IF NOT VTOL_DIFF_AVAILABLE {
     // Header: build engine and servo column names from discovery count.
     LOCAL hdr IS "t_s,dt_s,pitch_deg,bank_deg,hdg_deg,vs_ms,vs_cmd_ms,alt_agl_m," +
                  "collective,hover_coll,vs_integral," +
-                 "pilot_roll,pilot_pitch,pilot_yaw,pilot_thr".
+                 "pilot_roll,pilot_pitch,pilot_yaw,pilot_thr," +
+                 "roll_cmd,pitch_cmd,pitch_rate_degs,roll_rate_degs," +
+                 "gndspd_ms,ship_status".
     LOCAL hdr_ei IS 0.
     UNTIL hdr_ei >= VTOL_ENG_LIST:LENGTH {
       SET hdr TO hdr + ",eng" + (hdr_ei+1) + "_lim".
       SET hdr_ei TO hdr_ei + 1.
+    }
+    LOCAL hdr_tri IS 0.
+    UNTIL hdr_tri >= VTOL_TRIM_OFFSET:LENGTH {
+      SET hdr TO hdr + ",trim" + (hdr_tri+1).
+      SET hdr_tri TO hdr_tri + 1.
     }
     LOCAL hdr_ti IS 0.
     UNTIL hdr_ti >= vtol_eng_objs:LENGTH {
@@ -331,35 +313,17 @@ IF NOT VTOL_DIFF_AVAILABLE {
     LOCAL log_rate    IS 0.2. // 5 Hz — enough resolution for VTOL tuning
     LOCAL arm_ut      IS TIME:SECONDS.
 
-    // Trim cannot be computed until engines are producing thrust.
-    // Set FALSE here; the live loop re-runs discovery on the first
-    // tick where all engines have measurable thrust.
-    LOCAL trim_computed IS FALSE.
-
     UNTIL NOT test_running {
       LOCAL now IS TIME:SECONDS.
       SET IFC_ACTUAL_DT TO CLAMP(now - IFC_CYCLE_UT, 0.01, 0.5).
       SET IFC_CYCLE_UT  TO now.
 
-      // ── Re-discover trim once engines are producing thrust ──────
-      // MAXTHRUST on propeller/fan engines reads 0 at zero RPM, so
-      // the first VTOL_DISCOVER() (before arm) computed tau_p = 0
-      // and left all VTOL_TRIM_OFFSET = 0.  Re-run as soon as every
-      // engine is confirmed spinning.
-      IF NOT trim_computed {
-        LOCAL tc_all_thrust IS TRUE.
-        LOCAL tc_i IS 0.
-        UNTIL tc_i >= vtol_eng_objs:LENGTH {
-          LOCAL tc_eo IS vtol_eng_objs[tc_i].
-          IF tc_eo = 0 OR tc_eo:THRUST < 0.5 { SET tc_all_thrust TO FALSE. }
-          SET tc_i TO tc_i + 1.
-        }
-        IF tc_all_thrust {
-          VTOL_RESET().    // clear old zero-thrust discovery
-          VTOL_DISCOVER(). // re-discover with engines running — MAXTHRUST or THRUST fallback
-          SET trim_computed TO TRUE.
-        }
-      }
+      // Live-loop re-discovery removed.
+      // VTOL_DISCOVER() using THRUST fallback while engines are running
+      // at asymmetric limiters produces severely wrong trim offsets —
+      // it reads current thrust output (already limited) rather than
+      // max capability, amplifying any existing imbalance.
+      // Adaptive trim (_VTOL_ADAPT_TRIM) handles convergence instead.
 
       VTOL_TICK_PREARM().
 
@@ -377,14 +341,27 @@ IF NOT VTOL_DIFF_AVAILABLE {
       }
 
       // ── Per-engine limits (computed once, used by display + log) ──
+      // Use the same roll_cmd / pitch_cmd that VTOL_TICK_PREARM used:
+      // wings-level correction when pilot input is below deadband.
+      LOCAL disp_ang_vel IS SHIP:ANGULARVEL.
+      LOCAL disp_pitch_rate IS VDOT(disp_ang_vel, SHIP:FACING:STARVECTOR) * (180 / CONSTANT:PI).
+      LOCAL disp_roll_rate  IS -VDOT(disp_ang_vel, SHIP:FACING:FOREVECTOR) * (180 / CONSTANT:PI).
+      LOCAL disp_roll_cmd  IS roll_disp.
+      LOCAL disp_pitch_cmd IS pitch_disp.
+      IF ABS(roll_disp) < VTOL_TRIM_DEADBAND {
+        LOCAL disp_bank IS ARCSIN(CLAMP(-VDOT(SHIP:FACING:STARVECTOR, SHIP:UP:VECTOR), -1, 1)).
+        SET disp_roll_cmd TO CLAMP(-disp_bank * VTOL_LEVEL_ROLL_KP - disp_roll_rate * VTOL_LEVEL_ROLL_KD, -1, 1).
+      }
+      IF ABS(pitch_disp) < VTOL_TRIM_DEADBAND {
+        LOCAL disp_pitch_ang IS 90 - VANG(SHIP:FACING:FOREVECTOR, SHIP:UP:VECTOR).
+        SET disp_pitch_cmd TO CLAMP(-disp_pitch_ang * VTOL_LEVEL_PITCH_KP - disp_pitch_rate * VTOL_LEVEL_PITCH_KD, -1, 1).
+      }
       LOCAL eng_limits IS LIST().
       LOCAL eng_ei IS 0.
       UNTIL eng_ei >= VTOL_ENG_LIST:LENGTH {
-        // Match _VTOL_APPLY_ENGINES exactly: base = 1.0 + trim, not VTOL_COLLECTIVE.
-        // VTOL_COLLECTIVE is only used in autopilot (VTOL_TICK), not prearm mode.
-        LOCAL eng_lim IS 1.0 + VTOL_TRIM_OFFSET[eng_ei]
-                    + roll_disp  * VTOL_ROLL_MIX[eng_ei]
-                    + pitch_disp * VTOL_PITCH_MIX[eng_ei].
+        LOCAL eng_lim IS VTOL_COLLECTIVE * (1.0 + VTOL_TRIM_OFFSET[eng_ei])
+                    + disp_roll_cmd  * VTOL_ROLL_MIX[eng_ei]
+                    + disp_pitch_cmd * VTOL_PITCH_MIX[eng_ei].
         eng_limits:ADD(CLAMP(eng_lim, 0, 1)).
         SET eng_ei TO eng_ei + 1.
       }
@@ -509,12 +486,23 @@ IF NOT VTOL_DIFF_AVAILABLE {
           ROUND(roll_disp,               4),
           ROUND(pitch_disp,              4),
           ROUND(yaw_disp,                4),
-          ROUND(thr_disp,                4)
+          ROUND(thr_disp,                4),
+          ROUND(disp_roll_cmd,           4),
+          ROUND(disp_pitch_cmd,          4),
+          ROUND(disp_pitch_rate,         3),
+          ROUND(disp_roll_rate,          3),
+          ROUND(SHIP:GROUNDSPEED,        3),
+          SHIP:STATUS
         ).
         LOCAL li IS 0.
         UNTIL li >= eng_limits:LENGTH {
           row:ADD(ROUND(eng_limits[li], 4)).
           SET li TO li + 1.
+        }
+        LOCAL ltri IS 0.
+        UNTIL ltri >= VTOL_TRIM_OFFSET:LENGTH {
+          row:ADD(ROUND(VTOL_TRIM_OFFSET[ltri], 4)).
+          SET ltri TO ltri + 1.
         }
         LOCAL lti IS 0.
         UNTIL lti >= vtol_eng_objs:LENGTH {
@@ -539,5 +527,4 @@ IF NOT VTOL_DIFF_AVAILABLE {
     VTOL_RELEASE().
     PRINT "VTOL test ended. Log: " + log_file AT(0, 0).
 
-  } // end arm branch
 } // end discovery OK branch

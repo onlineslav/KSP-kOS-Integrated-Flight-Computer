@@ -468,6 +468,13 @@ GLOBAL VTOL_MAX_PODS         IS 8.     // max pod tags scanned during discovery
 GLOBAL VTOL_SRV_SPEED        IS 1.0.   // servo speed multiplier for baseline hover commands
 GLOBAL VTOL_SRV_YAW_SPEED    IS 2.0.   // servo speed multiplier for yaw differential commands
 GLOBAL VTOL_LAT_SIGN_THRESH  IS 0.15.  // m  lateral offset below which a pod is considered centerline
+GLOBAL VTOL_TRIM_RATE        IS 0.005. // limit change per degree of pitch error per second
+GLOBAL VTOL_TRIM_DEADBAND    IS 0.05.  // pilot input magnitude below which auto systems engage
+GLOBAL VTOL_TRIM_PITCH_CLAMP IS 15.0.  // max pitch error (deg) considered by trim integrator
+GLOBAL VTOL_LEVEL_ROLL_KP   IS 0.10.  // roll authority fraction per degree of bank (full at 10°)
+GLOBAL VTOL_LEVEL_ROLL_KD   IS 0.03.  // roll authority per deg/s roll rate (damp oscillation)
+GLOBAL VTOL_LEVEL_PITCH_KP  IS 0.40.  // pitch authority fraction per degree of pitch (full at 2.5°)
+GLOBAL VTOL_LEVEL_PITCH_KD  IS 0.03.  // pitch authority per deg/s pitch rate (damp divergence)
 
 // ----------------------------
 // UI event queue
