@@ -67,7 +67,26 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_level_pitch_kp",    0.10,  // softer P to avoid early rail-to-rail in low-damping transients
   "vtol_level_pitch_kd",    0.08,  // stronger D for rate damping as soon as feedback engages
   "vtol_level_pitch_ki",    0.015,
+  // Cascade attitude->rate->command controller gains.
+  "vtol_level_roll_att2rate_kp",  0.8,
+  "vtol_level_pitch_att2rate_kp", 0.9,
+  "vtol_level_roll_att2rate_ki",  0.00,
+  "vtol_level_pitch_att2rate_ki", 0.00,
+  "vtol_level_roll_rate_kp",      0.030,
+  "vtol_level_pitch_rate_kp",     0.032,
+  "vtol_level_roll_rate_cmd_max_degs",  6.0,
+  "vtol_level_pitch_rate_cmd_max_degs", 6.5,
   "vtol_level_i_lim",       40.0,
+  "vtol_lag_filter_tau_s",  0.90,  // smooth spool-lag scheduling to prevent tick-to-tick gain/slew jumps
+  "vtol_level_gain_lag_ref_s", 0.8,
+  "vtol_level_kp_min_scale", 0.45,
+  "vtol_level_kd_min_scale", 0.45,
+  "vtol_level_ki_min_scale", 0.20,
+  "vtol_level_aw_lag_s",    0.60,
+  "vtol_level_aw_eff_err_min", 0.05,
+  "vtol_level_cmd_slew_per_s", 1.5, // feedback-command slew (prevents rail-to-rail flips under spool lag)
+  "vtol_level_cmd_slew_lag_ref_s", 0.8,
+  "vtol_level_cmd_slew_min_scale", 0.35,
   "vtol_level_on_ground",   FALSE,
   "vtol_level_min_agl_m",   0.8,
   "vtol_ground_contact_agl_m", 1.5,
@@ -77,7 +96,7 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_engine_limit_floor",    0.14,  // prevents a single pod from being driven near-zero during aggressive recovery
   "vtol_cmd_slew_per_s",        3.0,   // smooth command reversals so allocator does not jump to saturation
   "vtol_cmd_roll_max",          0.55,  // reduce roll rail-induced coupling while pitch loop is recovering
-  "vtol_cmd_pitch_max",         0.90,  // give pitch loop enough authority to arrest nose-up/down divergence
+  "vtol_cmd_pitch_max",         0.60,  // reduced to avoid rail-to-rail pitch forcing under lag
   "vtol_diff_atten_min",        0.25,  // keep more authority available during moderate excursions
   "vtol_diff_soft_bank_deg",    6.0,
   "vtol_diff_hard_bank_deg",    30.0,
@@ -91,9 +110,17 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_upset_pitch_deg",       12.0,  // trigger upset slightly earlier on pitch excursions
   "vtol_upset_roll_rate_degs",  18.0,
   "vtol_upset_pitch_rate_degs", 14.0,  // enter upset before pitch-rate runaway
+  "vtol_upset_exit_bank_deg",   12.0,  // hysteresis: only exit once attitude/rates are clearly recovered
+  "vtol_upset_exit_pitch_deg",  8.0,
+  "vtol_upset_exit_roll_rate_degs", 10.0,
+  "vtol_upset_exit_pitch_rate_degs", 8.0,
+  "vtol_upset_hold_s",          2.0,   // minimum upset latch time to prevent chatter
   "vtol_upset_cmd_max",         0.30,  // during upset, force low-amplitude damping commands
   "vtol_upset_cmd_roll_max",    0.60,  // keep roll from saturating the mixer during upset
-  "vtol_upset_cmd_pitch_max",   0.90,  // prioritize pitch-rate arrest in upset recovery
+  "vtol_upset_cmd_pitch_max",   0.60,  // keep upset recovery aggressive but below saturating extremes
+  "vtol_upset_roll_rate_kp",    0.030,
+  "vtol_upset_pitch_rate_kp",   0.035,
+  "vtol_upset_pitch_slew_bypass", TRUE, // do not delay sign reversal during upset recovery
   "vtol_upset_diff_atten_min",  0.55,  // do not collapse differential authority in upset
   "vtol_upset_engine_limit_floor", 0.02, // allow deeper per-engine cut in upset for roll torque
   "vtol_upset_guard_agl_m",     20.0,  // below this AGL, upset + low throttle is clamped to preserve lift
@@ -113,14 +140,25 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_static_trim_base_min",  0.23,   // lowered to allow discovery to find ~0.23 aft trim (torque balance)
   "vtol_vs_kp",             0.30,
   "vtol_vs_ki",             0.04,
+  "vtol_vs_cmd_up_slew_mps2", 1.0,   // long-spool friendly VS setpoint ramp-up
+  "vtol_vs_cmd_dn_slew_mps2", 1.4,   // allow slightly faster descent-command ramp
+  "vtol_vs_cmd_lag_ref_s",    0.8,   // scheduler reference lag for setpoint slew
+  "vtol_vs_cmd_slew_min_scale", 0.35,
+  "vtol_vs_gain_lag_ref_s",   0.8,   // scheduler reference lag for VS PI gains
+  "vtol_vs_kp_min_scale",     0.45,
+  "vtol_vs_ki_min_scale",     0.25,
+  "vtol_vs_aw_alpha_min",     0.95,  // unwind VS integrator when allocator is authority-limited
+  "vtol_vs_aw_lag_s",         0.60,  // unwind VS integrator under high measured spool lag
+  "vtol_vs_aw_eff_err_min",   0.05,  // requires meaningful command-vs-achieved mismatch
+  "vtol_vs_i_unwind_per_s",   1.8,
   "vtol_max_vs",            6.0,
-  "vtol_collective_max",    0.92,  // keep some control headroom; reduces pre-upset saturation
+  "vtol_collective_max",    0.86,  // reserve more differential headroom to delay authority collapse
   "vtol_collective_up_slew_per_s", 0.35,
   "vtol_collective_dn_slew_per_s", 3.00,
   "vtol_alt_kp",            0.40,
   "vtol_hover_collective",  0.77,
-  // Test mode: bypass VS-command mapping and hold fixed collective.
-  "vtol_test_fixed_collective_enabled", TRUE,
+  // Test mode toggle: set TRUE to bypass VS loop and hold fixed collective.
+  "vtol_test_fixed_collective_enabled", FALSE,
   "vtol_test_fixed_collective", 0.77,
   // Engine-model feed-forward (collective lag compensation).
   "vtol_em_ff_enabled",     TRUE,
@@ -128,9 +166,8 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_em_ff_max_lead",    0.20,
   "vtol_em_ff_lag_min_s",   0.10,
   "vtol_em_ff_alpha_min",   0.12,
-  // Temporary isolation test: disable attitude feedback loops so we can
-  // evaluate collective/feed-forward behavior without pitch PID oscillation.
-  "vtol_bypass_attitude_feedback", TRUE
+  // Keep feedback enabled for upstream controller validation runs.
+  "vtol_bypass_attitude_feedback", FALSE
 ).
 
 // ── State init ─────────────────────────────────────────────
@@ -438,37 +475,22 @@ IF NOT VTOL_DIFF_AVAILABLE {
     LOCAL log_rate    IS 0.2. // 5 Hz — enough resolution for VTOL tuning
     LOCAL arm_ut      IS TIME:SECONDS.
 
-    // ----- Automatic attitude-feedback bring-up schedule -----
-    // Stage 0: FF only (feedback bypass)
-    // Stage 1: P only
-    // Stage 2: PD (gentle D)
-    // Stage 3: PID (gentle I)
-    LOCAL att_stage IS 0.
-    LOCAL att_stage_name IS "FF_ONLY".
+    // ----- Fixed feedback architecture (no timed in-flight mode switching) -----
+    LOCAL att_stage_name IS "CASCADE_PD".
     LOCAL airborne_ut IS -1.
-    LOCAL stage_p_only_s IS 0.8.
-    LOCAL stage_pd_s IS 0.8.
-    LOCAL stage_pid_s IS 8.0.
     LOCAL base_roll_kp IS _CFG_GET_NUM("vtol_level_roll_kp", 0.10).
     LOCAL base_pitch_kp IS _CFG_GET_NUM("vtol_level_pitch_kp", 0.12).
     LOCAL base_roll_kd IS _CFG_GET_NUM("vtol_level_roll_kd", 0.03).
     LOCAL base_pitch_kd IS _CFG_GET_NUM("vtol_level_pitch_kd", 0.06).
-    LOCAL base_roll_ki IS _CFG_GET_NUM("vtol_level_roll_ki", 0.010).
-    LOCAL base_pitch_ki IS _CFG_GET_NUM("vtol_level_pitch_ki", 0.015).
-    LOCAL pd_kd_scale IS 1.0.
-    LOCAL pid_ki_scale IS 0.10.
-    LOCAL roll_kd_scale IS 1.0.
-    LOCAL roll_ki_scale IS 0.0.
-
-    // Force initial FF-only mode at loop entry.
-    SET ACTIVE_AIRCRAFT["vtol_bypass_attitude_feedback"] TO TRUE.
+    // Fixed mode at loop entry.
+    SET ACTIVE_AIRCRAFT["vtol_bypass_attitude_feedback"] TO FALSE.
     SET ACTIVE_AIRCRAFT["vtol_level_roll_kp"] TO base_roll_kp.
     SET ACTIVE_AIRCRAFT["vtol_level_pitch_kp"] TO base_pitch_kp.
-    SET ACTIVE_AIRCRAFT["vtol_level_roll_kd"] TO 0.
-    SET ACTIVE_AIRCRAFT["vtol_level_pitch_kd"] TO 0.
+    SET ACTIVE_AIRCRAFT["vtol_level_roll_kd"] TO base_roll_kd.
+    SET ACTIVE_AIRCRAFT["vtol_level_pitch_kd"] TO base_pitch_kd.
     SET ACTIVE_AIRCRAFT["vtol_level_roll_ki"] TO 0.
     SET ACTIVE_AIRCRAFT["vtol_level_pitch_ki"] TO 0.
-    LOG "# att_stage=FF_ONLY  t_s=0.0" TO log_file.
+    LOG "# att_mode=CASCADE_PD_FIXED  t_s=0.0" TO log_file.
 
     UNTIL NOT test_running {
       LOCAL now IS TIME:SECONDS.
@@ -505,38 +527,7 @@ IF NOT VTOL_DIFF_AVAILABLE {
       IF airborne_ut < 0 AND VTOL_DIAG_TRULY_AIRBORNE {
         SET airborne_ut TO now.
       }
-      IF airborne_ut >= 0 {
-        LOCAL t_air IS now - airborne_ut.
-        IF att_stage = 0 AND t_air >= stage_p_only_s {
-          SET att_stage TO 1.
-          SET att_stage_name TO "P_ONLY".
-          SET ACTIVE_AIRCRAFT["vtol_bypass_attitude_feedback"] TO FALSE.
-          SET ACTIVE_AIRCRAFT["vtol_level_roll_kp"] TO base_roll_kp.
-          SET ACTIVE_AIRCRAFT["vtol_level_pitch_kp"] TO base_pitch_kp.
-          SET ACTIVE_AIRCRAFT["vtol_level_roll_kd"] TO 0.
-          SET ACTIVE_AIRCRAFT["vtol_level_pitch_kd"] TO 0.
-          SET ACTIVE_AIRCRAFT["vtol_level_roll_ki"] TO 0.
-          SET ACTIVE_AIRCRAFT["vtol_level_pitch_ki"] TO 0.
-          LOG "# att_stage=P_ONLY  t_air_s=" + ROUND(t_air,2) TO log_file.
-        } ELSE IF att_stage = 1 AND t_air >= stage_pd_s {
-          SET att_stage TO 2.
-          SET att_stage_name TO "PD".
-          // Move quickly to full PD after liftoff to avoid P-only limit cycles.
-          SET ACTIVE_AIRCRAFT["vtol_level_roll_kd"] TO base_roll_kd * roll_kd_scale.
-          SET ACTIVE_AIRCRAFT["vtol_level_pitch_kd"] TO base_pitch_kd * pd_kd_scale.
-          SET ACTIVE_AIRCRAFT["vtol_level_roll_ki"] TO 0.
-          SET ACTIVE_AIRCRAFT["vtol_level_pitch_ki"] TO 0.
-          LOG "# att_stage=PD  t_air_s=" + ROUND(t_air,2) TO log_file.
-        } ELSE IF att_stage = 2 AND t_air >= stage_pid_s {
-          SET att_stage TO 3.
-          SET att_stage_name TO "PID".
-          SET ACTIVE_AIRCRAFT["vtol_level_roll_kd"] TO base_roll_kd * roll_kd_scale.
-          SET ACTIVE_AIRCRAFT["vtol_level_pitch_kd"] TO base_pitch_kd * pd_kd_scale.
-          SET ACTIVE_AIRCRAFT["vtol_level_roll_ki"] TO base_roll_ki * roll_ki_scale.
-          SET ACTIVE_AIRCRAFT["vtol_level_pitch_ki"] TO base_pitch_ki * pid_ki_scale.
-          LOG "# att_stage=PID  t_air_s=" + ROUND(t_air,2) TO log_file.
-        }
-      }
+      // Keep one fixed attitude-controller architecture for the full run.
 
       // ── Per-engine limits + command telemetry (actual values from VTOL module) ──
       LOCAL disp_ang_vel IS SHIP:ANGULARVEL.

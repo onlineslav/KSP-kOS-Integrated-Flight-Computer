@@ -84,6 +84,12 @@ FUNCTION _VTOL_CLEAR_DIAG {
 
 GLOBAL _vtol_prev_roll_cmd IS 0.
 GLOBAL _vtol_prev_pitch_cmd IS 0.
+GLOBAL _vtol_em_lag_filt_s IS -1.
+GLOBAL _vtol_em_lag_filt_cycle_ut IS -1.
+GLOBAL _vtol_roll_lag_filt_s IS -1.
+GLOBAL _vtol_pitch_lag_filt_s IS -1.
+GLOBAL _vtol_upset_latched IS FALSE.
+GLOBAL _vtol_upset_entry_ut IS -1.
 
 // ?????? Servo discovery via part tag ??????????????????????????????????????????????????????????????????????????????
 FUNCTION _VTOL_FIND_SERVO_MODULE {
@@ -652,13 +658,91 @@ FUNCTION _VTOL_SLEW_COLLECTIVE {
   ).
 }
 
+FUNCTION _VTOL_FILTER_LAG {
+  PARAMETER prev_lag, raw_lag, tau_s.
+  LOCAL raw_use IS raw_lag.
+  IF raw_use < 0 { SET raw_use TO 0. }
+  IF tau_s <= 0 { RETURN raw_use. }
+  IF prev_lag < 0 { RETURN raw_use. }
+  LOCAL alpha IS IFC_ACTUAL_DT / (IFC_ACTUAL_DT + tau_s).
+  IF alpha < 0 { SET alpha TO 0. }
+  IF alpha > 1 { SET alpha TO 1. }
+  RETURN prev_lag + (raw_use - prev_lag) * alpha.
+}
+
+FUNCTION _VTOL_FILTERED_EM_LAG_S {
+  IF _vtol_em_lag_filt_s >= 0 AND _vtol_em_lag_filt_cycle_ut = IFC_CYCLE_UT {
+    RETURN _vtol_em_lag_filt_s.
+  }
+  LOCAL lag_tau_s IS _AMO_CFG_NUM("vtol_lag_filter_tau_s", VTOL_LAG_FILTER_TAU_S, 0).
+  LOCAL raw_lag_s IS TELEM_EM_WORST_SPOOL_LAG.
+  SET _vtol_em_lag_filt_s TO _VTOL_FILTER_LAG(_vtol_em_lag_filt_s, raw_lag_s, lag_tau_s).
+  SET _vtol_em_lag_filt_cycle_ut TO IFC_CYCLE_UT.
+  RETURN _vtol_em_lag_filt_s.
+}
+
+FUNCTION _VTOL_AXIS_EFFECTIVE_SPOOL_LAG_S {
+  PARAMETER axis_name.
+  IF VTOL_ENG_LIST:LENGTH = 0 { RETURN MAX(0, TELEM_EM_WORST_SPOOL_LAG). }
+  LOCAL sum_w IS 0.
+  LOCAL sum_lag_w IS 0.
+  LOCAL i IS 0.
+  UNTIL i >= VTOL_ENG_LIST:LENGTH {
+    LOCAL mix_abs IS ABS(VTOL_ROLL_MIX[i]).
+    IF axis_name = "pitch" {
+      SET mix_abs TO ABS(VTOL_PITCH_MIX[i]).
+    }
+    IF mix_abs > 0.001 {
+      LOCAL eng_obj IS VTOL_ENG_LIST[i]["eng"].
+      LOCAL lag_i IS -1.
+      IF (DEFINED EM_GET_SPOOL_LAG_FOR_ENGINE) {
+        SET lag_i TO EM_GET_SPOOL_LAG_FOR_ENGINE(eng_obj).
+      }
+      IF lag_i < 0 {
+        SET lag_i TO TELEM_EM_WORST_SPOOL_LAG.
+      }
+      IF lag_i < 0 { SET lag_i TO 0. }
+      LOCAL lim_i IS VTOL_COLLECTIVE.
+      IF VTOL_ENG_LIM_ACTUAL:LENGTH = VTOL_ENG_LIST:LENGTH {
+        SET lim_i TO VTOL_ENG_LIM_ACTUAL[i].
+      }
+      LOCAL auth_i IS CLAMP(lim_i, 0.05, 1.0).
+      LOCAL w_i IS mix_abs * auth_i.
+      SET sum_w TO sum_w + w_i.
+      SET sum_lag_w TO sum_lag_w + lag_i * w_i.
+    }
+    SET i TO i + 1.
+  }
+  IF sum_w <= 0 { RETURN MAX(0, TELEM_EM_WORST_SPOOL_LAG). }
+  RETURN sum_lag_w / sum_w.
+}
+
 FUNCTION _VTOL_VS_HOLD {
   PARAMETER thr_input.
   LOCAL vs_kp  IS _AMO_CFG_NUM("vtol_vs_kp",  VTOL_VS_KP,  0).
   LOCAL vs_ki  IS _AMO_CFG_NUM("vtol_vs_ki",  VTOL_VS_KI,  0).
   LOCAL max_vs IS _AMO_CFG_NUM("vtol_max_vs", VTOL_MAX_VS, 0.1).
   LOCAL coll_max IS _AMO_CFG_NUM("vtol_collective_max", VTOL_COLLECTIVE_MAX, 0.1).
+  LOCAL em_lag_s IS _VTOL_FILTERED_EM_LAG_S().
   IF coll_max > 1.0 { SET coll_max TO 1.0. }
+  IF coll_max < 0.0 { SET coll_max TO 0.0. }
+  IF em_lag_s < 0 { SET em_lag_s TO 0. }
+
+  // Lag-aware PI gain scheduling.
+  LOCAL gain_lag_ref_s IS _AMO_CFG_NUM("vtol_vs_gain_lag_ref_s", VTOL_VS_GAIN_LAG_REF_S, 0.01).
+  LOCAL kp_min_scale IS _AMO_CFG_NUM("vtol_vs_kp_min_scale", VTOL_VS_KP_MIN_SCALE, 0).
+  LOCAL ki_min_scale IS _AMO_CFG_NUM("vtol_vs_ki_min_scale", VTOL_VS_KI_MIN_SCALE, 0).
+  IF kp_min_scale < 0 { SET kp_min_scale TO 0. }
+  IF kp_min_scale > 1 { SET kp_min_scale TO 1. }
+  IF ki_min_scale < 0 { SET ki_min_scale TO 0. }
+  IF ki_min_scale > 1 { SET ki_min_scale TO 1. }
+  LOCAL lag_gain_scale IS 1.0.
+  IF gain_lag_ref_s > 0.01 AND em_lag_s > gain_lag_ref_s {
+    SET lag_gain_scale TO gain_lag_ref_s / em_lag_s.
+  }
+  SET lag_gain_scale TO CLAMP(lag_gain_scale, 0, 1).
+  LOCAL vs_kp_use IS vs_kp * CLAMP(lag_gain_scale, kp_min_scale, 1.0).
+  LOCAL vs_ki_use IS vs_ki * CLAMP(lag_gain_scale, ki_min_scale, 1.0).
 
   // Seed hover_collective from config on first call (VTOL_HOVER_COLLECTIVE
   // starts at 0.50 from VTOL_RESET; if the aircraft config provides a
@@ -672,12 +756,40 @@ FUNCTION _VTOL_VS_HOLD {
     SET VTOL_HOVER_COLLECTIVE_SEEDED TO TRUE.
   }
 
-  SET VTOL_VS_CMD TO (thr_input - 0.5) * 2.0 * max_vs.
+  LOCAL vs_cmd_target IS (thr_input - 0.5) * 2.0 * max_vs.
 
   IF VTOL_ALT_HOLD {
     LOCAL alt_kp  IS _AMO_CFG_NUM("vtol_alt_kp", VTOL_ALT_KP, 0).
     LOCAL alt_err IS VTOL_ALT_CMD - GET_AGL().
-    SET VTOL_VS_CMD TO CLAMP(alt_err * alt_kp, -max_vs, max_vs).
+    SET vs_cmd_target TO CLAMP(alt_err * alt_kp, -max_vs, max_vs).
+  } ELSE {
+    SET vs_cmd_target TO CLAMP(vs_cmd_target, -max_vs, max_vs).
+  }
+
+  // Rate-limit VS setpoint so long spool lag does not induce "instant"
+  // commands the actuator cannot follow.
+  LOCAL cmd_up_slew IS _AMO_CFG_NUM("vtol_vs_cmd_up_slew_mps2", VTOL_VS_CMD_UP_SLEW_MPS2, 0).
+  LOCAL cmd_dn_slew IS _AMO_CFG_NUM("vtol_vs_cmd_dn_slew_mps2", VTOL_VS_CMD_DN_SLEW_MPS2, 0).
+  LOCAL cmd_lag_ref_s IS _AMO_CFG_NUM("vtol_vs_cmd_lag_ref_s", VTOL_VS_CMD_LAG_REF_S, 0.01).
+  LOCAL cmd_slew_min_scale IS _AMO_CFG_NUM("vtol_vs_cmd_slew_min_scale", VTOL_VS_CMD_SLEW_MIN_SCALE, 0).
+  IF cmd_up_slew < 0 { SET cmd_up_slew TO 0. }
+  IF cmd_dn_slew < 0 { SET cmd_dn_slew TO 0. }
+  IF cmd_slew_min_scale < 0 { SET cmd_slew_min_scale TO 0. }
+  IF cmd_slew_min_scale > 1 { SET cmd_slew_min_scale TO 1. }
+  LOCAL cmd_scale IS 1.0.
+  IF cmd_lag_ref_s > 0.01 AND em_lag_s > cmd_lag_ref_s {
+    SET cmd_scale TO cmd_lag_ref_s / em_lag_s.
+  }
+  SET cmd_scale TO CLAMP(cmd_scale, cmd_slew_min_scale, 1.0).
+  SET cmd_up_slew TO cmd_up_slew * cmd_scale.
+  SET cmd_dn_slew TO cmd_dn_slew * cmd_scale.
+  LOCAL cmd_slew_use IS cmd_dn_slew.
+  IF vs_cmd_target > VTOL_VS_CMD { SET cmd_slew_use TO cmd_up_slew. }
+  IF cmd_slew_use <= 0 {
+    SET VTOL_VS_CMD TO vs_cmd_target.
+  } ELSE {
+    LOCAL cmd_step IS cmd_slew_use * IFC_ACTUAL_DT.
+    SET VTOL_VS_CMD TO CLAMP(vs_cmd_target, VTOL_VS_CMD - cmd_step, VTOL_VS_CMD + cmd_step).
   }
 
   // Ground freeze: aircraft cannot respond to VS commands while landed.
@@ -694,7 +806,7 @@ FUNCTION _VTOL_VS_HOLD {
   IF is_grounded {
     SET VTOL_VS_INTEGRAL TO 0.
     LOCAL vs_err_g IS VTOL_VS_CMD - SHIP:VERTICALSPEED.
-    LOCAL target_g IS CLAMP(VTOL_HOVER_COLLECTIVE + vs_err_g * vs_kp, 0, coll_max).
+    LOCAL target_g IS CLAMP(VTOL_HOVER_COLLECTIVE + vs_err_g * vs_kp_use, 0, coll_max).
     LOCAL collective_g IS _VTOL_SLEW_COLLECTIVE(target_g).
     SET VTOL_COLLECTIVE_EFF_EST TO collective_g.
     RETURN collective_g.
@@ -707,10 +819,25 @@ FUNCTION _VTOL_VS_HOLD {
   // This prevents the integrator from driving collective to its limit
   // during initial engine spool-up (aircraft on ground, can't achieve
   // commanded VS) and keeping it there after liftoff.
-  LOCAL unclamped IS VTOL_HOVER_COLLECTIVE + vs_err * vs_kp + VTOL_VS_INTEGRAL * vs_ki.
-  LOCAL at_ceil IS unclamped >= coll_max AND vs_err > 0.
-  LOCAL at_floor IS unclamped <= 0.0 AND vs_err < 0.
-  IF NOT at_ceil AND NOT at_floor {
+  LOCAL unclamped_pre IS VTOL_HOVER_COLLECTIVE + vs_err * vs_kp_use + VTOL_VS_INTEGRAL * vs_ki_use.
+  LOCAL at_ceil IS unclamped_pre >= coll_max AND vs_err > 0.
+  LOCAL at_floor IS unclamped_pre <= 0.0 AND vs_err < 0.
+  LOCAL aw_alpha_min IS _AMO_CFG_NUM("vtol_vs_aw_alpha_min", VTOL_VS_AW_ALPHA_MIN, 0).
+  LOCAL aw_lag_s IS _AMO_CFG_NUM("vtol_vs_aw_lag_s", VTOL_VS_AW_LAG_S, 0).
+  LOCAL aw_eff_err_min IS _AMO_CFG_NUM("vtol_vs_aw_eff_err_min", VTOL_VS_AW_EFF_ERR_MIN, 0).
+  LOCAL i_unwind_per_s IS _AMO_CFG_NUM("vtol_vs_i_unwind_per_s", VTOL_VS_I_UNWIND_PER_S, 0).
+  IF aw_alpha_min < 0 { SET aw_alpha_min TO 0. }
+  IF aw_alpha_min > 1 { SET aw_alpha_min TO 1. }
+  IF aw_lag_s < 0 { SET aw_lag_s TO 0. }
+  IF aw_eff_err_min < 0 { SET aw_eff_err_min TO 0. }
+  IF i_unwind_per_s < 0 { SET i_unwind_per_s TO 0. }
+  LOCAL alloc_limited_prev IS VTOL_ALLOC_ALPHA < aw_alpha_min.
+  LOCAL eff_collective_err IS ABS(VTOL_COLLECTIVE - VTOL_COLLECTIVE_EFF_EST).
+  LOCAL lag_limited_prev IS em_lag_s > aw_lag_s AND eff_collective_err > aw_eff_err_min.
+  IF at_ceil OR at_floor OR alloc_limited_prev OR lag_limited_prev {
+    LOCAL unwind_fac IS CLAMP(1.0 - i_unwind_per_s * IFC_ACTUAL_DT, 0, 1).
+    SET VTOL_VS_INTEGRAL TO VTOL_VS_INTEGRAL * unwind_fac.
+  } ELSE {
     SET VTOL_VS_INTEGRAL TO CLAMP(
       VTOL_VS_INTEGRAL + vs_err * IFC_ACTUAL_DT,
       -VTOL_VS_INTEGRAL_LIM,
@@ -718,6 +845,7 @@ FUNCTION _VTOL_VS_HOLD {
     ).
   }
 
+  LOCAL unclamped IS VTOL_HOVER_COLLECTIVE + vs_err * vs_kp_use + VTOL_VS_INTEGRAL * vs_ki_use.
   LOCAL target_collective IS CLAMP(unclamped, 0, coll_max).
 
   // Optional feed-forward: invert a simple first-order throttle-lag model
@@ -737,10 +865,9 @@ FUNCTION _VTOL_VS_HOLD {
     IF ff_alpha_min <= 0 OR ff_alpha_min > 1 { SET ff_alpha_min TO VTOL_EM_FF_ALPHA_MIN. }
 
     LOCAL em_count IS ROUND(TELEM_EM_ENG_COUNT, 0).
-    LOCAL lag_s IS TELEM_EM_WORST_SPOOL_LAG.
-    IF em_count > 0 AND lag_s > ff_lag_min_s {
+    IF em_count > 0 AND em_lag_s > ff_lag_min_s {
       // Engine-model lag is time-to-near-settled; map to first-order tau.
-      LOCAL tau_s IS lag_s / 4.6.
+      LOCAL tau_s IS em_lag_s / 4.6.
       IF tau_s < 0.01 { SET tau_s TO 0.01. }
       LOCAL alpha IS IFC_ACTUAL_DT / (IFC_ACTUAL_DT + tau_s).
       IF alpha < ff_alpha_min { SET alpha TO ff_alpha_min. }
@@ -1014,6 +1141,79 @@ FUNCTION VTOL_TICK_PREARM {
   LOCAL level_pitch_kd IS _AMO_CFG_NUM("vtol_level_pitch_kd", VTOL_LEVEL_PITCH_KD, 0).
   LOCAL level_pitch_ki IS _AMO_CFG_NUM("vtol_level_pitch_ki", VTOL_LEVEL_PITCH_KI, 0).
   LOCAL level_i_lim IS _AMO_CFG_NUM("vtol_level_i_lim", VTOL_LEVEL_I_LIM, 0).
+  LOCAL em_lag_s IS _VTOL_FILTERED_EM_LAG_S().
+  IF em_lag_s < 0 { SET em_lag_s TO 0. }
+  LOCAL level_gain_lag_ref_s IS _AMO_CFG_NUM(
+    "vtol_level_gain_lag_ref_s",
+    VTOL_LEVEL_GAIN_LAG_REF_S,
+    0.01
+  ).
+  LOCAL level_kp_min_scale IS _AMO_CFG_NUM("vtol_level_kp_min_scale", VTOL_LEVEL_KP_MIN_SCALE, 0).
+  LOCAL level_kd_min_scale IS _AMO_CFG_NUM("vtol_level_kd_min_scale", VTOL_LEVEL_KD_MIN_SCALE, 0).
+  LOCAL level_ki_min_scale IS _AMO_CFG_NUM("vtol_level_ki_min_scale", VTOL_LEVEL_KI_MIN_SCALE, 0).
+  LOCAL roll_att2rate_kp IS _AMO_CFG_NUM(
+    "vtol_level_roll_att2rate_kp",
+    VTOL_LEVEL_ROLL_ATT2RATE_KP,
+    0
+  ).
+  LOCAL pitch_att2rate_kp IS _AMO_CFG_NUM(
+    "vtol_level_pitch_att2rate_kp",
+    VTOL_LEVEL_PITCH_ATT2RATE_KP,
+    0
+  ).
+  LOCAL roll_att2rate_ki IS _AMO_CFG_NUM(
+    "vtol_level_roll_att2rate_ki",
+    VTOL_LEVEL_ROLL_ATT2RATE_KI,
+    0
+  ).
+  LOCAL pitch_att2rate_ki IS _AMO_CFG_NUM(
+    "vtol_level_pitch_att2rate_ki",
+    VTOL_LEVEL_PITCH_ATT2RATE_KI,
+    0
+  ).
+  LOCAL roll_rate_kp IS _AMO_CFG_NUM("vtol_level_roll_rate_kp", VTOL_LEVEL_ROLL_RATE_KP, 0).
+  LOCAL pitch_rate_kp IS _AMO_CFG_NUM("vtol_level_pitch_rate_kp", VTOL_LEVEL_PITCH_RATE_KP, 0).
+  LOCAL roll_rate_cmd_max_degs IS _AMO_CFG_NUM(
+    "vtol_level_roll_rate_cmd_max_degs",
+    VTOL_LEVEL_ROLL_RATE_CMD_MAX_DEGS,
+    0
+  ).
+  LOCAL pitch_rate_cmd_max_degs IS _AMO_CFG_NUM(
+    "vtol_level_pitch_rate_cmd_max_degs",
+    VTOL_LEVEL_PITCH_RATE_CMD_MAX_DEGS,
+    0
+  ).
+  IF level_kp_min_scale < 0 { SET level_kp_min_scale TO 0. }
+  IF level_kp_min_scale > 1 { SET level_kp_min_scale TO 1. }
+  IF level_kd_min_scale < 0 { SET level_kd_min_scale TO 0. }
+  IF level_kd_min_scale > 1 { SET level_kd_min_scale TO 1. }
+  IF level_ki_min_scale < 0 { SET level_ki_min_scale TO 0. }
+  IF level_ki_min_scale > 1 { SET level_ki_min_scale TO 1. }
+  IF roll_att2rate_kp < 0 { SET roll_att2rate_kp TO 0. }
+  IF pitch_att2rate_kp < 0 { SET pitch_att2rate_kp TO 0. }
+  IF roll_att2rate_ki < 0 { SET roll_att2rate_ki TO 0. }
+  IF pitch_att2rate_ki < 0 { SET pitch_att2rate_ki TO 0. }
+  IF roll_rate_kp < 0 { SET roll_rate_kp TO 0. }
+  IF pitch_rate_kp < 0 { SET pitch_rate_kp TO 0. }
+  IF roll_rate_cmd_max_degs < 0 { SET roll_rate_cmd_max_degs TO 0. }
+  IF pitch_rate_cmd_max_degs < 0 { SET pitch_rate_cmd_max_degs TO 0. }
+  LOCAL level_gain_scale IS 1.0.
+  IF level_gain_lag_ref_s > 0.01 AND em_lag_s > level_gain_lag_ref_s {
+    SET level_gain_scale TO level_gain_lag_ref_s / em_lag_s.
+  }
+  SET level_gain_scale TO CLAMP(level_gain_scale, 0, 1).
+  SET level_roll_kp TO level_roll_kp * CLAMP(level_gain_scale, level_kp_min_scale, 1.0).
+  SET level_roll_kd TO level_roll_kd * CLAMP(level_gain_scale, level_kd_min_scale, 1.0).
+  SET level_roll_ki TO level_roll_ki * CLAMP(level_gain_scale, level_ki_min_scale, 1.0).
+  SET level_pitch_kp TO level_pitch_kp * CLAMP(level_gain_scale, level_kp_min_scale, 1.0).
+  SET level_pitch_kd TO level_pitch_kd * CLAMP(level_gain_scale, level_kd_min_scale, 1.0).
+  SET level_pitch_ki TO level_pitch_ki * CLAMP(level_gain_scale, level_ki_min_scale, 1.0).
+  SET roll_att2rate_kp TO roll_att2rate_kp * CLAMP(level_gain_scale, level_kp_min_scale, 1.0).
+  SET pitch_att2rate_kp TO pitch_att2rate_kp * CLAMP(level_gain_scale, level_kp_min_scale, 1.0).
+  SET roll_att2rate_ki TO roll_att2rate_ki * CLAMP(level_gain_scale, level_ki_min_scale, 1.0).
+  SET pitch_att2rate_ki TO pitch_att2rate_ki * CLAMP(level_gain_scale, level_ki_min_scale, 1.0).
+  SET roll_rate_kp TO roll_rate_kp * CLAMP(level_gain_scale, level_kd_min_scale, 1.0).
+  SET pitch_rate_kp TO pitch_rate_kp * CLAMP(level_gain_scale, level_kd_min_scale, 1.0).
   LOCAL level_on_ground IS _AMO_CFG_BOOL("vtol_level_on_ground", VTOL_LEVEL_ON_GROUND_DEFAULT).
   LOCAL level_min_agl IS _AMO_CFG_NUM("vtol_level_min_agl_m", VTOL_LEVEL_MIN_AGL_M, 0).
   LOCAL ground_agl IS _AMO_CFG_NUM("vtol_ground_contact_agl_m", VTOL_GROUND_CONTACT_AGL_M, 0).
@@ -1069,8 +1269,18 @@ FUNCTION VTOL_TICK_PREARM {
     VTOL_LEVEL_I_UNWIND_PER_S,
     0
   ).
+  LOCAL level_aw_lag_s IS _AMO_CFG_NUM("vtol_level_aw_lag_s", VTOL_LEVEL_AW_LAG_S, 0).
+  LOCAL level_aw_eff_err_min IS _AMO_CFG_NUM(
+    "vtol_level_aw_eff_err_min",
+    VTOL_LEVEL_AW_EFF_ERR_MIN,
+    0
+  ).
   IF level_i_unwind_per_s < 0 { SET level_i_unwind_per_s TO 0. }
+  IF level_aw_lag_s < 0 { SET level_aw_lag_s TO 0. }
+  IF level_aw_eff_err_min < 0 { SET level_aw_eff_err_min TO 0. }
   LOCAL alloc_limited_prev IS VTOL_ALLOC_ALPHA < level_aw_alpha_min.
+  LOCAL eff_collective_err IS ABS(VTOL_COLLECTIVE - VTOL_COLLECTIVE_EFF_EST).
+  LOCAL lag_limited_prev IS em_lag_s > level_aw_lag_s AND eff_collective_err > level_aw_eff_err_min.
   LOCAL roll_auto_feedback IS FALSE.
   LOCAL pitch_auto_feedback IS FALSE.
 
@@ -1079,29 +1289,41 @@ FUNCTION VTOL_TICK_PREARM {
     LOCAL bank_ang IS ARCSIN(CLAMP(-VDOT(_starvec, _upvec), -1, 1)).
     LOCAL roll_rate_degs IS roll_rate_rads * deg_per_rad.
     LOCAL roll_err IS -bank_ang.
-    LOCAL roll_p_term IS roll_err * level_roll_kp.
-    LOCAL roll_d_term IS -roll_rate_degs * level_roll_kd.
-    LOCAL roll_i_term IS VTOL_LEVEL_ROLL_INT * level_roll_ki.
-    LOCAL roll_unsat IS roll_p_term + roll_d_term + roll_i_term.
+    LOCAL roll_rate_cmd_p IS roll_err * roll_att2rate_kp.
+    LOCAL roll_rate_cmd_i IS VTOL_LEVEL_ROLL_INT * roll_att2rate_ki.
+    LOCAL roll_rate_cmd IS CLAMP(
+      roll_rate_cmd_p + roll_rate_cmd_i,
+      -roll_rate_cmd_max_degs,
+       roll_rate_cmd_max_degs
+    ).
+    LOCAL roll_p_term IS roll_rate_cmd_p * roll_rate_kp.
+    LOCAL roll_i_term IS roll_rate_cmd_i * roll_rate_kp.
+    LOCAL roll_d_term IS -roll_rate_degs * roll_rate_kp.
+    LOCAL roll_unsat IS (roll_rate_cmd - roll_rate_degs) * roll_rate_kp.
     LOCAL roll_at_hi IS roll_unsat >= roll_cap AND roll_err > 0.
     LOCAL roll_at_lo IS roll_unsat <= -roll_cap AND roll_err < 0.
     IF NOT truly_airborne {
       SET VTOL_LEVEL_ROLL_INT TO 0.
-    } ELSE IF alloc_limited_prev {
+    } ELSE IF alloc_limited_prev OR lag_limited_prev OR roll_at_hi OR roll_at_lo {
       LOCAL roll_unwind_fac IS CLAMP(1.0 - level_i_unwind_per_s * IFC_ACTUAL_DT, 0, 1).
       SET VTOL_LEVEL_ROLL_INT TO VTOL_LEVEL_ROLL_INT * roll_unwind_fac.
-    } ELSE IF NOT roll_at_hi AND NOT roll_at_lo {
+    } ELSE {
       SET VTOL_LEVEL_ROLL_INT TO CLAMP(
         VTOL_LEVEL_ROLL_INT + roll_err * IFC_ACTUAL_DT,
         -level_i_lim,
          level_i_lim
       ).
-      SET roll_i_term TO VTOL_LEVEL_ROLL_INT * level_roll_ki.
-      SET roll_unsat TO roll_p_term + roll_d_term + roll_i_term.
+      SET roll_rate_cmd_i TO VTOL_LEVEL_ROLL_INT * roll_att2rate_ki.
+      SET roll_rate_cmd TO CLAMP(
+        roll_rate_cmd_p + roll_rate_cmd_i,
+        -roll_rate_cmd_max_degs,
+         roll_rate_cmd_max_degs
+      ).
     }
-    SET roll_i_term TO VTOL_LEVEL_ROLL_INT * level_roll_ki.
-    SET roll_unsat TO roll_p_term + roll_d_term + roll_i_term.
-    // Roll-rate damping must oppose rotational rate to avoid overshoot.
+    SET roll_p_term TO roll_rate_cmd_p * roll_rate_kp.
+    SET roll_i_term TO roll_rate_cmd_i * roll_rate_kp.
+    SET roll_d_term TO -roll_rate_degs * roll_rate_kp.
+    SET roll_unsat TO (roll_rate_cmd - roll_rate_degs) * roll_rate_kp.
     SET roll_cmd TO CLAMP(roll_unsat, -1, 1).
     SET VTOL_DIAG_ROLL_ERR TO roll_err.
     SET VTOL_DIAG_ROLL_P TO roll_p_term.
@@ -1120,32 +1342,41 @@ FUNCTION VTOL_TICK_PREARM {
     // further UP (more thrust from the front engines), so the leveling controller must
     // output a negative command when nose is up.  This mirrors roll: roll_err = -bank_ang.
     LOCAL pitch_err IS -pitch_ang.
-    LOCAL pitch_p_term IS pitch_err * level_pitch_kp.
-    // positive pitch_rate_rads = pitching DOWN (VDOT with STARVECTOR).
-    // Damping must oppose motion in command space; with pitch_mix_sign=+1, that means
-    // D must have the SAME sign as pitch_rate_degs (upward rotation => negative rate
-    // => negative command).
-    LOCAL pitch_d_term IS pitch_rate_degs * level_pitch_kd.
-    LOCAL pitch_i_term IS VTOL_LEVEL_PITCH_INT * level_pitch_ki.
-    LOCAL pitch_unsat IS pitch_p_term + pitch_d_term + pitch_i_term.
+    LOCAL pitch_rate_cmd_p IS -pitch_err * pitch_att2rate_kp.
+    LOCAL pitch_rate_cmd_i IS -VTOL_LEVEL_PITCH_INT * pitch_att2rate_ki.
+    LOCAL pitch_rate_cmd IS CLAMP(
+      pitch_rate_cmd_p + pitch_rate_cmd_i,
+      -pitch_rate_cmd_max_degs,
+       pitch_rate_cmd_max_degs
+    ).
+    LOCAL pitch_p_term IS pitch_err * pitch_att2rate_kp * pitch_rate_kp.
+    LOCAL pitch_i_term IS VTOL_LEVEL_PITCH_INT * pitch_att2rate_ki * pitch_rate_kp.
+    LOCAL pitch_d_term IS pitch_rate_degs * pitch_rate_kp.
+    LOCAL pitch_unsat IS (pitch_rate_degs - pitch_rate_cmd) * pitch_rate_kp.
     LOCAL pitch_at_hi IS pitch_unsat >= pitch_cap AND pitch_err > 0.
     LOCAL pitch_at_lo IS pitch_unsat <= -pitch_cap AND pitch_err < 0.
     IF NOT truly_airborne {
       SET VTOL_LEVEL_PITCH_INT TO 0.
-    } ELSE IF alloc_limited_prev {
+    } ELSE IF alloc_limited_prev OR lag_limited_prev OR pitch_at_hi OR pitch_at_lo {
       LOCAL pitch_unwind_fac IS CLAMP(1.0 - level_i_unwind_per_s * IFC_ACTUAL_DT, 0, 1).
       SET VTOL_LEVEL_PITCH_INT TO VTOL_LEVEL_PITCH_INT * pitch_unwind_fac.
-    } ELSE IF NOT pitch_at_hi AND NOT pitch_at_lo {
+    } ELSE {
       SET VTOL_LEVEL_PITCH_INT TO CLAMP(
         VTOL_LEVEL_PITCH_INT + pitch_err * IFC_ACTUAL_DT,
         -level_i_lim,
          level_i_lim
       ).
-      SET pitch_i_term TO VTOL_LEVEL_PITCH_INT * level_pitch_ki.
-      SET pitch_unsat TO pitch_p_term + pitch_d_term + pitch_i_term.
+      SET pitch_rate_cmd_i TO -VTOL_LEVEL_PITCH_INT * pitch_att2rate_ki.
+      SET pitch_rate_cmd TO CLAMP(
+        pitch_rate_cmd_p + pitch_rate_cmd_i,
+        -pitch_rate_cmd_max_degs,
+         pitch_rate_cmd_max_degs
+      ).
     }
-    SET pitch_i_term TO VTOL_LEVEL_PITCH_INT * level_pitch_ki.
-    SET pitch_unsat TO pitch_p_term + pitch_d_term + pitch_i_term.
+    SET pitch_p_term TO pitch_err * pitch_att2rate_kp * pitch_rate_kp.
+    SET pitch_i_term TO VTOL_LEVEL_PITCH_INT * pitch_att2rate_ki * pitch_rate_kp.
+    SET pitch_d_term TO pitch_rate_degs * pitch_rate_kp.
+    SET pitch_unsat TO (pitch_rate_degs - pitch_rate_cmd) * pitch_rate_kp.
     SET pitch_cmd TO CLAMP(pitch_unsat, -1, 1).
     SET VTOL_DIAG_PITCH_ERR TO pitch_err.
     SET VTOL_DIAG_PITCH_P TO pitch_p_term.
@@ -1174,13 +1405,62 @@ FUNCTION VTOL_TICK_PREARM {
   LOCAL upset_pitch_deg IS _AMO_CFG_NUM("vtol_upset_pitch_deg", VTOL_UPSET_PITCH_DEG, 0).
   LOCAL upset_roll_rate_degs IS _AMO_CFG_NUM("vtol_upset_roll_rate_degs", VTOL_UPSET_ROLL_RATE_DEGS, 0).
   LOCAL upset_pitch_rate_degs IS _AMO_CFG_NUM("vtol_upset_pitch_rate_degs", VTOL_UPSET_PITCH_RATE_DEGS, 0).
-  LOCAL upset_active IS FALSE.
+  LOCAL upset_exit_bank_deg IS _AMO_CFG_NUM("vtol_upset_exit_bank_deg", VTOL_UPSET_EXIT_BANK_DEG, 0).
+  LOCAL upset_exit_pitch_deg IS _AMO_CFG_NUM("vtol_upset_exit_pitch_deg", VTOL_UPSET_EXIT_PITCH_DEG, 0).
+  LOCAL upset_exit_roll_rate_degs IS _AMO_CFG_NUM(
+    "vtol_upset_exit_roll_rate_degs",
+    VTOL_UPSET_EXIT_ROLL_RATE_DEGS,
+    0
+  ).
+  LOCAL upset_exit_pitch_rate_degs IS _AMO_CFG_NUM(
+    "vtol_upset_exit_pitch_rate_degs",
+    VTOL_UPSET_EXIT_PITCH_RATE_DEGS,
+    0
+  ).
+  LOCAL upset_hold_s IS _AMO_CFG_NUM("vtol_upset_hold_s", VTOL_UPSET_HOLD_S, 0).
+  IF upset_exit_bank_deg <= 0 { SET upset_exit_bank_deg TO upset_bank_deg * 0.70. }
+  IF upset_exit_pitch_deg <= 0 { SET upset_exit_pitch_deg TO upset_pitch_deg * 0.70. }
+  IF upset_exit_roll_rate_degs <= 0 { SET upset_exit_roll_rate_degs TO upset_roll_rate_degs * 0.70. }
+  IF upset_exit_pitch_rate_degs <= 0 { SET upset_exit_pitch_rate_degs TO upset_pitch_rate_degs * 0.70. }
+  IF upset_hold_s < 0 { SET upset_hold_s TO 0. }
+
+  LOCAL upset_enter IS FALSE.
+  LOCAL upset_exit_ok IS FALSE.
   IF NOT bypass_att_feedback {
-    IF bank_abs_u > upset_bank_deg { SET upset_active TO TRUE. }
-    IF pitch_abs_u > upset_pitch_deg { SET upset_active TO TRUE. }
-    IF roll_rate_abs_u > upset_roll_rate_degs { SET upset_active TO TRUE. }
-    IF pitch_rate_abs_u > upset_pitch_rate_degs { SET upset_active TO TRUE. }
+    IF bank_abs_u > upset_bank_deg { SET upset_enter TO TRUE. }
+    IF pitch_abs_u > upset_pitch_deg { SET upset_enter TO TRUE. }
+    IF roll_rate_abs_u > upset_roll_rate_degs { SET upset_enter TO TRUE. }
+    IF pitch_rate_abs_u > upset_pitch_rate_degs { SET upset_enter TO TRUE. }
+
+    IF bank_abs_u < upset_exit_bank_deg {
+      IF pitch_abs_u < upset_exit_pitch_deg {
+        IF roll_rate_abs_u < upset_exit_roll_rate_degs {
+          IF pitch_rate_abs_u < upset_exit_pitch_rate_degs {
+            SET upset_exit_ok TO TRUE.
+          }
+        }
+      }
+    }
+  } ELSE {
+    SET _vtol_upset_latched TO FALSE.
+    SET _vtol_upset_entry_ut TO -1.
   }
+
+  IF _vtol_upset_latched {
+    IF _vtol_upset_entry_ut < 0 { SET _vtol_upset_entry_ut TO TIME:SECONDS. }
+    LOCAL hold_elapsed IS TRUE.
+    IF upset_hold_s > 0 {
+      SET hold_elapsed TO (TIME:SECONDS - _vtol_upset_entry_ut) >= upset_hold_s.
+    }
+    IF hold_elapsed AND upset_exit_ok {
+      SET _vtol_upset_latched TO FALSE.
+      SET _vtol_upset_entry_ut TO -1.
+    }
+  } ELSE IF upset_enter {
+    SET _vtol_upset_latched TO TRUE.
+    SET _vtol_upset_entry_ut TO TIME:SECONDS.
+  }
+  LOCAL upset_active IS _vtol_upset_latched.
   SET VTOL_UPSET_ACTIVE TO upset_active.
   IF upset_active {
     LOCAL upset_cmd_roll_max IS _AMO_CFG_NUM("vtol_upset_cmd_roll_max", VTOL_UPSET_CMD_MAX_ROLL, 0).
@@ -1192,35 +1472,95 @@ FUNCTION VTOL_TICK_PREARM {
     IF upset_cmd_pitch_max <= 0 { SET upset_cmd_pitch_max TO upset_cmd_legacy. }
     IF upset_cmd_roll_max > 1 { SET upset_cmd_roll_max TO 1.0. }
     IF upset_cmd_pitch_max > 1 { SET upset_cmd_pitch_max TO 1.0. }
-    LOCAL bank_err_u IS -ARCSIN(CLAMP(-VDOT(_starvec, _upvec), -1, 1)).
-    // Negated: nose-up (positive pitch_ang) needs a nose-DOWN command.
-    // Same sign convention as the normal leveling PID (pitch_err = -pitch_ang).
-    LOCAL pitch_err_u IS -(90 - VANG(_forevec, _upvec)).
+    LOCAL upset_roll_rate_kp IS _AMO_CFG_NUM(
+      "vtol_upset_roll_rate_kp",
+      VTOL_UPSET_ROLL_RATE_KP,
+      0
+    ).
+    LOCAL upset_pitch_rate_kp IS _AMO_CFG_NUM(
+      "vtol_upset_pitch_rate_kp",
+      VTOL_UPSET_PITCH_RATE_KP,
+      0
+    ).
+    IF upset_roll_rate_kp <= 0 { SET upset_roll_rate_kp TO level_roll_kd. }
+    IF upset_pitch_rate_kp <= 0 { SET upset_pitch_rate_kp TO level_pitch_kd. }
     LOCAL roll_rate_u_degs IS roll_rate_rads * deg_per_rad.
     LOCAL pitch_rate_u_degs IS pitch_rate_rads * deg_per_rad.
     SET VTOL_LEVEL_ROLL_INT TO 0.
     SET VTOL_LEVEL_PITCH_INT TO 0.
     SET roll_auto_feedback TO TRUE.
     SET pitch_auto_feedback TO TRUE.
+    // Upset recovery is rate-priority: damp rates first, avoid attitude-P flipovers.
     SET roll_cmd TO CLAMP(
-      bank_err_u * level_roll_kp - roll_rate_u_degs * level_roll_kd,
+      -roll_rate_u_degs * upset_roll_rate_kp,
       -upset_cmd_roll_max, upset_cmd_roll_max).
     SET pitch_cmd TO CLAMP(
-      pitch_err_u * level_pitch_kp + pitch_rate_u_degs * level_pitch_kd,
+      pitch_rate_u_degs * upset_pitch_rate_kp,
       -upset_cmd_pitch_max, upset_cmd_pitch_max).
   }
   SET VTOL_DIAG_CMD_ROLL_POSTUPSET TO roll_cmd.
   SET VTOL_DIAG_CMD_PITCH_POSTUPSET TO pitch_cmd.
 
   LOCAL cmd_slew IS _AMO_CFG_NUM("vtol_cmd_slew_per_s", VTOL_CMD_SLEW_PER_S, 0).
-  IF cmd_slew > 0 {
-    LOCAL cmd_step IS cmd_slew * IFC_ACTUAL_DT.
-    IF NOT roll_auto_feedback {
-      SET roll_cmd TO CLAMP(roll_cmd, _vtol_prev_roll_cmd - cmd_step, _vtol_prev_roll_cmd + cmd_step).
-    }
-    IF NOT pitch_auto_feedback {
-      SET pitch_cmd TO CLAMP(pitch_cmd, _vtol_prev_pitch_cmd - cmd_step, _vtol_prev_pitch_cmd + cmd_step).
-    }
+  LOCAL level_cmd_slew IS _AMO_CFG_NUM("vtol_level_cmd_slew_per_s", VTOL_LEVEL_CMD_SLEW_PER_S, 0).
+  LOCAL upset_pitch_slew_bypass IS _AMO_CFG_BOOL(
+    "vtol_upset_pitch_slew_bypass",
+    VTOL_UPSET_PITCH_SLEW_BYPASS
+  ).
+  LOCAL lag_tau_s IS _AMO_CFG_NUM("vtol_lag_filter_tau_s", VTOL_LAG_FILTER_TAU_S, 0).
+  LOCAL level_cmd_lag_ref_s IS _AMO_CFG_NUM(
+    "vtol_level_cmd_slew_lag_ref_s",
+    VTOL_LEVEL_CMD_SLEW_LAG_REF_S,
+    0.01
+  ).
+  LOCAL level_cmd_slew_min_scale IS _AMO_CFG_NUM(
+    "vtol_level_cmd_slew_min_scale",
+    VTOL_LEVEL_CMD_SLEW_MIN_SCALE,
+    0
+  ).
+  IF level_cmd_slew <= 0 { SET level_cmd_slew TO cmd_slew. }
+  IF level_cmd_slew_min_scale < 0 { SET level_cmd_slew_min_scale TO 0. }
+  IF level_cmd_slew_min_scale > 1 { SET level_cmd_slew_min_scale TO 1. }
+  LOCAL roll_slew_lag_s IS em_lag_s.
+  LOCAL pitch_slew_lag_s IS em_lag_s.
+  IF roll_auto_feedback {
+    SET roll_slew_lag_s TO _VTOL_AXIS_EFFECTIVE_SPOOL_LAG_S("roll").
+  }
+  IF pitch_auto_feedback {
+    SET pitch_slew_lag_s TO _VTOL_AXIS_EFFECTIVE_SPOOL_LAG_S("pitch").
+  }
+  IF roll_slew_lag_s < 0 { SET roll_slew_lag_s TO 0. }
+  IF pitch_slew_lag_s < 0 { SET pitch_slew_lag_s TO 0. }
+  SET _vtol_roll_lag_filt_s TO _VTOL_FILTER_LAG(_vtol_roll_lag_filt_s, roll_slew_lag_s, lag_tau_s).
+  SET _vtol_pitch_lag_filt_s TO _VTOL_FILTER_LAG(_vtol_pitch_lag_filt_s, pitch_slew_lag_s, lag_tau_s).
+  SET roll_slew_lag_s TO _vtol_roll_lag_filt_s.
+  SET pitch_slew_lag_s TO _vtol_pitch_lag_filt_s.
+  LOCAL roll_level_cmd_slew_scale IS 1.0.
+  LOCAL pitch_level_cmd_slew_scale IS 1.0.
+  IF level_cmd_lag_ref_s > 0.01 AND roll_slew_lag_s > level_cmd_lag_ref_s {
+    SET roll_level_cmd_slew_scale TO level_cmd_lag_ref_s / roll_slew_lag_s.
+  }
+  IF level_cmd_lag_ref_s > 0.01 AND pitch_slew_lag_s > level_cmd_lag_ref_s {
+    SET pitch_level_cmd_slew_scale TO level_cmd_lag_ref_s / pitch_slew_lag_s.
+  }
+  SET roll_level_cmd_slew_scale TO CLAMP(roll_level_cmd_slew_scale, level_cmd_slew_min_scale, 1.0).
+  SET pitch_level_cmd_slew_scale TO CLAMP(pitch_level_cmd_slew_scale, level_cmd_slew_min_scale, 1.0).
+  LOCAL roll_level_cmd_slew_use IS level_cmd_slew * roll_level_cmd_slew_scale.
+  LOCAL pitch_level_cmd_slew_use IS level_cmd_slew * pitch_level_cmd_slew_scale.
+  LOCAL roll_cmd_slew_use IS cmd_slew.
+  LOCAL pitch_cmd_slew_use IS cmd_slew.
+  IF roll_auto_feedback { SET roll_cmd_slew_use TO roll_level_cmd_slew_use. }
+  IF pitch_auto_feedback { SET pitch_cmd_slew_use TO pitch_level_cmd_slew_use. }
+  IF upset_active AND upset_pitch_slew_bypass {
+    SET pitch_cmd_slew_use TO 0.
+  }
+  IF roll_cmd_slew_use > 0 {
+    LOCAL roll_cmd_step IS roll_cmd_slew_use * IFC_ACTUAL_DT.
+    SET roll_cmd TO CLAMP(roll_cmd, _vtol_prev_roll_cmd - roll_cmd_step, _vtol_prev_roll_cmd + roll_cmd_step).
+  }
+  IF pitch_cmd_slew_use > 0 {
+    LOCAL pitch_cmd_step IS pitch_cmd_slew_use * IFC_ACTUAL_DT.
+    SET pitch_cmd TO CLAMP(pitch_cmd, _vtol_prev_pitch_cmd - pitch_cmd_step, _vtol_prev_pitch_cmd + pitch_cmd_step).
   }
   SET VTOL_DIAG_CMD_ROLL_POSTSLEW TO roll_cmd.
   SET VTOL_DIAG_CMD_PITCH_POSTSLEW TO pitch_cmd.
@@ -1305,6 +1645,12 @@ FUNCTION VTOL_RELEASE {
   SET VTOL_THR_GUARD_ACTIVE TO FALSE.
   SET VTOL_THR_INPUT_USED TO 0.5.
   SET VTOL_COLLECTIVE_EFF_EST TO VTOL_COLLECTIVE.
+  SET _vtol_em_lag_filt_s TO -1.
+  SET _vtol_em_lag_filt_cycle_ut TO -1.
+  SET _vtol_roll_lag_filt_s TO -1.
+  SET _vtol_pitch_lag_filt_s TO -1.
+  SET _vtol_upset_latched TO FALSE.
+  SET _vtol_upset_entry_ut TO -1.
   SET VTOL_ACTIVE TO FALSE.
 }
 
@@ -1336,4 +1682,10 @@ FUNCTION VTOL_RESET {
   _VTOL_CLEAR_DIAG().
   SET _vtol_prev_roll_cmd   TO 0.0.
   SET _vtol_prev_pitch_cmd  TO 0.0.
+  SET _vtol_em_lag_filt_s   TO -1.
+  SET _vtol_em_lag_filt_cycle_ut TO -1.
+  SET _vtol_roll_lag_filt_s TO -1.
+  SET _vtol_pitch_lag_filt_s TO -1.
+  SET _vtol_upset_latched TO FALSE.
+  SET _vtol_upset_entry_ut TO -1.
 }

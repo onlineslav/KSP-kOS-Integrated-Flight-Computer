@@ -458,6 +458,17 @@ GLOBAL ABRK_DEFAULT_STRENGTH      IS 0.70. // 0..1 default per-wheel brake stren
 GLOBAL VTOL_VS_KP            IS 0.30.  // collective per (m/s) VS error
 GLOBAL VTOL_VS_KI            IS 0.04.  // collective per (m/s·s) VS error integral
 GLOBAL VTOL_VS_INTEGRAL_LIM  IS 0.40.  // anti-windup clamp on VS integral
+GLOBAL VTOL_VS_CMD_UP_SLEW_MPS2 IS 1.2. // m/s^2 max upward VS-command slew
+GLOBAL VTOL_VS_CMD_DN_SLEW_MPS2 IS 1.8. // m/s^2 max downward VS-command slew
+GLOBAL VTOL_VS_CMD_LAG_REF_S IS 0.8. // s spool-lag reference for VS-command slew scheduling
+GLOBAL VTOL_VS_CMD_SLEW_MIN_SCALE IS 0.35. // minimum scale applied to VS-command slew under high lag
+GLOBAL VTOL_VS_GAIN_LAG_REF_S IS 0.8. // s spool-lag reference for VS PI gain scheduling
+GLOBAL VTOL_VS_KP_MIN_SCALE IS 0.45. // lower bound on VS proportional gain scale under high lag
+GLOBAL VTOL_VS_KI_MIN_SCALE IS 0.25. // lower bound on VS integral gain scale under high lag
+GLOBAL VTOL_VS_AW_ALPHA_MIN IS 0.95. // freeze/unwind VS integrator when prior allocator alpha is below this
+GLOBAL VTOL_VS_AW_LAG_S IS 0.6. // freeze/unwind VS integrator when model spool lag exceeds this
+GLOBAL VTOL_VS_AW_EFF_ERR_MIN IS 0.05. // minimum |cmd-achieved collective| error to treat lag as actuator-limited
+GLOBAL VTOL_VS_I_UNWIND_PER_S IS 1.8. // /s VS-integrator bleed rate while actuator-limited/saturated
 GLOBAL VTOL_ALT_KP           IS 0.40.  // (m/s) VS command per metre altitude error
 GLOBAL VTOL_MAX_VS           IS 8.0.   // m/s  max commanded vertical speed
 GLOBAL VTOL_COLLECTIVE_MAX   IS 0.90.  // reserve headroom for differential attitude authority
@@ -489,9 +500,27 @@ GLOBAL VTOL_LEVEL_ROLL_KI   IS 0.010. // roll integral authority per deg*s bank 
 GLOBAL VTOL_LEVEL_PITCH_KP  IS 0.40.  // pitch authority fraction per degree of pitch (full at 2.5°)
 GLOBAL VTOL_LEVEL_PITCH_KD  IS 0.03.  // pitch authority per deg/s pitch rate (damp divergence)
 GLOBAL VTOL_LEVEL_PITCH_KI  IS 0.015. // pitch integral authority per deg*s pitch error (steady bias removal)
+GLOBAL VTOL_LEVEL_ROLL_ATT2RATE_KP IS 2.5. // (deg/s) target roll-rate per degree bank error
+GLOBAL VTOL_LEVEL_PITCH_ATT2RATE_KP IS 3.0. // (deg/s) target pitch-rate per degree pitch error magnitude
+GLOBAL VTOL_LEVEL_ROLL_ATT2RATE_KI IS 0.10. // (deg/s) per (deg*s) roll-angle integral contribution
+GLOBAL VTOL_LEVEL_PITCH_ATT2RATE_KI IS 0.10. // (deg/s) per (deg*s) pitch-angle integral contribution
+GLOBAL VTOL_LEVEL_ROLL_RATE_KP IS 0.05. // command per (deg/s) roll-rate error
+GLOBAL VTOL_LEVEL_PITCH_RATE_KP IS 0.05. // command per (deg/s) pitch-rate error
+GLOBAL VTOL_LEVEL_ROLL_RATE_CMD_MAX_DEGS IS 20.0. // max target roll-rate magnitude from outer attitude loop
+GLOBAL VTOL_LEVEL_PITCH_RATE_CMD_MAX_DEGS IS 24.0. // max target pitch-rate magnitude from outer attitude loop
 GLOBAL VTOL_LEVEL_I_LIM     IS 40.0.  // deg*s clamp for level-hold integrators
+GLOBAL VTOL_LEVEL_GAIN_LAG_REF_S IS 0.8. // s spool-lag reference for attitude gain scheduling
+GLOBAL VTOL_LAG_FILTER_TAU_S IS 0.45. // s low-pass filter time constant for spool-lag scheduling signals
+GLOBAL VTOL_LEVEL_KP_MIN_SCALE IS 0.45. // lower bound on attitude proportional gain scale under high lag
+GLOBAL VTOL_LEVEL_KD_MIN_SCALE IS 0.45. // lower bound on attitude damping gain scale under high lag
+GLOBAL VTOL_LEVEL_KI_MIN_SCALE IS 0.20. // lower bound on attitude integral gain scale under high lag
 GLOBAL VTOL_LEVEL_AW_ALPHA_MIN IS 0.98. // freeze/unwind attitude integrators when last allocator alpha drops below this
+GLOBAL VTOL_LEVEL_AW_LAG_S IS 0.6. // freeze/unwind attitude integrators when model spool lag exceeds this
+GLOBAL VTOL_LEVEL_AW_EFF_ERR_MIN IS 0.05. // minimum |cmd-achieved collective| error to treat lag as actuator-limited
 GLOBAL VTOL_LEVEL_I_UNWIND_PER_S IS 2.0. // /s integrator bleed rate while allocator is authority-limited
+GLOBAL VTOL_LEVEL_CMD_SLEW_PER_S IS 2.0. // /s max attitude feedback command slew before engine allocation
+GLOBAL VTOL_LEVEL_CMD_SLEW_LAG_REF_S IS 0.8. // s spool-lag reference for feedback-command slew scheduling
+GLOBAL VTOL_LEVEL_CMD_SLEW_MIN_SCALE IS 0.35. // minimum scale for feedback-command slew under high lag
 GLOBAL VTOL_LEVEL_ON_GROUND_DEFAULT IS FALSE. // TRUE = allow auto-level while LANDED/PRELAUNCH
 GLOBAL VTOL_LEVEL_MIN_AGL_M IS 0.8. // min AGL for auto-level when ground-leveling is disabled
 GLOBAL VTOL_GROUND_CONTACT_AGL_M IS 1.5. // treat as ground-contact only below this AGL
@@ -526,9 +555,17 @@ GLOBAL VTOL_UPSET_BANK_DEG IS 18.0. // upset mode activates above this absolute 
 GLOBAL VTOL_UPSET_PITCH_DEG IS 14.0. // upset mode activates above this absolute pitch
 GLOBAL VTOL_UPSET_ROLL_RATE_DEGS IS 18.0. // upset mode activates above this absolute roll rate
 GLOBAL VTOL_UPSET_PITCH_RATE_DEGS IS 18.0. // upset mode activates above this absolute pitch rate
+GLOBAL VTOL_UPSET_EXIT_BANK_DEG IS 12.0. // upset exits only when |bank| is below this (hysteresis)
+GLOBAL VTOL_UPSET_EXIT_PITCH_DEG IS 9.0. // upset exits only when |pitch| is below this (hysteresis)
+GLOBAL VTOL_UPSET_EXIT_ROLL_RATE_DEGS IS 10.0. // upset exits only when |roll-rate| is below this (hysteresis)
+GLOBAL VTOL_UPSET_EXIT_PITCH_RATE_DEGS IS 10.0. // upset exits only when |pitch-rate| is below this (hysteresis)
+GLOBAL VTOL_UPSET_HOLD_S IS 1.5. // minimum time upset stays latched once entered
 GLOBAL VTOL_UPSET_CMD_MAX IS 0.35. // max |roll/pitch command| allowed while upset mode is active
 GLOBAL VTOL_UPSET_CMD_MAX_ROLL IS 0.70. // upset-mode roll command cap (higher to preserve recovery authority)
 GLOBAL VTOL_UPSET_CMD_MAX_PITCH IS 0.35. // upset-mode pitch command cap
+GLOBAL VTOL_UPSET_ROLL_RATE_KP IS 0.04. // upset-mode roll-rate damping gain (command per deg/s)
+GLOBAL VTOL_UPSET_PITCH_RATE_KP IS 0.05. // upset-mode pitch-rate damping gain (command per deg/s)
+GLOBAL VTOL_UPSET_PITCH_SLEW_BYPASS IS TRUE. // TRUE = bypass pitch command slew while upset recovery is active
 GLOBAL VTOL_UPSET_DIFF_ATTEN_MIN IS 0.55. // minimum differential authority scale while upset is active
 GLOBAL VTOL_UPSET_ENGINE_LIMIT_FLOOR IS 0.02. // per-engine limiter floor while upset is active
 GLOBAL VTOL_UPSET_GUARD_AGL_M IS 20.0. // below this AGL, upset + low pilot throttle is clamped to preserve lift

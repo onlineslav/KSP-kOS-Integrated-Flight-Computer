@@ -16,6 +16,8 @@
 //   EM_GET_MARGIN()            - supply - demand (units/s)
 //   EM_GET_LOOKAHEAD_MARGIN()  - margin at lookahead altitude
 //   EM_GET_SPOOL_LAG_S()       - seconds to reach THROTTLE_CMD
+//   EM_GET_SPOOL_LAG_AT(i)     - per-engine spool lag (seconds) for EM engine index
+//   EM_GET_SPOOL_LAG_FOR_ENGINE(eng_ref) - per-engine lag by engine reference
 //
 // Ownership:
 //   Reads:  THROTTLE_CMD, IFC_ACTUAL_DT (globals from state/autothrottle)
@@ -199,6 +201,37 @@ FUNCTION EM_TICK {
 FUNCTION EM_GET_MARGIN          { RETURN TELEM_EM_MARGIN. }
 FUNCTION EM_GET_LOOKAHEAD_MARGIN { RETURN TELEM_EM_LOOKAHEAD_MARGIN. }
 FUNCTION EM_GET_SPOOL_LAG_S     { RETURN TELEM_EM_WORST_SPOOL_LAG. }
+FUNCTION EM_GET_SPOOL_LAG_AT {
+    PARAMETER idx.
+    IF idx < 0 { RETURN -1. }
+    IF idx >= _em_spool_states:LENGTH { RETURN -1. }
+
+    LOCAL ed IS _em_engine_list[idx].
+    LOCAL spool IS _em_spool_states[idx].
+    LOCAL thr IS THROTTLE_CMD.
+    LOCAL delta IS ABS(thr - spool).
+    IF delta <= 0.01 { RETURN 0. }
+
+    LOCAL me IS _EM_GET_ACTIVE_MODE_ENTRY(ed).
+    LOCAL k_dn IS _EM_DB_NUM(me, "k_down", 0.5).
+    LOCAL k_up IS _EM_DB_NUM(me, "k_up",   k_dn).
+    LOCAL k_eff IS k_dn.
+    IF thr > spool { SET k_eff TO k_up. }
+    IF k_eff <= 0.001 { RETURN 0. }
+    RETURN -LN(0.01 / delta) / k_eff.
+}
+FUNCTION EM_GET_SPOOL_LAG_FOR_ENGINE {
+    PARAMETER eng_ref.
+    LOCAL i IS 0.
+    UNTIL i >= _em_engine_list:LENGTH {
+        LOCAL ed IS _em_engine_list[i].
+        IF ed["eng_ref"] = eng_ref {
+            RETURN EM_GET_SPOOL_LAG_AT(i).
+        }
+        SET i TO i + 1.
+    }
+    RETURN -1.
+}
 FUNCTION EM_GET_SPOOL_AT {
     PARAMETER idx.
     IF idx < 0 { RETURN -1. }
