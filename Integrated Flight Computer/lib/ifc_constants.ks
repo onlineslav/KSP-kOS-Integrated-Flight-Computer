@@ -675,3 +675,15 @@ GLOBAL ASC_SPOOL_THR_THRESH IS 0.05.  // fraction of rated AB thrust = spool-dow
 // ----------------------------
 GLOBAL ASC_CIRC_ETA_S       IS 45.0.  // s   coast to apoapsis trigger
 GLOBAL ASC_CIRC_PERI_TGT    IS 75000. // m   target periapsis for circularisation check
+
+// ----------------------------
+// Engine model (ifc_engine_model.ks)
+// ----------------------------
+GLOBAL EM_G0                     IS 9.80665. // m/s²    standard gravity
+GLOBAL EM_KSL_RHO                IS 1.225.   // kg/m³   Kerbin sea-level air density
+GLOBAL EM_IA_DENSITY             IS 5.0.     // kg/unit IntakeAir resource density (KSP stock)
+GLOBAL EM_LOOKAHEAD_S            IS 30.0.    // s       altitude lookahead for starvation prediction
+GLOBAL EM_SCALE_MIN              IS 0.10.    // minimum allowed engine/intake scale factor
+GLOBAL EM_SCALE_MAX              IS 10.0.    // maximum allowed engine/intake scale factor
+GLOBAL EM_STARVATION_WARN_MARGIN IS -0.05.  // units/s margin threshold for starvation alert
+GLOBAL EM_STARVATION_WARN_RATE_S IS 5.0.    // s       minimum interval between starvation alerts

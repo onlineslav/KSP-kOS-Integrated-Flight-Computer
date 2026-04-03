@@ -553,9 +553,38 @@ GLOBAL TELEM_ASC_RK_IGN_ON       IS 0.
 GLOBAL TELEM_ASC_RK_FLAMEOUTS    IS 0.
 
 // ----------------------------
+// Engine model telemetry (ifc_engine_model.ks writes these)
+// ----------------------------
+GLOBAL TELEM_EM_DB_LOADED        IS FALSE.
+GLOBAL TELEM_EM_ENG_COUNT        IS 0.
+GLOBAL TELEM_EM_INTAKE_COUNT     IS 0.
+GLOBAL TELEM_EM_Q_DEMAND         IS 0.
+GLOBAL TELEM_EM_Q_SUPPLY         IS 0.
+GLOBAL TELEM_EM_MARGIN           IS 0.
+GLOBAL TELEM_EM_LOOKAHEAD_MARGIN IS 0.
+GLOBAL TELEM_EM_WORST_SPOOL_LAG  IS 0.
+GLOBAL TELEM_EM_MACH             IS 0.
+GLOBAL TELEM_EM_P_ATM            IS 0.
+GLOBAL TELEM_EM_RHO              IS 0.
+GLOBAL TELEM_EM_STARVING         IS 0.
+
+// ----------------------------
 // Init / reset
 // ----------------------------
 FUNCTION IFC_INIT_STATE {
+  SET TELEM_EM_DB_LOADED        TO FALSE.
+  SET TELEM_EM_ENG_COUNT        TO 0.
+  SET TELEM_EM_INTAKE_COUNT     TO 0.
+  SET TELEM_EM_Q_DEMAND         TO 0.
+  SET TELEM_EM_Q_SUPPLY         TO 0.
+  SET TELEM_EM_MARGIN           TO 0.
+  SET TELEM_EM_LOOKAHEAD_MARGIN TO 0.
+  SET TELEM_EM_WORST_SPOOL_LAG  TO 0.
+  SET TELEM_EM_MACH             TO 0.
+  SET TELEM_EM_P_ATM            TO 0.
+  SET TELEM_EM_RHO              TO 0.
+  SET TELEM_EM_STARVING         TO 0.
+
   SET IFC_PHASE          TO PHASE_APPROACH.
   SET IFC_SUBPHASE       TO SUBPHASE_FLY_TO_FIX.
   SET IFC_PHASE_START_UT TO TIME:SECONDS.

@@ -1,0 +1,2019 @@
+{
+  "engines": {
+    "miniJetEngine": {
+      "displayName": "J-20 Juno",
+      "defaultDiameter": 0.625,
+      "maxThrust": 20,
+      "isp_vac": 6400,
+      "ratio_ia": 22,
+      "ratio_lf": 1,
+      "k_up": 0.12,
+      "k_down": 0.5,
+      "machLimit": 2.4,
+      "vel_at_zero": 1,
+      "atm_at_one": 1,
+      "builtinIntake": 0,
+      "builtinArea": 0,
+      "builtinIntakeSpeed": 0,
+      "multimode": 0,
+      "velCurve": [
+        [
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0.44,
+          0.897,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          0.1988732,
+          0.1988732
+        ],
+        [
+          1.3,
+          1.03,
+          0,
+          0
+        ],
+        [
+          2,
+          0.68,
+          -1.065708,
+          -1.065708
+        ],
+        [
+          2.4,
+          0,
+          0,
+          0
+        ]
+      ],
+      "atmCurve": [
+        [
+          0,
+          0,
+          0,
+          0.7448742
+        ],
+        [
+          0.072,
+          0.13,
+          2.075459,
+          2.075459
+        ],
+        [
+          0.16,
+          0.28,
+          1.464173,
+          1.464173
+        ],
+        [
+          0.42,
+          0.578,
+          0.93687,
+          0.93687
+        ],
+        [
+          1,
+          1,
+          0.5529748,
+          0
+        ]
+      ]
+    },
+    "JetEngine": {
+      "displayName": "J-33 Wheesley",
+      "defaultDiameter": 1.25,
+      "maxThrust": 120,
+      "isp_vac": 10500,
+      "ratio_ia": 127,
+      "ratio_lf": 1,
+      "k_up": 0.12,
+      "k_down": 0.5,
+      "machLimit": 2.5,
+      "vel_at_zero": 1,
+      "atm_at_one": 1,
+      "builtinIntake": 0,
+      "builtinArea": 0,
+      "builtinIntakeSpeed": 0,
+      "multimode": 0,
+      "velCurve": [
+        [
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0.53,
+          0.834,
+          0,
+          0
+        ],
+        [
+          1.3,
+          0.96,
+          0,
+          0
+        ],
+        [
+          1.674,
+          0.843,
+          -0.876726,
+          -0.876726
+        ],
+        [
+          2.5,
+          0,
+          0,
+          0
+        ]
+      ],
+      "atmCurve": [
+        [
+          0,
+          0,
+          0,
+          1.186726
+        ],
+        [
+          0.072,
+          0.092,
+          1.339822,
+          1.339822
+        ],
+        [
+          0.337,
+          0.4,
+          0.8976688,
+          0.8976688
+        ],
+        [
+          1,
+          1,
+          0.9127604,
+          0
+        ]
+      ]
+    },
+    "turboFanSize2": {
+      "displayName": "J-90 Goliath",
+      "defaultDiameter": 2.5,
+      "maxThrust": 360,
+      "isp_vac": 12600,
+      "ratio_ia": 227,
+      "ratio_lf": 1,
+      "k_up": 0.06,
+      "k_down": 0.25,
+      "machLimit": 2.1,
+      "vel_at_zero": 1,
+      "atm_at_one": 1,
+      "builtinIntake": 1,
+      "builtinArea": 0.03,
+      "builtinIntakeSpeed": 30,
+      "multimode": 0,
+      "velCurve": [
+        [
+          0,
+          1,
+          -0.1543096,
+          -0.1543096
+        ],
+        [
+          0.61,
+          0.79,
+          0,
+          0
+        ],
+        [
+          1.5,
+          0.964,
+          0,
+          0
+        ],
+        [
+          2,
+          0.31,
+          -3.278422,
+          -3.278422
+        ],
+        [
+          2.1,
+          0,
+          -0.9205825,
+          -0.9205825
+        ]
+      ],
+      "atmCurve": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0.072,
+          0.085,
+          1.172947,
+          1.172947
+        ],
+        [
+          0.337,
+          0.37,
+          0.98425,
+          0.98425
+        ],
+        [
+          1,
+          1,
+          1.179067,
+          1.179067
+        ]
+      ]
+    },
+    "turboJet": {
+      "displayName": "J-404 Panther",
+      "defaultDiameter": 1.25,
+      "multimode": 1,
+      "modeKeys": [
+        "Dry",
+        "Wet"
+      ],
+      "maxThrust": 85,
+      "vel_at_zero": 1,
+      "atm_at_one": 1
+    },
+    "turboJet__Dry": {
+      "displayName": "J-404 Panther (Dry)",
+      "maxThrust": 85,
+      "isp_vac": 9000,
+      "ratio_ia": 40,
+      "ratio_lf": 1,
+      "k_up": 0.5,
+      "k_down": 0.5,
+      "machLimit": 2.5,
+      "vel_at_zero": 1,
+      "atm_at_one": 1,
+      "velCurve": [
+        [
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0.35,
+          0.932,
+          0,
+          0
+        ],
+        [
+          1,
+          1.13,
+          0.4510796,
+          0.4510796
+        ],
+        [
+          1.75,
+          1.5,
+          0,
+          0
+        ],
+        [
+          2,
+          1.38,
+          -1.126258,
+          -1.126258
+        ],
+        [
+          2.5,
+          0,
+          0,
+          0
+        ]
+      ],
+      "atmCurve": [
+        [
+          0,
+          0,
+          1.069445,
+          0.7244952
+        ],
+        [
+          0.072,
+          0.08,
+          1.472049,
+          1.472049
+        ],
+        [
+          0.17,
+          0.21,
+          1.227685,
+          1.227685
+        ],
+        [
+          0.34,
+          0.39,
+          1.01426,
+          1.01426
+        ],
+        [
+          1,
+          1,
+          0.969697,
+          0.969697
+        ]
+      ]
+    },
+    "turboJet__Wet": {
+      "displayName": "J-404 Panther (Wet)",
+      "maxThrust": 130,
+      "isp_vac": 4000,
+      "ratio_ia": 12,
+      "ratio_lf": 1,
+      "k_up": 0.8,
+      "k_down": 0.8,
+      "machLimit": 3.35,
+      "vel_at_zero": 1,
+      "atm_at_one": 1,
+      "velCurve": [
+        [
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0.18,
+          0.97,
+          0,
+          0
+        ],
+        [
+          0.43,
+          1,
+          0.202683,
+          0.202683
+        ],
+        [
+          1,
+          1.42,
+          1.280302,
+          1.280302
+        ],
+        [
+          2.5,
+          3.63,
+          0,
+          0
+        ],
+        [
+          3,
+          0.58,
+          -2.708558,
+          -2.708558
+        ],
+        [
+          3.35,
+          0,
+          -0.6150925,
+          0
+        ]
+      ],
+      "atmCurve": [
+        [
+          0,
+          0,
+          1.666667,
+          1.666667
+        ],
+        [
+          0.071,
+          0.14,
+          1.961396,
+          1.961396
+        ],
+        [
+          0.34,
+          0.56,
+          1.084002,
+          1.084002
+        ],
+        [
+          1,
+          1,
+          0.5302638,
+          0.5302638
+        ]
+      ]
+    },
+    "turboFanEngine": {
+      "displayName": "J-X4 Whiplash",
+      "defaultDiameter": 1.25,
+      "maxThrust": 130,
+      "isp_vac": 4000,
+      "ratio_ia": 8,
+      "ratio_lf": 1,
+      "k_up": 0.2,
+      "k_down": 0.4,
+      "machLimit": 5.5,
+      "vel_at_zero": 1,
+      "atm_at_one": 1,
+      "builtinIntake": 0,
+      "builtinArea": 0,
+      "builtinIntakeSpeed": 0,
+      "multimode": 0,
+      "velCurve": [
+        [
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0.2,
+          0.98,
+          0,
+          0
+        ],
+        [
+          0.72,
+          1.716,
+          2.433527,
+          2.433527
+        ],
+        [
+          1.36,
+          3.2,
+          1.986082,
+          1.986082
+        ],
+        [
+          2.15,
+          4.9,
+          1.452677,
+          1.452677
+        ],
+        [
+          3,
+          5.8,
+          0.0005786046,
+          0.0005786046
+        ],
+        [
+          4.5,
+          3,
+          -4.279616,
+          -4.279616
+        ],
+        [
+          5.5,
+          0,
+          -0.02420209,
+          0
+        ]
+      ],
+      "atmCurve": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0.045,
+          0.166,
+          4.304647,
+          4.304647
+        ],
+        [
+          0.16,
+          0.5,
+          0.5779132,
+          0.5779132
+        ],
+        [
+          0.5,
+          0.6,
+          0.4809403,
+          0.4809403
+        ],
+        [
+          1,
+          1,
+          1.013946,
+          0
+        ]
+      ]
+    },
+    "RAPIER": {
+      "displayName": "CR-7 RAPIER",
+      "defaultDiameter": 1.25,
+      "multimode": 1,
+      "modeKeys": [
+        "AirBreathing",
+        "ClosedCycle"
+      ],
+      "maxThrust": 105,
+      "vel_at_zero": 1,
+      "atm_at_one": 1
+    },
+    "RAPIER__AirBreathing": {
+      "displayName": "RAPIER (Air-Breathing)",
+      "maxThrust": 105,
+      "isp_vac": 3200,
+      "ratio_ia": 6,
+      "ratio_lf": 1,
+      "k_up": 0.2,
+      "k_down": 0.35,
+      "machLimit": 6,
+      "vel_at_zero": 1,
+      "atm_at_one": 1,
+      "velCurve": [
+        [
+          0,
+          1,
+          0,
+          0.08333334
+        ],
+        [
+          0.2,
+          0.98,
+          0.42074,
+          0.42074
+        ],
+        [
+          0.7,
+          1.8,
+          2.290406,
+          2.290406
+        ],
+        [
+          1.4,
+          4,
+          3.887193,
+          3.887193
+        ],
+        [
+          3.75,
+          8.5,
+          0,
+          0
+        ],
+        [
+          4.5,
+          7.3,
+          -2.831749,
+          -2.831749
+        ],
+        [
+          5.5,
+          3,
+          -5.260566,
+          -5.260566
+        ],
+        [
+          6,
+          0,
+          -0.02420209,
+          0
+        ]
+      ],
+      "atmCurve": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0.018,
+          0.09,
+          7.914787,
+          7.914787
+        ],
+        [
+          0.08,
+          0.3,
+          1.051923,
+          1.051923
+        ],
+        [
+          0.35,
+          0.5,
+          0.3927226,
+          0.3927226
+        ],
+        [
+          1,
+          1,
+          1.055097,
+          0
+        ]
+      ]
+    },
+    "RAPIER__ClosedCycle": {
+      "displayName": "RAPIER (Closed-Cycle)",
+      "maxThrust": 180,
+      "isp_vac": 305,
+      "ratio_ia": 0,
+      "ratio_lf": 0.9,
+      "k_up": 0.2,
+      "k_down": 0.35,
+      "machLimit": 999,
+      "vel_at_zero": 1,
+      "atm_at_one": 1,
+      "velCurve": [
+        [
+          0,
+          1,
+          0,
+          0
+        ]
+      ],
+      "atmCurve": [
+        [
+          0,
+          1,
+          0,
+          0
+        ]
+      ]
+    },
+    "nfa-turbojet-25-1": {
+      "displayName": "NFA Turbojet 2.5m",
+      "defaultDiameter": 2.5,
+      "maxThrust": 540,
+      "isp_vac": 4300,
+      "ratio_ia": 7,
+      "ratio_lf": 1,
+      "k_up": 0.2,
+      "k_down": 0.4,
+      "machLimit": 5.5,
+      "vel_at_zero": 1,
+      "atm_at_one": 1,
+      "builtinIntake": 0,
+      "builtinArea": 0,
+      "builtinIntakeSpeed": 0,
+      "multimode": 0,
+      "velCurve": [
+        [
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0.2,
+          0.98,
+          0,
+          0
+        ],
+        [
+          0.72,
+          1.716,
+          2.433527,
+          2.433527
+        ],
+        [
+          1.36,
+          3.2,
+          1.986082,
+          1.986082
+        ],
+        [
+          2.15,
+          4.9,
+          1.452677,
+          1.452677
+        ],
+        [
+          3,
+          5.8,
+          0.0005786046,
+          0.0005786046
+        ],
+        [
+          4.5,
+          3,
+          -4.279616,
+          -4.279616
+        ],
+        [
+          5.5,
+          0,
+          -0.02420209,
+          0
+        ]
+      ],
+      "atmCurve": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0.045,
+          0.166,
+          4.304647,
+          4.304647
+        ],
+        [
+          0.16,
+          0.5,
+          0.5779132,
+          0.5779132
+        ],
+        [
+          0.5,
+          0.6,
+          0.4809403,
+          0.4809403
+        ],
+        [
+          1,
+          1,
+          1.013946,
+          0
+        ]
+      ]
+    },
+    "nfa-turbofan-25-1": {
+      "displayName": "NFA Turbofan 2.5m",
+      "defaultDiameter": 2.5,
+      "maxThrust": 380,
+      "isp_vac": 10600,
+      "ratio_ia": 11,
+      "ratio_lf": 1,
+      "k_up": 0.1,
+      "k_down": 0.4,
+      "machLimit": 2.5,
+      "vel_at_zero": 1,
+      "atm_at_one": 1,
+      "builtinIntake": 0,
+      "builtinArea": 0,
+      "builtinIntakeSpeed": 0,
+      "multimode": 0,
+      "velCurve": [
+        [
+          0,
+          1,
+          0,
+          -0.125804
+        ],
+        [
+          0.35,
+          0.96,
+          0,
+          0
+        ],
+        [
+          0.8671,
+          1.17,
+          0.5409369,
+          0.8292115
+        ],
+        [
+          1.3943,
+          1.5,
+          0,
+          0
+        ],
+        [
+          2.2051,
+          1.025,
+          -1.837343,
+          -3.49991
+        ],
+        [
+          2.4,
+          0.5,
+          -3.164169,
+          -3.164169
+        ],
+        [
+          2.5,
+          0,
+          0.004306508,
+          0
+        ]
+      ],
+      "atmCurve": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0.1878,
+          0.494,
+          1.429354,
+          2.48742
+        ],
+        [
+          0.3714,
+          0.759,
+          0.8174777,
+          0.8174777
+        ],
+        [
+          0.7211,
+          0.869,
+          0.02965302,
+          0.1299747
+        ],
+        [
+          1,
+          1,
+          0.9829093,
+          0
+        ]
+      ]
+    },
+    "nfa-turbofan-25-2": {
+      "displayName": "NFA Turbofan V2 2.5m",
+      "defaultDiameter": 2.5,
+      "multimode": 1,
+      "modeKeys": [
+        "Cruise",
+        "Reverse"
+      ],
+      "maxThrust": 510,
+      "vel_at_zero": 1,
+      "atm_at_one": 1
+    },
+    "nfa-turbofan-25-2__Cruise": {
+      "displayName": "NFA Turbofan V2 (Cruise)",
+      "maxThrust": 510,
+      "isp_vac": 9000,
+      "ratio_ia": 40,
+      "ratio_lf": 1,
+      "k_up": 0.2,
+      "k_down": 0.4,
+      "machLimit": 3,
+      "vel_at_zero": 1,
+      "atm_at_one": 1,
+      "velCurve": [
+        [
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0.35,
+          0.932,
+          0,
+          0
+        ],
+        [
+          1,
+          1.13,
+          0.4510796,
+          0.4510796
+        ],
+        [
+          2,
+          1.5,
+          0,
+          0
+        ],
+        [
+          2.25,
+          1.38,
+          -1.126258,
+          -1.126258
+        ],
+        [
+          3,
+          0,
+          0,
+          0
+        ]
+      ],
+      "atmCurve": [
+        [
+          0,
+          0,
+          1.069445,
+          0.7244952
+        ],
+        [
+          0.072,
+          0.08,
+          1.472049,
+          1.472049
+        ],
+        [
+          0.17,
+          0.21,
+          1.227685,
+          1.227685
+        ],
+        [
+          0.34,
+          0.39,
+          1.01426,
+          1.01426
+        ],
+        [
+          1,
+          1,
+          0.969697,
+          0.969697
+        ]
+      ]
+    },
+    "nfa-turbofan-25-2__Reverse": {
+      "displayName": "NFA Turbofan V2 (Reverse)",
+      "maxThrust": 260,
+      "isp_vac": 9000,
+      "ratio_ia": 40,
+      "ratio_lf": 1,
+      "k_up": 0.2,
+      "k_down": 0.4,
+      "machLimit": 3,
+      "vel_at_zero": 1,
+      "atm_at_one": 1,
+      "velCurve": [
+        [
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0.35,
+          0.932,
+          0,
+          0
+        ],
+        [
+          1,
+          1.13,
+          0.4510796,
+          0.4510796
+        ],
+        [
+          2,
+          1.5,
+          0,
+          0
+        ],
+        [
+          2.25,
+          1.38,
+          -1.126258,
+          -1.126258
+        ],
+        [
+          3,
+          0,
+          0,
+          0
+        ]
+      ],
+      "atmCurve": [
+        [
+          0,
+          0,
+          1.069445,
+          0.7244952
+        ],
+        [
+          0.072,
+          0.08,
+          1.472049,
+          1.472049
+        ],
+        [
+          0.17,
+          0.21,
+          1.227685,
+          1.227685
+        ],
+        [
+          0.34,
+          0.39,
+          1.01426,
+          1.01426
+        ],
+        [
+          1,
+          1,
+          0.969697,
+          0.969697
+        ]
+      ]
+    },
+    "nfa-turboprop-125-1": {
+      "displayName": "NFA Turboprop 1.25m",
+      "defaultDiameter": 1.25,
+      "maxThrust": 148,
+      "isp_vac": 11600,
+      "ratio_ia": 18,
+      "ratio_lf": 1,
+      "k_up": 0.15,
+      "k_down": 0.4,
+      "machLimit": 1.4,
+      "vel_at_zero": 0.7,
+      "atm_at_one": 1,
+      "builtinIntake": 1,
+      "builtinArea": 0.004,
+      "builtinIntakeSpeed": 10,
+      "multimode": 0,
+      "velCurve": [
+        [
+          0,
+          0.7,
+          0,
+          0
+        ],
+        [
+          0.15,
+          1,
+          0.006952,
+          0.006952
+        ],
+        [
+          0.35,
+          1,
+          0.00903,
+          0.00903
+        ],
+        [
+          0.8,
+          0.1,
+          -0.6571437,
+          -0.6571437
+        ],
+        [
+          1.4,
+          0,
+          0,
+          0
+        ]
+      ],
+      "atmCurve": [
+        [
+          0.1,
+          0,
+          0,
+          0
+        ],
+        [
+          0.651,
+          0.937,
+          0.629773,
+          0.629773
+        ],
+        [
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          5,
+          2.5,
+          0,
+          0
+        ],
+        [
+          20,
+          4,
+          0.03075,
+          0.043115
+        ]
+      ]
+    },
+    "nfa-propfan-125-1": {
+      "displayName": "NFA Propfan 1.25m",
+      "defaultDiameter": 1.25,
+      "maxThrust": 120,
+      "isp_vac": 13000,
+      "ratio_ia": 18,
+      "ratio_lf": 1,
+      "k_up": 0.15,
+      "k_down": 0.4,
+      "machLimit": 1.4,
+      "vel_at_zero": 0.7,
+      "atm_at_one": 1,
+      "builtinIntake": 1,
+      "builtinArea": 0.004,
+      "builtinIntakeSpeed": 10,
+      "multimode": 0,
+      "velCurve": [
+        [
+          0,
+          0.7,
+          0,
+          0
+        ],
+        [
+          0.15,
+          1,
+          0.006952,
+          0.006952
+        ],
+        [
+          0.35,
+          1,
+          0.00903,
+          0.00903
+        ],
+        [
+          0.8,
+          0.1,
+          -0.6571437,
+          -0.6571437
+        ],
+        [
+          1.4,
+          0,
+          0,
+          0
+        ]
+      ],
+      "atmCurve": [
+        [
+          0.1,
+          0,
+          0,
+          0
+        ],
+        [
+          0.651,
+          0.937,
+          0.629773,
+          0.629773
+        ],
+        [
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          5,
+          2.5,
+          0,
+          0
+        ],
+        [
+          20,
+          4,
+          0.03075,
+          0.043115
+        ]
+      ]
+    },
+    "B9_Engine_Jet_Turbojet": {
+      "displayName": "B9 D-30F7 Turbojet",
+      "defaultDiameter": 1.25,
+      "multimode": 1,
+      "modeKeys": [
+        "Dry",
+        "Wet"
+      ],
+      "maxThrust": 95,
+      "vel_at_zero": 1,
+      "atm_at_one": 1
+    },
+    "B9_Engine_Jet_Turbojet__Dry": {
+      "displayName": "B9 D-30F7 (Dry)",
+      "maxThrust": 95,
+      "isp_vac": 7500,
+      "ratio_ia": 21,
+      "ratio_lf": 1,
+      "k_up": 0.12,
+      "k_down": 0.21,
+      "machLimit": 2.5,
+      "vel_at_zero": 1,
+      "atm_at_one": 1,
+      "velCurve": [
+        [
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0.35,
+          0.95,
+          0,
+          0
+        ],
+        [
+          1,
+          1.25,
+          1,
+          1
+        ],
+        [
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          2.5,
+          0,
+          -8,
+          0
+        ]
+      ],
+      "atmCurve": [
+        [
+          0,
+          1,
+          0,
+          0
+        ]
+      ]
+    },
+    "B9_Engine_Jet_Turbojet__Wet": {
+      "displayName": "B9 D-30F7 (Wet/Afterburner)",
+      "maxThrust": 155,
+      "isp_vac": 4000,
+      "ratio_ia": 12,
+      "ratio_lf": 1,
+      "k_up": 0.8,
+      "k_down": 0.8,
+      "machLimit": 4,
+      "vel_at_zero": 1,
+      "atm_at_one": 1,
+      "velCurve": [
+        [
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0.2,
+          0.975,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2
+        ],
+        [
+          3,
+          5,
+          0,
+          0
+        ],
+        [
+          4,
+          0,
+          -3,
+          0
+        ]
+      ],
+      "atmCurve": [
+        [
+          0,
+          1,
+          0,
+          0
+        ]
+      ]
+    },
+    "B9_Engine_Jet_Pod_Small": {
+      "displayName": "B9 TFE731",
+      "defaultDiameter": 1.25,
+      "maxThrust": 40,
+      "isp_vac": 10000,
+      "ratio_ia": 90,
+      "ratio_lf": 1,
+      "k_up": 0.35,
+      "k_down": 0.55,
+      "machLimit": 2,
+      "vel_at_zero": 1,
+      "atm_at_one": 1,
+      "builtinIntake": 1,
+      "builtinArea": 0.00512,
+      "builtinIntakeSpeed": 30,
+      "multimode": 0,
+      "velCurve": [
+        [
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0.53,
+          0.834,
+          0,
+          0
+        ],
+        [
+          1.3,
+          0.96,
+          0,
+          0
+        ],
+        [
+          1.674,
+          0.843,
+          -0.876726,
+          -0.876726
+        ],
+        [
+          2,
+          0,
+          0,
+          0
+        ]
+      ],
+      "atmCurve": [
+        [
+          0,
+          0,
+          0,
+          1.186726
+        ],
+        [
+          0.072,
+          0.092,
+          1.339822,
+          1.339822
+        ],
+        [
+          0.337,
+          0.4,
+          0.8976688,
+          0.8976688
+        ],
+        [
+          1,
+          1,
+          0.9127604,
+          0
+        ]
+      ]
+    },
+    "B9_Engine_Jet_Turbofan_F119": {
+      "displayName": "B9 F119 Turbofan",
+      "defaultDiameter": 1.25,
+      "multimode": 1,
+      "modeKeys": [
+        "Dry",
+        "Wet"
+      ],
+      "maxThrust": 95,
+      "vel_at_zero": 1,
+      "atm_at_one": 1
+    },
+    "B9_Engine_Jet_Turbofan_F119__Dry": {
+      "displayName": "B9 F119 (Dry)",
+      "maxThrust": 95,
+      "isp_vac": 8000,
+      "ratio_ia": 30,
+      "ratio_lf": 1,
+      "k_up": 0.25,
+      "k_down": 0.45,
+      "machLimit": 2.5,
+      "vel_at_zero": 1,
+      "atm_at_one": 1,
+      "velCurve": [
+        [
+          0,
+          1,
+          0,
+          0
+        ]
+      ],
+      "atmCurve": [
+        [
+          0,
+          1,
+          0,
+          0
+        ]
+      ]
+    },
+    "B9_Engine_Jet_Turbofan_F119__Wet": {
+      "displayName": "B9 F119 (Wet)",
+      "maxThrust": 155,
+      "isp_vac": 4000,
+      "ratio_ia": 12,
+      "ratio_lf": 1,
+      "k_up": 0.8,
+      "k_down": 0.8,
+      "machLimit": 4,
+      "vel_at_zero": 1,
+      "atm_at_one": 1,
+      "velCurve": [
+        [
+          0,
+          1,
+          0,
+          0
+        ]
+      ],
+      "atmCurve": [
+        [
+          0,
+          1,
+          0,
+          0
+        ]
+      ]
+    },
+    "CF34-8C": {
+      "displayName": "NeistAir CF34-8C",
+      "defaultDiameter": 1.25,
+      "maxThrust": 50,
+      "isp_vac": 9600,
+      "ratio_ia": 227,
+      "ratio_lf": 1,
+      "k_up": 0.06,
+      "k_down": 0.25,
+      "machLimit": 2.1,
+      "vel_at_zero": 1,
+      "atm_at_one": 1,
+      "builtinIntake": 1,
+      "builtinArea": 0.005,
+      "builtinIntakeSpeed": 30,
+      "multimode": 0,
+      "velCurve": [
+        [
+          0,
+          1,
+          -0.1543096,
+          -0.1543096
+        ],
+        [
+          0.61,
+          0.79,
+          0,
+          0
+        ],
+        [
+          1.2,
+          0.7,
+          0,
+          0
+        ],
+        [
+          2,
+          0.31,
+          -3.278422,
+          -3.278422
+        ],
+        [
+          2.1,
+          0,
+          -0.9205825,
+          -0.9205825
+        ]
+      ],
+      "atmCurve": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0.072,
+          0.085,
+          1.172947,
+          1.172947
+        ],
+        [
+          0.337,
+          0.4,
+          0.98425,
+          0.98425
+        ],
+        [
+          0.5,
+          0.7,
+          0.98425,
+          0.98425
+        ],
+        [
+          1,
+          1,
+          1.179067,
+          1.179067
+        ]
+      ]
+    },
+    "cfm56": {
+      "displayName": "AirplanePlus J-56 Lotus",
+      "defaultDiameter": 1.25,
+      "maxThrust": 180,
+      "isp_vac": 12600,
+      "ratio_ia": 227,
+      "ratio_lf": 1,
+      "k_up": 0.06,
+      "k_down": 0.25,
+      "machLimit": 0.72,
+      "vel_at_zero": 1,
+      "atm_at_one": 1,
+      "builtinIntake": 1,
+      "builtinArea": 0.03,
+      "builtinIntakeSpeed": 30,
+      "multimode": 0,
+      "velCurve": [
+        [
+          0,
+          1,
+          -0.1543096,
+          -0.1543096
+        ],
+        [
+          0.1819,
+          0.8587,
+          0,
+          0
+        ],
+        [
+          0.4,
+          0.964,
+          0,
+          0
+        ],
+        [
+          0.6525,
+          0.644,
+          -3.278422,
+          -2.582144
+        ],
+        [
+          0.72,
+          0,
+          -17.68372,
+          -8.84913
+        ]
+      ],
+      "atmCurve": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0.072,
+          0.085,
+          1.172947,
+          1.172947
+        ],
+        [
+          0.337,
+          0.37,
+          0.98425,
+          0.98425
+        ],
+        [
+          1,
+          1,
+          1.179067,
+          1.179067
+        ]
+      ]
+    },
+    "cf34": {
+      "displayName": "AirplanePlus J-34 Chevron",
+      "defaultDiameter": 1.25,
+      "maxThrust": 100,
+      "isp_vac": 12600,
+      "ratio_ia": 227,
+      "ratio_lf": 1,
+      "k_up": 0.06,
+      "k_down": 0.25,
+      "machLimit": 0.72,
+      "vel_at_zero": 1,
+      "atm_at_one": 1,
+      "builtinIntake": 1,
+      "builtinArea": 0.03,
+      "builtinIntakeSpeed": 30,
+      "multimode": 0,
+      "velCurve": [
+        [
+          0,
+          1,
+          -0.1543096,
+          -0.1543096
+        ],
+        [
+          0.1819,
+          0.8587,
+          0,
+          0
+        ],
+        [
+          0.4,
+          0.964,
+          0,
+          0
+        ],
+        [
+          0.6525,
+          0.644,
+          -3.278422,
+          -2.582144
+        ],
+        [
+          0.72,
+          0,
+          -17.68372,
+          -8.84913
+        ]
+      ],
+      "atmCurve": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0.072,
+          0.085,
+          1.172947,
+          1.172947
+        ],
+        [
+          0.337,
+          0.37,
+          0.98425,
+          0.98425
+        ],
+        [
+          1,
+          1,
+          1.179067,
+          1.179067
+        ]
+      ]
+    },
+    "opt_mk2_engine_short": {
+      "displayName": "OPT Mk2 Engine Short",
+      "defaultDiameter": -1,
+      "maxThrust": 200,
+      "isp_vac": 4000,
+      "ratio_ia": 2.25,
+      "ratio_lf": 1,
+      "k_up": 0.2,
+      "k_down": 0.4,
+      "machLimit": 7.5,
+      "vel_at_zero": 1,
+      "atm_at_one": 1,
+      "builtinIntake": 0,
+      "builtinArea": 0,
+      "builtinIntakeSpeed": 0,
+      "multimode": 0,
+      "velCurve": [
+        [
+          0,
+          1,
+          0.07,
+          0.07
+        ],
+        [
+          1.5,
+          1.6,
+          0.95,
+          0.95
+        ],
+        [
+          2.7,
+          2.4,
+          0,
+          0
+        ],
+        [
+          4.2,
+          2.4,
+          0,
+          0
+        ],
+        [
+          6.4,
+          1.44,
+          0,
+          0
+        ],
+        [
+          7.5,
+          0,
+          0,
+          0
+        ]
+      ],
+      "atmCurve": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0.005,
+          0.3,
+          0,
+          0
+        ],
+        [
+          0.03469,
+          0.892,
+          19.92897,
+          0.5922443
+        ],
+        [
+          0.2,
+          1,
+          0,
+          0
+        ],
+        [
+          0.3,
+          1,
+          0,
+          0
+        ],
+        [
+          1.89326,
+          0.6,
+          0,
+          0
+        ],
+        [
+          7.5,
+          0,
+          0,
+          0
+        ]
+      ]
+    }
+  },
+  "intakes": {
+    "CircularIntake": {
+      "displayName": "Circular Intake",
+      "area": 0.006,
+      "intakeSpeed": 15,
+      "machCurve": [
+        [
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1.5,
+          0.9,
+          -0.4312553,
+          -0.4312553
+        ],
+        [
+          2.5,
+          0.45,
+          -0.5275364,
+          -0.5275364
+        ],
+        [
+          3.5,
+          0.1,
+          0,
+          0
+        ]
+      ]
+    },
+    "miniIntake": {
+      "displayName": "Small Circular Intake",
+      "area": 0.001,
+      "intakeSpeed": 15,
+      "machCurve": [
+        [
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1.5,
+          0.9,
+          -0.4312553,
+          -0.4312553
+        ],
+        [
+          2.5,
+          0.45,
+          -0.5275364,
+          -0.5275364
+        ],
+        [
+          3.5,
+          0.1,
+          0,
+          0
+        ]
+      ]
+    },
+    "airScoop": {
+      "displayName": "XM-G50 Radial Intake",
+      "area": 0.0031,
+      "intakeSpeed": 15,
+      "machCurve": [
+        [
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1.5,
+          0.9,
+          -0.4312553,
+          -0.4312553
+        ],
+        [
+          2.5,
+          0.45,
+          -0.5275364,
+          -0.5275364
+        ],
+        [
+          3.5,
+          0.1,
+          0,
+          0
+        ]
+      ]
+    },
+    "ramAirIntake": {
+      "displayName": "Adjustable Ramp Intake",
+      "area": 0.0074,
+      "intakeSpeed": 10,
+      "machCurve": [
+        [
+          0,
+          0.85,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          0.95,
+          -0.08751557,
+          -0.08751557
+        ],
+        [
+          4,
+          0.5,
+          -0.4034287,
+          -0.4034287
+        ],
+        [
+          8,
+          0.01,
+          0,
+          0
+        ]
+      ]
+    },
+    "IntakeRadialLong": {
+      "displayName": "Adjustable Ramp Intake (Radial)",
+      "area": 0.001,
+      "intakeSpeed": 10,
+      "machCurve": [
+        [
+          0,
+          0.85,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          0.95,
+          -0.08751557,
+          -0.08751557
+        ],
+        [
+          4,
+          0.5,
+          -0.4034287,
+          -0.4034287
+        ],
+        [
+          8,
+          0.01,
+          0,
+          0
+        ]
+      ]
+    },
+    "shockConeIntake": {
+      "displayName": "Shock Cone Intake",
+      "area": 0.0075,
+      "intakeSpeed": 5,
+      "machCurve": [
+        [
+          0,
+          1,
+          0,
+          0
+        ]
+      ]
+    },
+    "B9_Aero_Intake_DSI": {
+      "displayName": "B9 DSI Intake",
+      "area": 0.003,
+      "intakeSpeed": 15,
+      "machCurve": [
+        [
+          0,
+          0.9,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1.5,
+          0.95,
+          -0.1608955,
+          -0.1608955
+        ],
+        [
+          3,
+          0.6,
+          -0.4034287,
+          -0.4034287
+        ],
+        [
+          5,
+          0.01,
+          0,
+          0
+        ]
+      ]
+    },
+    "B9_Aero_Intake_CLR": {
+      "displayName": "B9 Circular Intake (High-Flow)",
+      "area": 0.0075,
+      "intakeSpeed": 50,
+      "machCurve": [
+        [
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1.5,
+          0.9,
+          -0.4312553,
+          -0.4312553
+        ],
+        [
+          2.5,
+          0.45,
+          -0.5275364,
+          -0.5275364
+        ],
+        [
+          3.5,
+          0.1,
+          0,
+          0
+        ]
+      ]
+    }
+  }
+}
