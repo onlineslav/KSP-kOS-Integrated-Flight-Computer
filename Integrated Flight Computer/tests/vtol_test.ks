@@ -64,8 +64,8 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_level_roll_kp",     0.10,
   "vtol_level_roll_kd",     0.03,
   "vtol_level_roll_ki",     0.010,
-  "vtol_level_pitch_kp",    0.12,
-  "vtol_level_pitch_kd",    0.06,
+  "vtol_level_pitch_kp",    0.10,  // softer P to avoid early rail-to-rail in low-damping transients
+  "vtol_level_pitch_kd",    0.08,  // stronger D for rate damping as soon as feedback engages
   "vtol_level_pitch_ki",    0.015,
   "vtol_level_i_lim",       40.0,
   "vtol_level_on_ground",   FALSE,
@@ -76,8 +76,8 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_diff_collective_min",   0.12,
   "vtol_engine_limit_floor",    0.14,  // prevents a single pod from being driven near-zero during aggressive recovery
   "vtol_cmd_slew_per_s",        3.0,   // smooth command reversals so allocator does not jump to saturation
-  "vtol_cmd_roll_max",          0.80,  // raise roll cap: preserve recovery authority before upset triggers
-  "vtol_cmd_pitch_max",         0.60,  // hard cap on pitch command into mixer
+  "vtol_cmd_roll_max",          0.55,  // reduce roll rail-induced coupling while pitch loop is recovering
+  "vtol_cmd_pitch_max",         0.90,  // give pitch loop enough authority to arrest nose-up/down divergence
   "vtol_diff_atten_min",        0.25,  // keep more authority available during moderate excursions
   "vtol_diff_soft_bank_deg",    6.0,
   "vtol_diff_hard_bank_deg",    30.0,
@@ -88,12 +88,12 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_diff_soft_pitch_rate_degs", 8.0,
   "vtol_diff_hard_pitch_rate_degs", 20.0,
   "vtol_upset_bank_deg",        18.0,
-  "vtol_upset_pitch_deg",       14.0,
+  "vtol_upset_pitch_deg",       12.0,  // trigger upset slightly earlier on pitch excursions
   "vtol_upset_roll_rate_degs",  18.0,
-  "vtol_upset_pitch_rate_degs", 18.0,
+  "vtol_upset_pitch_rate_degs", 14.0,  // enter upset before pitch-rate runaway
   "vtol_upset_cmd_max",         0.30,  // during upset, force low-amplitude damping commands
-  "vtol_upset_cmd_roll_max",    1.00,  // full roll recovery authority during upset
-  "vtol_upset_cmd_pitch_max",   0.30,  // keep pitch upset authority conservative
+  "vtol_upset_cmd_roll_max",    0.60,  // keep roll from saturating the mixer during upset
+  "vtol_upset_cmd_pitch_max",   0.90,  // prioritize pitch-rate arrest in upset recovery
   "vtol_upset_diff_atten_min",  0.55,  // do not collapse differential authority in upset
   "vtol_upset_engine_limit_floor", 0.02, // allow deeper per-engine cut in upset for roll torque
   "vtol_upset_guard_agl_m",     20.0,  // below this AGL, upset + low throttle is clamped to preserve lift
@@ -119,6 +119,9 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_collective_dn_slew_per_s", 3.00,
   "vtol_alt_kp",            0.40,
   "vtol_hover_collective",  0.77,
+  // Test mode: bypass VS-command mapping and hold fixed collective.
+  "vtol_test_fixed_collective_enabled", TRUE,
+  "vtol_test_fixed_collective", 0.77,
   // Engine-model feed-forward (collective lag compensation).
   "vtol_em_ff_enabled",     TRUE,
   "vtol_em_ff_gain",        0.75,
@@ -443,18 +446,18 @@ IF NOT VTOL_DIFF_AVAILABLE {
     LOCAL att_stage IS 0.
     LOCAL att_stage_name IS "FF_ONLY".
     LOCAL airborne_ut IS -1.
-    LOCAL stage_p_only_s IS 4.0.
-    LOCAL stage_pd_s IS 9.0.
-    LOCAL stage_pid_s IS 14.0.
+    LOCAL stage_p_only_s IS 0.8.
+    LOCAL stage_pd_s IS 0.8.
+    LOCAL stage_pid_s IS 8.0.
     LOCAL base_roll_kp IS _CFG_GET_NUM("vtol_level_roll_kp", 0.10).
     LOCAL base_pitch_kp IS _CFG_GET_NUM("vtol_level_pitch_kp", 0.12).
     LOCAL base_roll_kd IS _CFG_GET_NUM("vtol_level_roll_kd", 0.03).
     LOCAL base_pitch_kd IS _CFG_GET_NUM("vtol_level_pitch_kd", 0.06).
     LOCAL base_roll_ki IS _CFG_GET_NUM("vtol_level_roll_ki", 0.010).
     LOCAL base_pitch_ki IS _CFG_GET_NUM("vtol_level_pitch_ki", 0.015).
-    LOCAL pd_kd_scale IS 0.35.
-    LOCAL pid_ki_scale IS 0.35.
-    LOCAL roll_kd_scale IS 0.0.
+    LOCAL pd_kd_scale IS 1.0.
+    LOCAL pid_ki_scale IS 0.10.
+    LOCAL roll_kd_scale IS 1.0.
     LOCAL roll_ki_scale IS 0.0.
 
     // Force initial FF-only mode at loop entry.
@@ -518,7 +521,7 @@ IF NOT VTOL_DIFF_AVAILABLE {
         } ELSE IF att_stage = 1 AND t_air >= stage_pd_s {
           SET att_stage TO 2.
           SET att_stage_name TO "PD".
-          // Keep roll on P-only while tuning pitch damping.
+          // Move quickly to full PD after liftoff to avoid P-only limit cycles.
           SET ACTIVE_AIRCRAFT["vtol_level_roll_kd"] TO base_roll_kd * roll_kd_scale.
           SET ACTIVE_AIRCRAFT["vtol_level_pitch_kd"] TO base_pitch_kd * pd_kd_scale.
           SET ACTIVE_AIRCRAFT["vtol_level_roll_ki"] TO 0.

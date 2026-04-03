@@ -490,6 +490,8 @@ GLOBAL VTOL_LEVEL_PITCH_KP  IS 0.40.  // pitch authority fraction per degree of 
 GLOBAL VTOL_LEVEL_PITCH_KD  IS 0.03.  // pitch authority per deg/s pitch rate (damp divergence)
 GLOBAL VTOL_LEVEL_PITCH_KI  IS 0.015. // pitch integral authority per deg*s pitch error (steady bias removal)
 GLOBAL VTOL_LEVEL_I_LIM     IS 40.0.  // deg*s clamp for level-hold integrators
+GLOBAL VTOL_LEVEL_AW_ALPHA_MIN IS 0.98. // freeze/unwind attitude integrators when last allocator alpha drops below this
+GLOBAL VTOL_LEVEL_I_UNWIND_PER_S IS 2.0. // /s integrator bleed rate while allocator is authority-limited
 GLOBAL VTOL_LEVEL_ON_GROUND_DEFAULT IS FALSE. // TRUE = allow auto-level while LANDED/PRELAUNCH
 GLOBAL VTOL_LEVEL_MIN_AGL_M IS 0.8. // min AGL for auto-level when ground-leveling is disabled
 GLOBAL VTOL_GROUND_CONTACT_AGL_M IS 1.5. // treat as ground-contact only below this AGL
@@ -508,6 +510,7 @@ GLOBAL VTOL_TRIM_ACTIVE_BANK_MAX IS 8.0. // adaptive trim only while |bank| is b
 GLOBAL VTOL_TRIM_ACTIVE_ROLL_RATE_MAX IS 12.0. // adaptive trim only while |roll_rate| is below this
 GLOBAL VTOL_ENGINE_LIMIT_FLOOR IS 0.10. // minimum per-engine limiter fraction while differential is active
 GLOBAL VTOL_CMD_SLEW_PER_S IS 5.0. // max change per second for roll/pitch command before engine allocation
+GLOBAL VTOL_DIFF_STATE_ATTEN_ENABLED_DEFAULT IS FALSE. // FALSE = do not reduce differential authority from attitude/rate excursions
 GLOBAL VTOL_DIFF_ATTEN_MIN IS 0.10. // lower bound on differential authority attenuation factor
 GLOBAL VTOL_DIFF_SOFT_BANK_DEG IS 8.0. // begin reducing differential authority above this bank angle
 GLOBAL VTOL_DIFF_HARD_BANK_DEG IS 35.0. // fully reduced differential authority at/above this bank angle
