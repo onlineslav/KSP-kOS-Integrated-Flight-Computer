@@ -76,15 +76,15 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_diff_collective_min",   0.12,
   "vtol_engine_limit_floor",    0.14,  // prevents a single pod from being driven near-zero during aggressive recovery
   "vtol_cmd_slew_per_s",        3.0,   // smooth command reversals so allocator does not jump to saturation
-  "vtol_cmd_roll_max",          0.60,  // hard cap on roll command into mixer
+  "vtol_cmd_roll_max",          0.80,  // raise roll cap: preserve recovery authority before upset triggers
   "vtol_cmd_pitch_max",         0.60,  // hard cap on pitch command into mixer
-  "vtol_diff_atten_min",        0.10,  // keep minimal authority so upset mode can still correct attitude
+  "vtol_diff_atten_min",        0.25,  // keep more authority available during moderate excursions
   "vtol_diff_soft_bank_deg",    6.0,
-  "vtol_diff_hard_bank_deg",    22.0,
+  "vtol_diff_hard_bank_deg",    30.0,
   "vtol_diff_soft_pitch_deg",   6.0,
   "vtol_diff_hard_pitch_deg",   16.0,
-  "vtol_diff_soft_roll_rate_degs", 8.0,
-  "vtol_diff_hard_roll_rate_degs", 20.0,
+  "vtol_diff_soft_roll_rate_degs", 12.0,
+  "vtol_diff_hard_roll_rate_degs", 35.0,
   "vtol_diff_soft_pitch_rate_degs", 8.0,
   "vtol_diff_hard_pitch_rate_degs", 20.0,
   "vtol_upset_bank_deg",        18.0,
@@ -92,7 +92,7 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_upset_roll_rate_degs",  18.0,
   "vtol_upset_pitch_rate_degs", 18.0,
   "vtol_upset_cmd_max",         0.30,  // during upset, force low-amplitude damping commands
-  "vtol_upset_cmd_roll_max",    0.70,  // keep strong roll recovery authority during upset
+  "vtol_upset_cmd_roll_max",    1.00,  // full roll recovery authority during upset
   "vtol_upset_cmd_pitch_max",   0.30,  // keep pitch upset authority conservative
   "vtol_upset_diff_atten_min",  0.55,  // do not collapse differential authority in upset
   "vtol_upset_engine_limit_floor", 0.02, // allow deeper per-engine cut in upset for roll torque
@@ -114,11 +114,20 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_vs_kp",             0.30,
   "vtol_vs_ki",             0.04,
   "vtol_max_vs",            6.0,
-  "vtol_collective_max",    1.0,   // raised: allows VS hold to compensate when differential reduces total thrust
+  "vtol_collective_max",    0.92,  // keep some control headroom; reduces pre-upset saturation
   "vtol_collective_up_slew_per_s", 0.35,
   "vtol_collective_dn_slew_per_s", 3.00,
   "vtol_alt_kp",            0.40,
-  "vtol_hover_collective",  0.77
+  "vtol_hover_collective",  0.77,
+  // Engine-model feed-forward (collective lag compensation).
+  "vtol_em_ff_enabled",     TRUE,
+  "vtol_em_ff_gain",        0.75,
+  "vtol_em_ff_max_lead",    0.20,
+  "vtol_em_ff_lag_min_s",   0.10,
+  "vtol_em_ff_alpha_min",   0.12,
+  // Temporary isolation test: disable attitude feedback loops so we can
+  // evaluate collective/feed-forward behavior without pitch PID oscillation.
+  "vtol_bypass_attitude_feedback", TRUE
 ).
 
 // ── State init ─────────────────────────────────────────────
@@ -150,6 +159,14 @@ FUNCTION _FMT {
 FUNCTION _FMT_PCT {
   PARAMETER frac01.
   RETURN _FMT(ROUND(frac01 * 100, 1), 6, 1) + "%".
+}
+
+FUNCTION _CFG_GET_NUM {
+  PARAMETER key_name, fallback_val.
+  IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY(key_name) {
+    RETURN ACTIVE_AIRCRAFT[key_name].
+  }
+  RETURN fallback_val.
 }
 
 // ── Helper: wrap long string to multiple PRINT lines ───────
@@ -418,6 +435,38 @@ IF NOT VTOL_DIFF_AVAILABLE {
     LOCAL log_rate    IS 0.2. // 5 Hz — enough resolution for VTOL tuning
     LOCAL arm_ut      IS TIME:SECONDS.
 
+    // ----- Automatic attitude-feedback bring-up schedule -----
+    // Stage 0: FF only (feedback bypass)
+    // Stage 1: P only
+    // Stage 2: PD (gentle D)
+    // Stage 3: PID (gentle I)
+    LOCAL att_stage IS 0.
+    LOCAL att_stage_name IS "FF_ONLY".
+    LOCAL airborne_ut IS -1.
+    LOCAL stage_p_only_s IS 4.0.
+    LOCAL stage_pd_s IS 9.0.
+    LOCAL stage_pid_s IS 14.0.
+    LOCAL base_roll_kp IS _CFG_GET_NUM("vtol_level_roll_kp", 0.10).
+    LOCAL base_pitch_kp IS _CFG_GET_NUM("vtol_level_pitch_kp", 0.12).
+    LOCAL base_roll_kd IS _CFG_GET_NUM("vtol_level_roll_kd", 0.03).
+    LOCAL base_pitch_kd IS _CFG_GET_NUM("vtol_level_pitch_kd", 0.06).
+    LOCAL base_roll_ki IS _CFG_GET_NUM("vtol_level_roll_ki", 0.010).
+    LOCAL base_pitch_ki IS _CFG_GET_NUM("vtol_level_pitch_ki", 0.015).
+    LOCAL pd_kd_scale IS 0.35.
+    LOCAL pid_ki_scale IS 0.35.
+    LOCAL roll_kd_scale IS 0.0.
+    LOCAL roll_ki_scale IS 0.0.
+
+    // Force initial FF-only mode at loop entry.
+    SET ACTIVE_AIRCRAFT["vtol_bypass_attitude_feedback"] TO TRUE.
+    SET ACTIVE_AIRCRAFT["vtol_level_roll_kp"] TO base_roll_kp.
+    SET ACTIVE_AIRCRAFT["vtol_level_pitch_kp"] TO base_pitch_kp.
+    SET ACTIVE_AIRCRAFT["vtol_level_roll_kd"] TO 0.
+    SET ACTIVE_AIRCRAFT["vtol_level_pitch_kd"] TO 0.
+    SET ACTIVE_AIRCRAFT["vtol_level_roll_ki"] TO 0.
+    SET ACTIVE_AIRCRAFT["vtol_level_pitch_ki"] TO 0.
+    LOG "# att_stage=FF_ONLY  t_s=0.0" TO log_file.
+
     UNTIL NOT test_running {
       LOCAL now IS TIME:SECONDS.
       SET IFC_ACTUAL_DT TO CLAMP(now - IFC_CYCLE_UT, 0.01, 0.5).
@@ -443,9 +492,48 @@ IF NOT VTOL_DIFF_AVAILABLE {
         IF ctrl:HASSUFFIX("PILOTMAINTHROTTLE") { SET thr_disp   TO ctrl:PILOTMAINTHROTTLE. }
       }
 
-      VTOL_TICK_PREARM().
-      SET THROTTLE_CMD TO CLAMP(VTOL_COLLECTIVE, 0, 1).
+      // Update engine model from last-cycle throttle command first, so
+      // VTOL_TICK_PREARM can use fresh feed-forward telemetry this cycle.
       EM_TICK().
+      VTOL_TICK_PREARM().
+      // THROTTLE_CMD is the model input; no throttle lock is required.
+      SET THROTTLE_CMD TO CLAMP(VTOL_COLLECTIVE, 0, 1).
+
+      IF airborne_ut < 0 AND VTOL_DIAG_TRULY_AIRBORNE {
+        SET airborne_ut TO now.
+      }
+      IF airborne_ut >= 0 {
+        LOCAL t_air IS now - airborne_ut.
+        IF att_stage = 0 AND t_air >= stage_p_only_s {
+          SET att_stage TO 1.
+          SET att_stage_name TO "P_ONLY".
+          SET ACTIVE_AIRCRAFT["vtol_bypass_attitude_feedback"] TO FALSE.
+          SET ACTIVE_AIRCRAFT["vtol_level_roll_kp"] TO base_roll_kp.
+          SET ACTIVE_AIRCRAFT["vtol_level_pitch_kp"] TO base_pitch_kp.
+          SET ACTIVE_AIRCRAFT["vtol_level_roll_kd"] TO 0.
+          SET ACTIVE_AIRCRAFT["vtol_level_pitch_kd"] TO 0.
+          SET ACTIVE_AIRCRAFT["vtol_level_roll_ki"] TO 0.
+          SET ACTIVE_AIRCRAFT["vtol_level_pitch_ki"] TO 0.
+          LOG "# att_stage=P_ONLY  t_air_s=" + ROUND(t_air,2) TO log_file.
+        } ELSE IF att_stage = 1 AND t_air >= stage_pd_s {
+          SET att_stage TO 2.
+          SET att_stage_name TO "PD".
+          // Keep roll on P-only while tuning pitch damping.
+          SET ACTIVE_AIRCRAFT["vtol_level_roll_kd"] TO base_roll_kd * roll_kd_scale.
+          SET ACTIVE_AIRCRAFT["vtol_level_pitch_kd"] TO base_pitch_kd * pd_kd_scale.
+          SET ACTIVE_AIRCRAFT["vtol_level_roll_ki"] TO 0.
+          SET ACTIVE_AIRCRAFT["vtol_level_pitch_ki"] TO 0.
+          LOG "# att_stage=PD  t_air_s=" + ROUND(t_air,2) TO log_file.
+        } ELSE IF att_stage = 2 AND t_air >= stage_pid_s {
+          SET att_stage TO 3.
+          SET att_stage_name TO "PID".
+          SET ACTIVE_AIRCRAFT["vtol_level_roll_kd"] TO base_roll_kd * roll_kd_scale.
+          SET ACTIVE_AIRCRAFT["vtol_level_pitch_kd"] TO base_pitch_kd * pd_kd_scale.
+          SET ACTIVE_AIRCRAFT["vtol_level_roll_ki"] TO base_roll_ki * roll_ki_scale.
+          SET ACTIVE_AIRCRAFT["vtol_level_pitch_ki"] TO base_pitch_ki * pid_ki_scale.
+          LOG "# att_stage=PID  t_air_s=" + ROUND(t_air,2) TO log_file.
+        }
+      }
 
       // ── Per-engine limits + command telemetry (actual values from VTOL module) ──
       LOCAL disp_ang_vel IS SHIP:ANGULARVEL.
@@ -502,6 +590,9 @@ IF NOT VTOL_DIFF_AVAILABLE {
       PRINT ("Thr(used):" + _FMT_PCT(VTOL_THR_INPUT_USED) + "  Guard:" + VTOL_THR_GUARD_ACTIVE +
              "  Upset:" + VTOL_UPSET_ACTIVE + "    ") AT(0, disp_row). SET disp_row TO disp_row + 1.
       PRINT ("Alloc: a=" + _FMT(disp_alloc_alpha, 5, 3) + "  s=" + _FMT(disp_alloc_shift, 6, 3) + "          ") AT(0, disp_row). SET disp_row TO disp_row + 1.
+      LOCAL t_air_disp IS 0.
+      IF airborne_ut >= 0 { SET t_air_disp TO now - airborne_ut. }
+      PRINT ("ATT:" + att_stage_name + "  t_air:" + _FMT(t_air_disp,5,1) + " s      ") AT(0, disp_row). SET disp_row TO disp_row + 1.
       PRINT ("EM M:" + _FMT(TELEM_EM_MACH,5,3) + " D:" + _FMT(TELEM_EM_Q_DEMAND,6,2) +
              " S:" + _FMT(TELEM_EM_Q_SUPPLY,6,2) + " d:" + _FMT(TELEM_EM_MARGIN,6,2) +
              " L:" + _FMT(TELEM_EM_WORST_SPOOL_LAG,4,2) + " " + TELEM_EM_STARVING) AT(0, disp_row).

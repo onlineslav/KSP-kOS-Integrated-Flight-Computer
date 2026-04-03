@@ -682,7 +682,9 @@ FUNCTION _VTOL_VS_HOLD {
     SET VTOL_VS_INTEGRAL TO 0.
     LOCAL vs_err_g IS VTOL_VS_CMD - SHIP:VERTICALSPEED.
     LOCAL target_g IS CLAMP(VTOL_HOVER_COLLECTIVE + vs_err_g * vs_kp, 0, coll_max).
-    RETURN _VTOL_SLEW_COLLECTIVE(target_g).
+    LOCAL collective_g IS _VTOL_SLEW_COLLECTIVE(target_g).
+    SET VTOL_COLLECTIVE_EFF_EST TO collective_g.
+    RETURN collective_g.
   }
 
   LOCAL vs_err IS VTOL_VS_CMD - SHIP:VERTICALSPEED.
@@ -704,7 +706,61 @@ FUNCTION _VTOL_VS_HOLD {
   }
 
   LOCAL target_collective IS CLAMP(unclamped, 0, coll_max).
-  LOCAL collective IS _VTOL_SLEW_COLLECTIVE(target_collective).
+
+  // Optional feed-forward: invert a simple first-order throttle-lag model
+  // using engine-model telemetry (TELEM_EM_WORST_SPOOL_LAG). This improves
+  // thrust tracking when commanded collective is changing quickly.
+  LOCAL ff_collective IS target_collective.
+  LOCAL ff_enabled IS _AMO_CFG_BOOL("vtol_em_ff_enabled", VTOL_EM_FF_ENABLED_DEFAULT).
+  IF ff_enabled {
+    LOCAL ff_gain IS _AMO_CFG_NUM("vtol_em_ff_gain", VTOL_EM_FF_GAIN, 0).
+    LOCAL ff_max_lead IS _AMO_CFG_NUM("vtol_em_ff_max_lead", VTOL_EM_FF_MAX_LEAD, 0).
+    LOCAL ff_lag_min_s IS _AMO_CFG_NUM("vtol_em_ff_lag_min_s", VTOL_EM_FF_LAG_MIN_S, 0).
+    LOCAL ff_alpha_min IS _AMO_CFG_NUM("vtol_em_ff_alpha_min", VTOL_EM_FF_ALPHA_MIN, 0).
+    IF ff_gain < 0 { SET ff_gain TO 0. }
+    IF ff_gain > 1 { SET ff_gain TO 1. }
+    IF ff_max_lead < 0 { SET ff_max_lead TO 0. }
+    IF ff_lag_min_s < 0 { SET ff_lag_min_s TO 0. }
+    IF ff_alpha_min <= 0 OR ff_alpha_min > 1 { SET ff_alpha_min TO VTOL_EM_FF_ALPHA_MIN. }
+
+    LOCAL em_count IS ROUND(TELEM_EM_ENG_COUNT, 0).
+    LOCAL lag_s IS TELEM_EM_WORST_SPOOL_LAG.
+    IF em_count > 0 AND lag_s > ff_lag_min_s {
+      // Engine-model lag is time-to-near-settled; map to first-order tau.
+      LOCAL tau_s IS lag_s / 4.6.
+      IF tau_s < 0.01 { SET tau_s TO 0.01. }
+      LOCAL alpha IS IFC_ACTUAL_DT / (IFC_ACTUAL_DT + tau_s).
+      IF alpha < ff_alpha_min { SET alpha TO ff_alpha_min. }
+      IF alpha > 1 { SET alpha TO 1. }
+
+      // Predict achieved (lagged) collective from last command.
+      IF VTOL_COLLECTIVE_EFF_EST < 0 OR VTOL_COLLECTIVE_EFF_EST > 1 {
+        SET VTOL_COLLECTIVE_EFF_EST TO VTOL_COLLECTIVE.
+      }
+      SET VTOL_COLLECTIVE_EFF_EST TO CLAMP(
+        VTOL_COLLECTIVE_EFF_EST + (VTOL_COLLECTIVE - VTOL_COLLECTIVE_EFF_EST) * alpha,
+        0, 1
+      ).
+
+      LOCAL inv_target IS target_collective.
+      IF alpha > 0.0001 {
+        SET inv_target TO (target_collective - (1 - alpha) * VTOL_COLLECTIVE_EFF_EST) / alpha.
+      }
+      LOCAL blended_target IS target_collective + (inv_target - target_collective) * ff_gain.
+      SET ff_collective TO CLAMP(
+        blended_target,
+        target_collective - ff_max_lead,
+        target_collective + ff_max_lead
+      ).
+    } ELSE {
+      // No reliable engine-model signal this tick: keep estimator in sync.
+      SET VTOL_COLLECTIVE_EFF_EST TO VTOL_COLLECTIVE.
+    }
+  } ELSE {
+    SET VTOL_COLLECTIVE_EFF_EST TO VTOL_COLLECTIVE.
+  }
+
+  LOCAL collective IS _VTOL_SLEW_COLLECTIVE(CLAMP(ff_collective, 0, coll_max)).
 
   IF ABS(vs_err) < 0.5 {
     SET VTOL_HOVER_COLLECTIVE TO
@@ -934,6 +990,16 @@ FUNCTION VTOL_TICK_PREARM {
       SET level_active TO FALSE.
     }
   }
+  LOCAL bypass_att_feedback IS _AMO_CFG_BOOL(
+    "vtol_bypass_attitude_feedback",
+    VTOL_BYPASS_ATTITUDE_FEEDBACK_DEFAULT
+  ).
+  IF bypass_att_feedback {
+    // FF-only test mode: bypass all automatic attitude feedback loops.
+    SET level_active TO FALSE.
+    SET VTOL_LEVEL_ROLL_INT TO 0.
+    SET VTOL_LEVEL_PITCH_INT TO 0.
+  }
   // Integral gate: only accumulate when truly airborne (not LANDED/PRELAUNCH).
   // _VTOL_EFFECTIVE_GROUNDED returns FALSE as soon as collective > diff_min, so
   // level_active can become TRUE while the aircraft is still on its gear.  The
@@ -1059,10 +1125,12 @@ FUNCTION VTOL_TICK_PREARM {
   LOCAL upset_roll_rate_degs IS _AMO_CFG_NUM("vtol_upset_roll_rate_degs", VTOL_UPSET_ROLL_RATE_DEGS, 0).
   LOCAL upset_pitch_rate_degs IS _AMO_CFG_NUM("vtol_upset_pitch_rate_degs", VTOL_UPSET_PITCH_RATE_DEGS, 0).
   LOCAL upset_active IS FALSE.
-  IF bank_abs_u > upset_bank_deg { SET upset_active TO TRUE. }
-  IF pitch_abs_u > upset_pitch_deg { SET upset_active TO TRUE. }
-  IF roll_rate_abs_u > upset_roll_rate_degs { SET upset_active TO TRUE. }
-  IF pitch_rate_abs_u > upset_pitch_rate_degs { SET upset_active TO TRUE. }
+  IF NOT bypass_att_feedback {
+    IF bank_abs_u > upset_bank_deg { SET upset_active TO TRUE. }
+    IF pitch_abs_u > upset_pitch_deg { SET upset_active TO TRUE. }
+    IF roll_rate_abs_u > upset_roll_rate_degs { SET upset_active TO TRUE. }
+    IF pitch_rate_abs_u > upset_pitch_rate_degs { SET upset_active TO TRUE. }
+  }
   SET VTOL_UPSET_ACTIVE TO upset_active.
   IF upset_active {
     LOCAL upset_cmd_roll_max IS _AMO_CFG_NUM("vtol_upset_cmd_roll_max", VTOL_UPSET_CMD_MAX_ROLL, 0).
@@ -1180,6 +1248,7 @@ FUNCTION VTOL_RELEASE {
   SET VTOL_UPSET_ACTIVE TO FALSE.
   SET VTOL_THR_GUARD_ACTIVE TO FALSE.
   SET VTOL_THR_INPUT_USED TO 0.5.
+  SET VTOL_COLLECTIVE_EFF_EST TO VTOL_COLLECTIVE.
   SET VTOL_ACTIVE TO FALSE.
 }
 
@@ -1199,6 +1268,7 @@ FUNCTION VTOL_RESET {
   SET VTOL_HOVER_COLLECTIVE        TO 0.50.
   SET VTOL_HOVER_COLLECTIVE_SEEDED TO FALSE.
   SET VTOL_COLLECTIVE              TO 0.
+  SET VTOL_COLLECTIVE_EFF_EST      TO 0.50.
   SET VTOL_VS_CMD           TO 0.
   SET VTOL_VS_INTEGRAL      TO 0.
   SET VTOL_ALT_HOLD         TO FALSE.

@@ -468,6 +468,12 @@ GLOBAL VTOL_ROLL_GAIN        IS 0.25.  // fraction of collective used as roll au
 GLOBAL VTOL_PITCH_GAIN       IS 0.25.  // fraction of collective used as pitch authority
 GLOBAL VTOL_PITCH_MIX_SIGN   IS 1.0.   // pitch mix polarity; +1 means forward engines increase on nose-up correction (correct for fwd engines ahead of CoM)
 GLOBAL VTOL_HOVER_LEARN_RATE IS 0.001. // rate at which hover_collective tracks actual collective
+GLOBAL VTOL_EM_FF_ENABLED_DEFAULT IS TRUE. // TRUE = apply engine-model feed-forward in VTOL VS-hold
+GLOBAL VTOL_EM_FF_GAIN IS 0.75. // 0..1 blend from PI target toward model-inverse feed-forward target
+GLOBAL VTOL_EM_FF_MAX_LEAD IS 0.20. // max collective lead (+/-) applied by feed-forward before slew/clamp
+GLOBAL VTOL_EM_FF_LAG_MIN_S IS 0.10. // ignore feed-forward when modelled lag is below this (near-instant response)
+GLOBAL VTOL_EM_FF_ALPHA_MIN IS 0.12. // lower bound on model response fraction used by inverse step
+GLOBAL VTOL_BYPASS_ATTITUDE_FEEDBACK_DEFAULT IS FALSE. // TRUE = bypass VTOL level/upset attitude feedback (FF-only test mode)
 GLOBAL VTOL_MAX_PODS         IS 8.     // max pod tags scanned during discovery
 GLOBAL VTOL_SRV_SPEED        IS 1.0.   // servo speed multiplier for baseline hover commands
 GLOBAL VTOL_SRV_YAW_SPEED    IS 2.0.   // servo speed multiplier for yaw differential commands
