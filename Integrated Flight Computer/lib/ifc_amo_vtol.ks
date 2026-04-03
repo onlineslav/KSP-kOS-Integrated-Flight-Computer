@@ -947,7 +947,7 @@ FUNCTION VTOL_TICK_PREARM {
 
   // Angular rates from SHIP:ANGULARVEL (world frame, rad/s).
   // Dot with ship axis vectors to get component around each axis.
-  // Nose-up pitch rate  = positive VDOT with STARVECTOR.
+  // Nose-down pitch rate = positive VDOT with STARVECTOR.
   // Roll-right roll rate = negative VDOT with FOREVECTOR.
   LOCAL ang_vel IS _angvel.
   LOCAL pitch_rate_rads IS VDOT(ang_vel, _starvec).
@@ -1000,10 +1000,11 @@ FUNCTION VTOL_TICK_PREARM {
     // output a negative command when nose is up.  This mirrors roll: roll_err = -bank_ang.
     LOCAL pitch_err IS -pitch_ang.
     LOCAL pitch_p_term IS pitch_err * level_pitch_kp.
-    // positive pitch_rate_rads = pitching UP (VDOT with STARVECTOR).
-    // Damping must oppose rate, so -pitch_rate_degs * KD gives a negative (nose-DOWN)
-    // contribution when the nose is pitching UP, which is correct.
-    LOCAL pitch_d_term IS -pitch_rate_degs * level_pitch_kd.
+    // positive pitch_rate_rads = pitching DOWN (VDOT with STARVECTOR).
+    // Damping must oppose motion in command space; with pitch_mix_sign=+1, that means
+    // D must have the SAME sign as pitch_rate_degs (upward rotation => negative rate
+    // => negative command).
+    LOCAL pitch_d_term IS pitch_rate_degs * level_pitch_kd.
     LOCAL pitch_i_term IS VTOL_LEVEL_PITCH_INT * level_pitch_ki.
     LOCAL pitch_unsat IS pitch_p_term + pitch_d_term + pitch_i_term.
     LOCAL pitch_at_hi IS pitch_unsat >= 1 AND pitch_err > 0.
@@ -1023,7 +1024,7 @@ FUNCTION VTOL_TICK_PREARM {
     }
     SET pitch_cmd TO CLAMP(
       pitch_err         * level_pitch_kp
-      -pitch_rate_degs  * level_pitch_kd
+      +pitch_rate_degs  * level_pitch_kd
       +VTOL_LEVEL_PITCH_INT * level_pitch_ki,
       -1, 1).
     SET VTOL_DIAG_PITCH_ERR TO pitch_err.
@@ -1085,7 +1086,7 @@ FUNCTION VTOL_TICK_PREARM {
       bank_err_u * level_roll_kp - roll_rate_u_degs * level_roll_kd,
       -upset_cmd_roll_max, upset_cmd_roll_max).
     SET pitch_cmd TO CLAMP(
-      pitch_err_u * level_pitch_kp - pitch_rate_u_degs * level_pitch_kd,
+      pitch_err_u * level_pitch_kp + pitch_rate_u_degs * level_pitch_kd,
       -upset_cmd_pitch_max, upset_cmd_pitch_max).
   }
   SET VTOL_DIAG_CMD_ROLL_POSTUPSET TO roll_cmd.
