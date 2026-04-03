@@ -324,6 +324,45 @@ GLOBAL VTOL_ALLOC_ALPHA      IS 1.0.   // last differential allocation scale act
 GLOBAL VTOL_ALLOC_SHIFT      IS 0.0.   // last common-mode shift applied by bounded allocator
 GLOBAL VTOL_LEVEL_ROLL_INT   IS 0.0.   // level-hold roll integral state (deg*s error)
 GLOBAL VTOL_LEVEL_PITCH_INT  IS 0.0.   // level-hold pitch integral state (deg*s error)
+GLOBAL VTOL_CMD_ROLL_ACTUAL  IS 0.0.   // post-controller roll command actually sent to engine allocator
+GLOBAL VTOL_CMD_PITCH_ACTUAL IS 0.0.   // post-controller pitch command actually sent to engine allocator
+GLOBAL VTOL_ENG_LIM_ACTUAL   IS LIST(). // per-engine limiter values actually written this tick
+GLOBAL VTOL_UPSET_ACTIVE     IS FALSE. // TRUE while VTOL upset damping mode is active
+GLOBAL VTOL_THR_GUARD_ACTIVE IS FALSE. // TRUE when low-alt upset throttle floor guard is active
+GLOBAL VTOL_THR_INPUT_USED   IS 0.5.   // pilot throttle input after guard processing, used by VS-hold
+GLOBAL VTOL_DIAG_LEVEL_ACTIVE       IS FALSE. // level-hold gate active this tick
+GLOBAL VTOL_DIAG_TRULY_AIRBORNE     IS FALSE. // TRUE when SHIP:STATUS is not LANDED/PRELAUNCH
+GLOBAL VTOL_DIAG_IS_GROUNDED        IS FALSE. // effective grounded status used by VTOL controller
+GLOBAL VTOL_DIAG_ROLL_ERR           IS 0.0.   // roll attitude error used by controller (deg)
+GLOBAL VTOL_DIAG_PITCH_ERR          IS 0.0.   // pitch attitude error used by controller (deg)
+GLOBAL VTOL_DIAG_ROLL_P             IS 0.0.   // roll P contribution
+GLOBAL VTOL_DIAG_ROLL_I             IS 0.0.   // roll I contribution
+GLOBAL VTOL_DIAG_ROLL_D             IS 0.0.   // roll D contribution
+GLOBAL VTOL_DIAG_PITCH_P            IS 0.0.   // pitch P contribution
+GLOBAL VTOL_DIAG_PITCH_I            IS 0.0.   // pitch I contribution
+GLOBAL VTOL_DIAG_PITCH_D            IS 0.0.   // pitch D contribution
+GLOBAL VTOL_DIAG_ROLL_UNSAT         IS 0.0.   // roll command before clamp
+GLOBAL VTOL_DIAG_PITCH_UNSAT        IS 0.0.   // pitch command before clamp
+GLOBAL VTOL_DIAG_CMD_ROLL_PRECAP    IS 0.0.   // roll command before hard cap
+GLOBAL VTOL_DIAG_CMD_PITCH_PRECAP   IS 0.0.   // pitch command before hard cap
+GLOBAL VTOL_DIAG_CMD_ROLL_POSTCAP   IS 0.0.   // roll command after hard cap
+GLOBAL VTOL_DIAG_CMD_PITCH_POSTCAP  IS 0.0.   // pitch command after hard cap
+GLOBAL VTOL_DIAG_CMD_ROLL_POSTUPSET IS 0.0.   // roll command after upset override
+GLOBAL VTOL_DIAG_CMD_PITCH_POSTUPSET IS 0.0.  // pitch command after upset override
+GLOBAL VTOL_DIAG_CMD_ROLL_POSTSLEW  IS 0.0.   // roll command after slew limiter
+GLOBAL VTOL_DIAG_CMD_PITCH_POSTSLEW IS 0.0.   // pitch command after slew limiter
+GLOBAL VTOL_DIAG_DIFF_SCALE_RAW     IS 0.0.   // collective-based differential scale before attenuation
+GLOBAL VTOL_DIAG_DIFF_SCALE_ATTN    IS 0.0.   // differential scale after attitude/rate attenuation
+GLOBAL VTOL_DIAG_DIFF_SCALE_UPSET   IS 0.0.   // differential scale after upset minimum floor
+GLOBAL VTOL_DIAG_LIM_FLOOR_USE      IS 0.0.   // per-engine lower limiter bound used by allocator
+GLOBAL VTOL_DIAG_ALLOC_BMIN         IS 0.0.   // allocator feasible shift minimum
+GLOBAL VTOL_DIAG_ALLOC_BMAX         IS 0.0.   // allocator feasible shift maximum
+GLOBAL VTOL_DIAG_ALPHA_LIMITED      IS FALSE. // TRUE when allocator reduced alpha below 1
+GLOBAL VTOL_DIAG_CLAMP_LOW_COUNT    IS 0.0.   // number of engines clamped to lower limit this tick
+GLOBAL VTOL_DIAG_CLAMP_HIGH_COUNT   IS 0.0.   // number of engines clamped to upper limit this tick
+GLOBAL VTOL_DIAG_ROLL_MOMENT_PROXY  IS 0.0.   // sum(lim_i * roll_mix_i), authority proxy
+GLOBAL VTOL_DIAG_PITCH_MOMENT_PROXY IS 0.0.   // sum(lim_i * pitch_mix_i), authority proxy
+GLOBAL VTOL_DIAG_LIMIT_SPAN         IS 0.0.   // max(lim_i)-min(lim_i), authority spread proxy
 
 // ----------------------------
 // Auto-brake (per-side wheel brake control via tagged main gear)
@@ -851,6 +890,49 @@ FUNCTION IFC_INIT_STATE {
   SET VTOL_VS_INTEGRAL             TO 0.
   SET VTOL_ALT_HOLD         TO FALSE.
   SET VTOL_ALT_CMD          TO 0.
+  SET VTOL_ALLOC_ALPHA      TO 1.0.
+  SET VTOL_ALLOC_SHIFT      TO 0.0.
+  SET VTOL_LEVEL_ROLL_INT   TO 0.0.
+  SET VTOL_LEVEL_PITCH_INT  TO 0.0.
+  SET VTOL_CMD_ROLL_ACTUAL  TO 0.0.
+  SET VTOL_CMD_PITCH_ACTUAL TO 0.0.
+  VTOL_ENG_LIM_ACTUAL:CLEAR().
+  SET VTOL_UPSET_ACTIVE     TO FALSE.
+  SET VTOL_THR_GUARD_ACTIVE TO FALSE.
+  SET VTOL_THR_INPUT_USED   TO 0.5.
+  SET VTOL_DIAG_LEVEL_ACTIVE       TO FALSE.
+  SET VTOL_DIAG_TRULY_AIRBORNE     TO FALSE.
+  SET VTOL_DIAG_IS_GROUNDED        TO FALSE.
+  SET VTOL_DIAG_ROLL_ERR           TO 0.0.
+  SET VTOL_DIAG_PITCH_ERR          TO 0.0.
+  SET VTOL_DIAG_ROLL_P             TO 0.0.
+  SET VTOL_DIAG_ROLL_I             TO 0.0.
+  SET VTOL_DIAG_ROLL_D             TO 0.0.
+  SET VTOL_DIAG_PITCH_P            TO 0.0.
+  SET VTOL_DIAG_PITCH_I            TO 0.0.
+  SET VTOL_DIAG_PITCH_D            TO 0.0.
+  SET VTOL_DIAG_ROLL_UNSAT         TO 0.0.
+  SET VTOL_DIAG_PITCH_UNSAT        TO 0.0.
+  SET VTOL_DIAG_CMD_ROLL_PRECAP    TO 0.0.
+  SET VTOL_DIAG_CMD_PITCH_PRECAP   TO 0.0.
+  SET VTOL_DIAG_CMD_ROLL_POSTCAP   TO 0.0.
+  SET VTOL_DIAG_CMD_PITCH_POSTCAP  TO 0.0.
+  SET VTOL_DIAG_CMD_ROLL_POSTUPSET TO 0.0.
+  SET VTOL_DIAG_CMD_PITCH_POSTUPSET TO 0.0.
+  SET VTOL_DIAG_CMD_ROLL_POSTSLEW  TO 0.0.
+  SET VTOL_DIAG_CMD_PITCH_POSTSLEW TO 0.0.
+  SET VTOL_DIAG_DIFF_SCALE_RAW     TO 0.0.
+  SET VTOL_DIAG_DIFF_SCALE_ATTN    TO 0.0.
+  SET VTOL_DIAG_DIFF_SCALE_UPSET   TO 0.0.
+  SET VTOL_DIAG_LIM_FLOOR_USE      TO 0.0.
+  SET VTOL_DIAG_ALLOC_BMIN         TO 0.0.
+  SET VTOL_DIAG_ALLOC_BMAX         TO 0.0.
+  SET VTOL_DIAG_ALPHA_LIMITED      TO FALSE.
+  SET VTOL_DIAG_CLAMP_LOW_COUNT    TO 0.0.
+  SET VTOL_DIAG_CLAMP_HIGH_COUNT   TO 0.0.
+  SET VTOL_DIAG_ROLL_MOMENT_PROXY  TO 0.0.
+  SET VTOL_DIAG_PITCH_MOMENT_PROXY TO 0.0.
+  SET VTOL_DIAG_LIMIT_SPAN         TO 0.0.
 
   SET DRAFT_PLAN        TO LIST().
   SET FMS_LEG_CURSOR    TO 0.

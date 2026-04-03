@@ -33,12 +33,13 @@ for (const [partName, entry] of Object.entries(engines)) {
     const modeKeys = Object.keys(entry.modes);
     const firstMode = entry.modes[modeKeys[0]];
 
-    // Build the parent stub (no curves, no propellant ratios)
+    // Build the parent stub (no curves, no propellant ratios, no string arrays).
+    // modeKeys intentionally omitted — kOS READJSON cannot deserialize string arrays.
+    // Mode lookup in kOS uses:  eng_db[partName + "__" + eng:MODE]
     flatEngines[partName] = {
         displayName:     entry.displayName,
         defaultDiameter: entry.defaultDiameter,
         multimode:       1,
-        modeKeys:        modeKeys,
         // Copy primary-mode scale-inference fields so _EM_DETECT_SCALE works
         // against the top-level entry at EM_INIT time.
         maxThrust:       firstMode.maxThrust,

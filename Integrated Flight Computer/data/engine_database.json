@@ -241,10 +241,6 @@
       "displayName": "J-404 Panther",
       "defaultDiameter": 1.25,
       "multimode": 1,
-      "modeKeys": [
-        "Dry",
-        "Wet"
-      ],
       "maxThrust": 85,
       "vel_at_zero": 1,
       "atm_at_one": 1
@@ -516,10 +512,6 @@
       "displayName": "CR-7 RAPIER",
       "defaultDiameter": 1.25,
       "multimode": 1,
-      "modeKeys": [
-        "AirBreathing",
-        "ClosedCycle"
-      ],
       "maxThrust": 105,
       "vel_at_zero": 1,
       "atm_at_one": 1
@@ -842,10 +834,6 @@
       "displayName": "NFA Turbofan V2 2.5m",
       "defaultDiameter": 2.5,
       "multimode": 1,
-      "modeKeys": [
-        "Cruise",
-        "Reverse"
-      ],
       "maxThrust": 510,
       "vel_at_zero": 1,
       "atm_at_one": 1
@@ -1180,10 +1168,6 @@
       "displayName": "B9 D-30F7 Turbojet",
       "defaultDiameter": 1.25,
       "multimode": 1,
-      "modeKeys": [
-        "Dry",
-        "Wet"
-      ],
       "maxThrust": 95,
       "vel_at_zero": 1,
       "atm_at_one": 1
@@ -1371,10 +1355,6 @@
       "displayName": "B9 F119 Turbofan",
       "defaultDiameter": 1.25,
       "multimode": 1,
-      "modeKeys": [
-        "Dry",
-        "Wet"
-      ],
       "maxThrust": 95,
       "vel_at_zero": 1,
       "atm_at_one": 1

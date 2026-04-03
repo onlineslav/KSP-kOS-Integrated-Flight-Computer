@@ -42,6 +42,7 @@ RUNPATH(ifc_root + "lib/ifc_helpers.ks").
 RUNPATH(ifc_root + "lib/ifc_autobrake.ks").
 RUNPATH(ifc_root + "lib/ifc_amo.ks").
 RUNPATH(ifc_root + "lib/ifc_amo_vtol.ks").
+RUNPATH(ifc_root + "lib/ifc_engine_model.ks").
 
 // ── Aircraft config ────────────────────────────────────────
 // Edit these values to match your test aircraft.
@@ -72,11 +73,35 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_ground_contact_vs_max", 0.7,
   "vtol_static_trim_discovery", TRUE,   // enabled: computes static trim to balance pitch torque on ground
   "vtol_diff_collective_min",   0.12,
+  "vtol_engine_limit_floor",    0.14,  // prevents a single pod from being driven near-zero during aggressive recovery
+  "vtol_cmd_slew_per_s",        3.0,   // smooth command reversals so allocator does not jump to saturation
+  "vtol_cmd_roll_max",          0.60,  // hard cap on roll command into mixer
+  "vtol_cmd_pitch_max",         0.60,  // hard cap on pitch command into mixer
+  "vtol_diff_atten_min",        0.10,  // keep minimal authority so upset mode can still correct attitude
+  "vtol_diff_soft_bank_deg",    6.0,
+  "vtol_diff_hard_bank_deg",    22.0,
+  "vtol_diff_soft_pitch_deg",   6.0,
+  "vtol_diff_hard_pitch_deg",   16.0,
+  "vtol_diff_soft_roll_rate_degs", 8.0,
+  "vtol_diff_hard_roll_rate_degs", 20.0,
+  "vtol_diff_soft_pitch_rate_degs", 8.0,
+  "vtol_diff_hard_pitch_rate_degs", 20.0,
+  "vtol_upset_bank_deg",        18.0,
+  "vtol_upset_pitch_deg",       14.0,
+  "vtol_upset_roll_rate_degs",  18.0,
+  "vtol_upset_pitch_rate_degs", 18.0,
+  "vtol_upset_cmd_max",         0.30,  // during upset, force low-amplitude damping commands
+  "vtol_upset_cmd_roll_max",    0.70,  // keep strong roll recovery authority during upset
+  "vtol_upset_cmd_pitch_max",   0.30,  // keep pitch upset authority conservative
+  "vtol_upset_diff_atten_min",  0.55,  // do not collapse differential authority in upset
+  "vtol_upset_engine_limit_floor", 0.02, // allow deeper per-engine cut in upset for roll torque
+  "vtol_upset_guard_agl_m",     20.0,  // below this AGL, upset + low throttle is clamped to preserve lift
+  "vtol_upset_guard_thr_min",   0.55,  // guard minimum pilot-throttle surrogate into VS-hold
   "vtol_trim_min_agl_m",        0.0,   // allow adaptive trim from first collective application
   "vtol_trim_rate",             0.003,
   "vtol_trim_roll_rate",        0.001,
-  "vtol_trim_rate_lead_s",      0.25,
-  "vtol_trim_activity_min",     0.35,
+  "vtol_trim_rate_lead_s",      0.0,
+  "vtol_trim_activity_min",     0.0,
   "vtol_trim_min_offset",       -0.85,
   "vtol_trim_max_offset",       0.0,
   "vtol_trim_active_pitch_max", 8.0,
@@ -100,6 +125,8 @@ IFC_INIT_STATE().
 SET IFC_PHASE    TO PHASE_PREARM.
 SET IFC_SUBPHASE TO "".
 SET IFC_CYCLE_UT TO TIME:SECONDS.
+SET IFC_ACTUAL_DT TO 0.05.
+SET THROTTLE_CMD TO 0.
 
 // ── Abort handler ──────────────────────────────────────────
 // Defined before arming so ABORT always exits cleanly.
@@ -269,6 +296,7 @@ IF NOT VTOL_DIFF_AVAILABLE {
     // ============================================================
 
     SAS OFF.
+    EM_INIT().
 
     // ── Log init ─────────────────────────────────────────────
     LOCAL log_dir IS "0:/Integrated Flight Computer/logs".
@@ -316,7 +344,18 @@ IF NOT VTOL_DIFF_AVAILABLE {
                  "collective,hover_coll,vs_integral," +
                  "pilot_roll,pilot_pitch,pilot_yaw,pilot_thr," +
                  "roll_cmd,pitch_cmd,pitch_rate_degs,roll_rate_degs," +
-                 "gndspd_ms,ship_status,alloc_alpha,alloc_shift".
+                 "gndspd_ms,ship_status,alloc_alpha,alloc_shift," +
+                 "vtol_upset,vtol_thr_guard,vtol_thr_used," +
+                 "vtol_level_active,vtol_truly_airborne,vtol_is_grounded," +
+                 "vtol_roll_err,vtol_pitch_err,vtol_roll_p,vtol_roll_i,vtol_roll_d," +
+                 "vtol_pitch_p,vtol_pitch_i,vtol_pitch_d,vtol_roll_unsat,vtol_pitch_unsat," +
+                 "vtol_cmd_roll_precap,vtol_cmd_pitch_precap,vtol_cmd_roll_postcap,vtol_cmd_pitch_postcap," +
+                 "vtol_cmd_roll_postupset,vtol_cmd_pitch_postupset,vtol_cmd_roll_postslew,vtol_cmd_pitch_postslew," +
+                 "vtol_diff_raw,vtol_diff_attn,vtol_diff_upset,vtol_lim_floor," +
+                 "vtol_alloc_bmin,vtol_alloc_bmax,vtol_alloc_alpha_limited,vtol_clamp_low_n,vtol_clamp_high_n," +
+                 "vtol_roll_moment,vtol_pitch_moment,vtol_limit_span," +
+                 "em_mach,em_q_demand_u_s,em_q_supply_u_s,em_margin_u_s," +
+                 "em_la_margin_u_s,em_spool_lag_s,em_starving,em_eng_count,em_intake_count".
     LOCAL hdr_ei IS 0.
     UNTIL hdr_ei >= VTOL_ENG_LIST:LENGTH {
       SET hdr TO hdr + ",eng" + (hdr_ei+1) + "_lim".
@@ -404,66 +443,25 @@ IF NOT VTOL_DIFF_AVAILABLE {
       }
 
       VTOL_TICK_PREARM().
+      SET THROTTLE_CMD TO CLAMP(VTOL_COLLECTIVE, 0, 1).
+      EM_TICK().
 
-      // ── Per-engine limits (computed once, used by display + log) ──
-      // Use the same roll_cmd / pitch_cmd that VTOL_TICK_PREARM used:
-      // wings-level correction when pilot input is below deadband.
+      // ── Per-engine limits + command telemetry (actual values from VTOL module) ──
       LOCAL disp_ang_vel IS SHIP:ANGULARVEL.
       LOCAL disp_pitch_rate IS VDOT(disp_ang_vel, SHIP:FACING:STARVECTOR) * (180 / CONSTANT:PI).
       LOCAL disp_roll_rate  IS -VDOT(disp_ang_vel, SHIP:FACING:FOREVECTOR) * (180 / CONSTANT:PI).
-      LOCAL disp_roll_cmd  IS roll_disp.
-      LOCAL disp_pitch_cmd IS pitch_disp.
-      LOCAL disp_level_roll_kp  IS _AMO_CFG_NUM("vtol_level_roll_kp", VTOL_LEVEL_ROLL_KP, 0).
-      LOCAL disp_level_roll_kd  IS _AMO_CFG_NUM("vtol_level_roll_kd", VTOL_LEVEL_ROLL_KD, 0).
-      LOCAL disp_level_roll_ki  IS _AMO_CFG_NUM("vtol_level_roll_ki", VTOL_LEVEL_ROLL_KI, 0).
-      LOCAL disp_level_pitch_kp IS _AMO_CFG_NUM("vtol_level_pitch_kp", VTOL_LEVEL_PITCH_KP, 0).
-      LOCAL disp_level_pitch_kd IS _AMO_CFG_NUM("vtol_level_pitch_kd", VTOL_LEVEL_PITCH_KD, 0).
-      LOCAL disp_level_pitch_ki IS _AMO_CFG_NUM("vtol_level_pitch_ki", VTOL_LEVEL_PITCH_KI, 0).
-      LOCAL disp_level_on_ground IS _AMO_CFG_BOOL("vtol_level_on_ground", VTOL_LEVEL_ON_GROUND_DEFAULT).
-      LOCAL disp_level_min_agl IS _AMO_CFG_NUM("vtol_level_min_agl_m", VTOL_LEVEL_MIN_AGL_M, 0).
-      LOCAL disp_ground_agl IS _AMO_CFG_NUM("vtol_ground_contact_agl_m", VTOL_GROUND_CONTACT_AGL_M, 0).
-      LOCAL disp_is_grounded IS _VTOL_EFFECTIVE_GROUNDED(disp_ground_agl).
-      LOCAL disp_level_active IS TRUE.
-      IF NOT disp_level_on_ground {
-        IF disp_is_grounded OR GET_AGL() < disp_level_min_agl {
-          SET disp_level_active TO FALSE.
-        }
-      }
-      IF disp_level_active AND ABS(roll_disp) < VTOL_TRIM_DEADBAND {
-        LOCAL disp_bank IS ARCSIN(CLAMP(-VDOT(SHIP:FACING:STARVECTOR, SHIP:UP:VECTOR), -1, 1)).
-        SET disp_roll_cmd TO CLAMP(
-          -disp_bank * disp_level_roll_kp
-          + disp_roll_rate * disp_level_roll_kd
-          + VTOL_LEVEL_ROLL_INT * disp_level_roll_ki,
-          -1, 1).
-      }
-      IF disp_level_active AND ABS(pitch_disp) < VTOL_TRIM_DEADBAND {
-        LOCAL disp_pitch_ang IS 90 - VANG(SHIP:FACING:FOREVECTOR, SHIP:UP:VECTOR).
-        SET disp_pitch_cmd TO CLAMP(
-          -disp_pitch_ang * disp_level_pitch_kp
-          + disp_pitch_rate * disp_level_pitch_kd
-          + VTOL_LEVEL_PITCH_INT * disp_level_pitch_ki,
-          -1, 1).
-      }
+      LOCAL disp_roll_cmd  IS VTOL_CMD_ROLL_ACTUAL.
+      LOCAL disp_pitch_cmd IS VTOL_CMD_PITCH_ACTUAL.
       LOCAL eng_limits IS LIST().
       LOCAL disp_alloc_alpha IS VTOL_ALLOC_ALPHA.
       LOCAL disp_alloc_shift IS VTOL_ALLOC_SHIFT.
-      LOCAL disp_diff_min IS _AMO_CFG_NUM("vtol_diff_collective_min", VTOL_DIFF_COLLECTIVE_MIN, 0).
-      LOCAL disp_diff_scale IS 1.
-      IF VTOL_COLLECTIVE <= disp_diff_min {
-        SET disp_diff_scale TO 0.
-      } ELSE {
-        LOCAL disp_span IS 1.0 - disp_diff_min.
-        IF disp_span < 0.01 { SET disp_span TO 0.01. }
-        SET disp_diff_scale TO CLAMP((VTOL_COLLECTIVE - disp_diff_min) / disp_span, 0, 1).
-      }
       LOCAL eng_ei IS 0.
       UNTIL eng_ei >= VTOL_ENG_LIST:LENGTH {
-        LOCAL disp_base IS VTOL_COLLECTIVE * (1.0 + VTOL_TRIM_OFFSET[eng_ei]).
-        LOCAL disp_diff IS disp_diff_scale * (disp_roll_cmd  * VTOL_ROLL_MIX[eng_ei]
-                                            + disp_pitch_cmd * VTOL_PITCH_MIX[eng_ei]).
-        LOCAL eng_lim IS disp_base + disp_alloc_shift + disp_alloc_alpha * disp_diff.
-        eng_limits:ADD(CLAMP(eng_lim, 0, 1)).
+        LOCAL eng_lim IS 0.
+        IF eng_ei < VTOL_ENG_LIM_ACTUAL:LENGTH {
+          SET eng_lim TO VTOL_ENG_LIM_ACTUAL[eng_ei].
+        }
+        eng_limits:ADD(eng_lim).
         SET eng_ei TO eng_ei + 1.
       }
 
@@ -500,7 +498,13 @@ IF NOT VTOL_DIFF_AVAILABLE {
 
       LOCAL vsi_s IS _FMT(VTOL_VS_INTEGRAL, 7, 3).
       PRINT ("VS_I:" + vsi_s + "   Thr(pilot):" + _FMT_PCT(thr_disp) + "          ") AT(0, disp_row). SET disp_row TO disp_row + 1.
+      PRINT ("Thr(used):" + _FMT_PCT(VTOL_THR_INPUT_USED) + "  Guard:" + VTOL_THR_GUARD_ACTIVE +
+             "  Upset:" + VTOL_UPSET_ACTIVE + "    ") AT(0, disp_row). SET disp_row TO disp_row + 1.
       PRINT ("Alloc: a=" + _FMT(disp_alloc_alpha, 5, 3) + "  s=" + _FMT(disp_alloc_shift, 6, 3) + "          ") AT(0, disp_row). SET disp_row TO disp_row + 1.
+      PRINT ("EM M:" + _FMT(TELEM_EM_MACH,5,3) + " D:" + _FMT(TELEM_EM_Q_DEMAND,6,2) +
+             " S:" + _FMT(TELEM_EM_Q_SUPPLY,6,2) + " d:" + _FMT(TELEM_EM_MARGIN,6,2) +
+             " L:" + _FMT(TELEM_EM_WORST_SPOOL_LAG,4,2) + " " + TELEM_EM_STARVING) AT(0, disp_row).
+      SET disp_row TO disp_row + 1.
 
       PRINT ("Roll:" + _FMT(roll_disp,6,3) + "  Pitch:" + _FMT(pitch_disp,6,3) +
              "  Yaw:" + _FMT(yaw_disp,6,3) + "  Thr:" + _FMT(thr_disp,5,2) + "  ") AT(0, disp_row). SET disp_row TO disp_row + 1.
@@ -596,7 +600,52 @@ IF NOT VTOL_DIFF_AVAILABLE {
           ROUND(SHIP:GROUNDSPEED,        3),
           SHIP:STATUS,
           ROUND(disp_alloc_alpha,        4),
-          ROUND(disp_alloc_shift,        4)
+          ROUND(disp_alloc_shift,        4),
+          VTOL_UPSET_ACTIVE,
+          VTOL_THR_GUARD_ACTIVE,
+          ROUND(VTOL_THR_INPUT_USED,     4),
+          VTOL_DIAG_LEVEL_ACTIVE,
+          VTOL_DIAG_TRULY_AIRBORNE,
+          VTOL_DIAG_IS_GROUNDED,
+          ROUND(VTOL_DIAG_ROLL_ERR,          4),
+          ROUND(VTOL_DIAG_PITCH_ERR,         4),
+          ROUND(VTOL_DIAG_ROLL_P,            4),
+          ROUND(VTOL_DIAG_ROLL_I,            4),
+          ROUND(VTOL_DIAG_ROLL_D,            4),
+          ROUND(VTOL_DIAG_PITCH_P,           4),
+          ROUND(VTOL_DIAG_PITCH_I,           4),
+          ROUND(VTOL_DIAG_PITCH_D,           4),
+          ROUND(VTOL_DIAG_ROLL_UNSAT,        4),
+          ROUND(VTOL_DIAG_PITCH_UNSAT,       4),
+          ROUND(VTOL_DIAG_CMD_ROLL_PRECAP,   4),
+          ROUND(VTOL_DIAG_CMD_PITCH_PRECAP,  4),
+          ROUND(VTOL_DIAG_CMD_ROLL_POSTCAP,  4),
+          ROUND(VTOL_DIAG_CMD_PITCH_POSTCAP, 4),
+          ROUND(VTOL_DIAG_CMD_ROLL_POSTUPSET,  4),
+          ROUND(VTOL_DIAG_CMD_PITCH_POSTUPSET, 4),
+          ROUND(VTOL_DIAG_CMD_ROLL_POSTSLEW, 4),
+          ROUND(VTOL_DIAG_CMD_PITCH_POSTSLEW,4),
+          ROUND(VTOL_DIAG_DIFF_SCALE_RAW,    4),
+          ROUND(VTOL_DIAG_DIFF_SCALE_ATTN,   4),
+          ROUND(VTOL_DIAG_DIFF_SCALE_UPSET,  4),
+          ROUND(VTOL_DIAG_LIM_FLOOR_USE,     4),
+          ROUND(VTOL_DIAG_ALLOC_BMIN,        4),
+          ROUND(VTOL_DIAG_ALLOC_BMAX,        4),
+          VTOL_DIAG_ALPHA_LIMITED,
+          ROUND(VTOL_DIAG_CLAMP_LOW_COUNT,   0),
+          ROUND(VTOL_DIAG_CLAMP_HIGH_COUNT,  0),
+          ROUND(VTOL_DIAG_ROLL_MOMENT_PROXY, 6),
+          ROUND(VTOL_DIAG_PITCH_MOMENT_PROXY,6),
+          ROUND(VTOL_DIAG_LIMIT_SPAN,        6),
+          ROUND(TELEM_EM_MACH,               4),
+          ROUND(TELEM_EM_Q_DEMAND,           6),
+          ROUND(TELEM_EM_Q_SUPPLY,           6),
+          ROUND(TELEM_EM_MARGIN,             6),
+          ROUND(TELEM_EM_LOOKAHEAD_MARGIN,   6),
+          ROUND(TELEM_EM_WORST_SPOOL_LAG,    4),
+          TELEM_EM_STARVING,
+          TELEM_EM_ENG_COUNT,
+          TELEM_EM_INTAKE_COUNT
         ).
         LOCAL li IS 0.
         UNTIL li >= eng_limits:LENGTH {

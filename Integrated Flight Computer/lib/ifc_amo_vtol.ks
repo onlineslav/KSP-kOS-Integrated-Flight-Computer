@@ -46,6 +46,45 @@ FUNCTION _VTOL_ENABLED {
   RETURN _AMO_CFG_BOOL("has_vtol", FALSE).
 }
 
+FUNCTION _VTOL_CLEAR_DIAG {
+  SET VTOL_DIAG_LEVEL_ACTIVE        TO FALSE.
+  SET VTOL_DIAG_TRULY_AIRBORNE      TO FALSE.
+  SET VTOL_DIAG_IS_GROUNDED         TO FALSE.
+  SET VTOL_DIAG_ROLL_ERR            TO 0.0.
+  SET VTOL_DIAG_PITCH_ERR           TO 0.0.
+  SET VTOL_DIAG_ROLL_P              TO 0.0.
+  SET VTOL_DIAG_ROLL_I              TO 0.0.
+  SET VTOL_DIAG_ROLL_D              TO 0.0.
+  SET VTOL_DIAG_PITCH_P             TO 0.0.
+  SET VTOL_DIAG_PITCH_I             TO 0.0.
+  SET VTOL_DIAG_PITCH_D             TO 0.0.
+  SET VTOL_DIAG_ROLL_UNSAT          TO 0.0.
+  SET VTOL_DIAG_PITCH_UNSAT         TO 0.0.
+  SET VTOL_DIAG_CMD_ROLL_PRECAP     TO 0.0.
+  SET VTOL_DIAG_CMD_PITCH_PRECAP    TO 0.0.
+  SET VTOL_DIAG_CMD_ROLL_POSTCAP    TO 0.0.
+  SET VTOL_DIAG_CMD_PITCH_POSTCAP   TO 0.0.
+  SET VTOL_DIAG_CMD_ROLL_POSTUPSET  TO 0.0.
+  SET VTOL_DIAG_CMD_PITCH_POSTUPSET TO 0.0.
+  SET VTOL_DIAG_CMD_ROLL_POSTSLEW   TO 0.0.
+  SET VTOL_DIAG_CMD_PITCH_POSTSLEW  TO 0.0.
+  SET VTOL_DIAG_DIFF_SCALE_RAW      TO 0.0.
+  SET VTOL_DIAG_DIFF_SCALE_ATTN     TO 0.0.
+  SET VTOL_DIAG_DIFF_SCALE_UPSET    TO 0.0.
+  SET VTOL_DIAG_LIM_FLOOR_USE       TO 0.0.
+  SET VTOL_DIAG_ALLOC_BMIN          TO 0.0.
+  SET VTOL_DIAG_ALLOC_BMAX          TO 0.0.
+  SET VTOL_DIAG_ALPHA_LIMITED       TO FALSE.
+  SET VTOL_DIAG_CLAMP_LOW_COUNT     TO 0.0.
+  SET VTOL_DIAG_CLAMP_HIGH_COUNT    TO 0.0.
+  SET VTOL_DIAG_ROLL_MOMENT_PROXY   TO 0.0.
+  SET VTOL_DIAG_PITCH_MOMENT_PROXY  TO 0.0.
+  SET VTOL_DIAG_LIMIT_SPAN          TO 0.0.
+}
+
+GLOBAL _vtol_prev_roll_cmd IS 0.
+GLOBAL _vtol_prev_pitch_cmd IS 0.
+
 // ?????? Servo discovery via part tag ??????????????????????????????????????????????????????????????????????????????
 FUNCTION _VTOL_FIND_SERVO_MODULE {
   PARAMETER tag_name.
@@ -311,18 +350,59 @@ FUNCTION VTOL_DISCOVER {
 //   limit[i] = base[i] + shift + alpha * diff[i]
 // with per-engine bounds 0..1.
 FUNCTION _VTOL_ALLOC_SHIFT_BOUNDS {
-  PARAMETER base_vec, diff_vec, alpha.
+  PARAMETER base_vec, diff_vec, alpha, lim_min, lim_max.
   LOCAL shift_min IS -999.
   LOCAL shift_max IS  999.
   LOCAL bi IS 0.
   UNTIL bi >= base_vec:LENGTH {
-    LOCAL lo_i IS -base_vec[bi] - alpha * diff_vec[bi].
-    LOCAL hi_i IS  1.0 - base_vec[bi] - alpha * diff_vec[bi].
+    LOCAL lo_i IS lim_min - base_vec[bi] - alpha * diff_vec[bi].
+    LOCAL hi_i IS lim_max - base_vec[bi] - alpha * diff_vec[bi].
     IF lo_i > shift_min { SET shift_min TO lo_i. }
     IF hi_i < shift_max { SET shift_max TO hi_i. }
     SET bi TO bi + 1.
   }
   RETURN LEXICON("min", shift_min, "max", shift_max).
+}
+
+FUNCTION _VTOL_AUTH_AXIS_SCALE {
+  PARAMETER abs_val, soft_val, hard_val.
+  IF hard_val <= soft_val { RETURN 1.0. }
+  IF abs_val <= soft_val { RETURN 1.0. }
+  IF abs_val >= hard_val { RETURN 0.0. }
+  RETURN 1.0 - ((abs_val - soft_val) / (hard_val - soft_val)).
+}
+
+FUNCTION _VTOL_DIFF_ATTENUATION {
+  LOCAL bank_abs IS ABS(ARCSIN(CLAMP(-VDOT(SHIP:FACING:STARVECTOR, SHIP:UP:VECTOR), -1, 1))).
+  LOCAL pitch_abs IS ABS(90 - VANG(SHIP:FACING:FOREVECTOR, SHIP:UP:VECTOR)).
+
+  LOCAL ang_vel IS SHIP:ANGULARVEL.
+  LOCAL deg_per_rad IS 180 / CONSTANT:PI.
+  LOCAL roll_rate_abs IS ABS(-VDOT(ang_vel, SHIP:FACING:FOREVECTOR) * deg_per_rad).
+  LOCAL pitch_rate_abs IS ABS(VDOT(ang_vel, SHIP:FACING:STARVECTOR) * deg_per_rad).
+
+  LOCAL bank_soft IS _AMO_CFG_NUM("vtol_diff_soft_bank_deg", VTOL_DIFF_SOFT_BANK_DEG, 0).
+  LOCAL bank_hard IS _AMO_CFG_NUM("vtol_diff_hard_bank_deg", VTOL_DIFF_HARD_BANK_DEG, 0).
+  LOCAL pitch_soft IS _AMO_CFG_NUM("vtol_diff_soft_pitch_deg", VTOL_DIFF_SOFT_PITCH_DEG, 0).
+  LOCAL pitch_hard IS _AMO_CFG_NUM("vtol_diff_hard_pitch_deg", VTOL_DIFF_HARD_PITCH_DEG, 0).
+  LOCAL rr_soft IS _AMO_CFG_NUM("vtol_diff_soft_roll_rate_degs", VTOL_DIFF_SOFT_ROLL_RATE_DEGS, 0).
+  LOCAL rr_hard IS _AMO_CFG_NUM("vtol_diff_hard_roll_rate_degs", VTOL_DIFF_HARD_ROLL_RATE_DEGS, 0).
+  LOCAL pr_soft IS _AMO_CFG_NUM("vtol_diff_soft_pitch_rate_degs", VTOL_DIFF_SOFT_PITCH_RATE_DEGS, 0).
+  LOCAL pr_hard IS _AMO_CFG_NUM("vtol_diff_hard_pitch_rate_degs", VTOL_DIFF_HARD_PITCH_RATE_DEGS, 0).
+  LOCAL attn_min IS _AMO_CFG_NUM("vtol_diff_atten_min", VTOL_DIFF_ATTEN_MIN, 0).
+  IF attn_min < 0 { SET attn_min TO 0. }
+  IF attn_min > 1 { SET attn_min TO 1. }
+
+  LOCAL sb IS _VTOL_AUTH_AXIS_SCALE(bank_abs, bank_soft, bank_hard).
+  LOCAL sp IS _VTOL_AUTH_AXIS_SCALE(pitch_abs, pitch_soft, pitch_hard).
+  LOCAL sr IS _VTOL_AUTH_AXIS_SCALE(roll_rate_abs, rr_soft, rr_hard).
+  LOCAL spr IS _VTOL_AUTH_AXIS_SCALE(pitch_rate_abs, pr_soft, pr_hard).
+
+  LOCAL out IS MIN(sb, sp).
+  IF sr < out { SET out TO sr. }
+  IF spr < out { SET out TO spr. }
+  IF out < attn_min { SET out TO attn_min. }
+  RETURN CLAMP(out, 0, 1).
 }
 
 // collective_in scales the torque-balanced base for all engines:
@@ -334,6 +414,7 @@ FUNCTION _VTOL_ALLOC_SHIFT_BOUNDS {
 FUNCTION _VTOL_APPLY_ENGINES {
   PARAMETER collective_in, roll_cmd, pitch_cmd.
   IF VTOL_ENG_LIST:LENGTH = 0 { RETURN. }
+  VTOL_ENG_LIM_ACTUAL:CLEAR().
 
   LOCAL diff_min IS _AMO_CFG_NUM(
     "vtol_diff_collective_min",
@@ -348,6 +429,39 @@ FUNCTION _VTOL_APPLY_ENGINES {
     IF span < 0.01 { SET span TO 0.01. }
     SET diff_scale TO CLAMP((collective_in - diff_min) / span, 0, 1).
   }
+  SET VTOL_DIAG_DIFF_SCALE_RAW TO diff_scale.
+  SET diff_scale TO diff_scale * _VTOL_DIFF_ATTENUATION().
+  SET VTOL_DIAG_DIFF_SCALE_ATTN TO diff_scale.
+  IF VTOL_UPSET_ACTIVE AND collective_in > diff_min {
+    LOCAL upset_diff_min IS _AMO_CFG_NUM(
+      "vtol_upset_diff_atten_min",
+      VTOL_UPSET_DIFF_ATTEN_MIN,
+      0
+    ).
+    IF upset_diff_min < 0 { SET upset_diff_min TO 0. }
+    IF upset_diff_min > 1 { SET upset_diff_min TO 1. }
+    IF diff_scale < upset_diff_min { SET diff_scale TO upset_diff_min. }
+  }
+  SET VTOL_DIAG_DIFF_SCALE_UPSET TO diff_scale.
+
+  LOCAL lim_floor_cfg IS _AMO_CFG_NUM("vtol_engine_limit_floor", VTOL_ENGINE_LIMIT_FLOOR, 0).
+  IF lim_floor_cfg < 0 { SET lim_floor_cfg TO 0. }
+  IF lim_floor_cfg > 0.45 { SET lim_floor_cfg TO 0.45. }
+  LOCAL lim_floor_use IS 0.
+  IF collective_in > diff_min {
+    SET lim_floor_use TO MIN(lim_floor_cfg, collective_in * 0.60).
+  }
+  IF VTOL_UPSET_ACTIVE AND collective_in > diff_min {
+    LOCAL upset_floor IS _AMO_CFG_NUM(
+      "vtol_upset_engine_limit_floor",
+      VTOL_UPSET_ENGINE_LIMIT_FLOOR,
+      0
+    ).
+    IF upset_floor < 0 { SET upset_floor TO 0. }
+    IF upset_floor > 0.45 { SET upset_floor TO 0.45. }
+    IF upset_floor < lim_floor_use { SET lim_floor_use TO upset_floor. }
+  }
+  SET VTOL_DIAG_LIM_FLOOR_USE TO lim_floor_use.
 
   LOCAL base_vec IS LIST().
   LOCAL diff_vec IS LIST().
@@ -362,7 +476,8 @@ FUNCTION _VTOL_APPLY_ENGINES {
   }
 
   LOCAL alpha IS 1.0.
-  LOCAL alloc_bounds IS _VTOL_ALLOC_SHIFT_BOUNDS(base_vec, diff_vec, alpha).
+  SET VTOL_DIAG_ALPHA_LIMITED TO FALSE.
+  LOCAL alloc_bounds IS _VTOL_ALLOC_SHIFT_BOUNDS(base_vec, diff_vec, alpha, lim_floor_use, 1.0).
   IF alloc_bounds["min"] > alloc_bounds["max"] {
     // Full differential is infeasible under 0..1 bounds.
     // Find maximum feasible alpha in [0,1].
@@ -371,7 +486,7 @@ FUNCTION _VTOL_APPLY_ENGINES {
     LOCAL it IS 0.
     UNTIL it >= 14 {
       LOCAL mid IS (lo + hi) * 0.5.
-      LOCAL b_mid IS _VTOL_ALLOC_SHIFT_BOUNDS(base_vec, diff_vec, mid).
+      LOCAL b_mid IS _VTOL_ALLOC_SHIFT_BOUNDS(base_vec, diff_vec, mid, lim_floor_use, 1.0).
       IF b_mid["min"] <= b_mid["max"] {
         SET lo TO mid.
       } ELSE {
@@ -380,8 +495,11 @@ FUNCTION _VTOL_APPLY_ENGINES {
       SET it TO it + 1.
     }
     SET alpha TO lo.
-    SET alloc_bounds TO _VTOL_ALLOC_SHIFT_BOUNDS(base_vec, diff_vec, alpha).
+    SET VTOL_DIAG_ALPHA_LIMITED TO TRUE.
+    SET alloc_bounds TO _VTOL_ALLOC_SHIFT_BOUNDS(base_vec, diff_vec, alpha, lim_floor_use, 1.0).
   }
+  SET VTOL_DIAG_ALLOC_BMIN TO alloc_bounds["min"].
+  SET VTOL_DIAG_ALLOC_BMAX TO alloc_bounds["max"].
 
   // Keep commanded collective when possible; otherwise shift only as much as
   // required to keep all engines inside hard bounds.
@@ -390,11 +508,34 @@ FUNCTION _VTOL_APPLY_ENGINES {
   SET VTOL_ALLOC_ALPHA TO alpha.
   SET VTOL_ALLOC_SHIFT TO shift.
 
+  LOCAL clamp_low_n IS 0.
+  LOCAL clamp_high_n IS 0.
+  LOCAL lim_min_seen IS 999.
+  LOCAL lim_max_seen IS -999.
+  LOCAL roll_moment_proxy IS 0.
+  LOCAL pitch_moment_proxy IS 0.
   SET i TO 0.
   UNTIL i >= VTOL_ENG_LIST:LENGTH {
-    LOCAL lim IS base_vec[i] + shift + alpha * diff_vec[i].
-    _AMO_SET_ENTRY_LIMIT_FRAC(VTOL_ENG_LIST[i], CLAMP(lim, 0, 1)).
+    LOCAL lim_unclamped IS base_vec[i] + shift + alpha * diff_vec[i].
+    LOCAL lim_cmd IS CLAMP(lim_unclamped, lim_floor_use, 1).
+    IF lim_unclamped <= lim_floor_use { SET clamp_low_n TO clamp_low_n + 1. }
+    IF lim_unclamped >= 1 { SET clamp_high_n TO clamp_high_n + 1. }
+    IF lim_cmd < lim_min_seen { SET lim_min_seen TO lim_cmd. }
+    IF lim_cmd > lim_max_seen { SET lim_max_seen TO lim_cmd. }
+    SET roll_moment_proxy TO roll_moment_proxy + lim_cmd * VTOL_ROLL_MIX[i].
+    SET pitch_moment_proxy TO pitch_moment_proxy + lim_cmd * VTOL_PITCH_MIX[i].
+    _AMO_SET_ENTRY_LIMIT_FRAC(VTOL_ENG_LIST[i], lim_cmd).
+    VTOL_ENG_LIM_ACTUAL:ADD(lim_cmd).
     SET i TO i + 1.
+  }
+  SET VTOL_DIAG_CLAMP_LOW_COUNT TO clamp_low_n.
+  SET VTOL_DIAG_CLAMP_HIGH_COUNT TO clamp_high_n.
+  SET VTOL_DIAG_ROLL_MOMENT_PROXY TO roll_moment_proxy.
+  SET VTOL_DIAG_PITCH_MOMENT_PROXY TO pitch_moment_proxy.
+  IF lim_min_seen > lim_max_seen {
+    SET VTOL_DIAG_LIMIT_SPAN TO 0.
+  } ELSE {
+    SET VTOL_DIAG_LIMIT_SPAN TO lim_max_seen - lim_min_seen.
   }
 }
 
@@ -602,6 +743,8 @@ FUNCTION _VTOL_ADAPT_TRIM {
   IF GET_AGL() < min_agl { RETURN. }
   LOCAL diff_min IS _AMO_CFG_NUM("vtol_diff_collective_min", VTOL_DIFF_COLLECTIVE_MIN, 0).
   IF VTOL_COLLECTIVE <= diff_min { RETURN. }
+  LOCAL status_str IS SHIP:STATUS.
+  IF status_str = "LANDED" OR status_str = "PRELAUNCH" { RETURN. }
 
   // Freeze integrator while pilot is commanding pitch/roll.
   LOCAL pilot_pitch_in IS 0.
@@ -626,41 +769,19 @@ FUNCTION _VTOL_ADAPT_TRIM {
   LOCAL trim_bank_max IS _AMO_CFG_NUM("vtol_trim_active_bank_max", VTOL_TRIM_ACTIVE_BANK_MAX, 0).
   LOCAL trim_pitch_rate_max IS _AMO_CFG_NUM("vtol_trim_active_rate_max", VTOL_TRIM_ACTIVE_RATE_MAX, 0).
   LOCAL trim_roll_rate_max IS _AMO_CFG_NUM("vtol_trim_active_roll_rate_max", VTOL_TRIM_ACTIVE_ROLL_RATE_MAX, 0).
-  LOCAL trim_rate_lead_s IS _AMO_CFG_NUM("vtol_trim_rate_lead_s", VTOL_TRIM_RATE_LEAD_S, 0).
-  LOCAL trim_activity_min IS _AMO_CFG_NUM("vtol_trim_activity_min", VTOL_TRIM_ACTIVITY_MIN, 0).
-  IF trim_rate_lead_s < 0 { SET trim_rate_lead_s TO 0. }
-  SET trim_activity_min TO CLAMP(trim_activity_min, 0, 1).
+  // Do not adapt trim during dynamic excursions.
+  // Trim is for static torque-bias learning, not transient rate damping.
+  IF trim_pitch_max > 0 AND ABS(pitch_ang) > trim_pitch_max { RETURN. }
+  IF trim_bank_max > 0 AND ABS(bank_ang) > trim_bank_max { RETURN. }
+  IF trim_pitch_rate_max > 0 AND ABS(pitch_rate_degs) > trim_pitch_rate_max { RETURN. }
+  IF trim_roll_rate_max > 0 AND ABS(roll_rate_degs) > trim_roll_rate_max { RETURN. }
 
-  // Error terms include rate lead so trim starts correcting as soon as the
-  // craft starts rotating away from level, not only after a large angle builds.
-  LOCAL pitch_err_raw IS -pitch_ang + pitch_rate_degs * trim_rate_lead_s.
-  LOCAL pitch_err IS CLAMP(pitch_err_raw, -VTOL_TRIM_PITCH_CLAMP, VTOL_TRIM_PITCH_CLAMP).
+  LOCAL pitch_err IS CLAMP(-pitch_ang, -VTOL_TRIM_PITCH_CLAMP, VTOL_TRIM_PITCH_CLAMP).
   LOCAL trim_bank_clamp IS _AMO_CFG_NUM("vtol_trim_bank_clamp", VTOL_TRIM_BANK_CLAMP, 0.1).
-  LOCAL bank_err_raw IS -bank_ang + roll_rate_degs * trim_rate_lead_s.
-  LOCAL bank_err IS CLAMP(bank_err_raw, -trim_bank_clamp, trim_bank_clamp).
+  LOCAL bank_err IS CLAMP(-bank_ang, -trim_bank_clamp, trim_bank_clamp).
   IF ABS(pitch_err) < 0.1 AND ABS(bank_err) < 0.1 { RETURN. }
-
-  // Soft activity gating: keep adapting during large excursions, but reduce
-  // aggressiveness when angles/rates are far beyond the nominal tuning range.
-  LOCAL pitch_scale IS 1.0.
-  IF trim_pitch_max > 0 AND ABS(pitch_ang) > trim_pitch_max {
-    SET pitch_scale TO MIN(pitch_scale, trim_pitch_max / ABS(pitch_ang)).
-  }
-  IF trim_pitch_rate_max > 0 AND ABS(pitch_rate_degs) > trim_pitch_rate_max {
-    SET pitch_scale TO MIN(pitch_scale, trim_pitch_rate_max / ABS(pitch_rate_degs)).
-  }
-  LOCAL bank_scale IS 1.0.
-  IF trim_bank_max > 0 AND ABS(bank_ang) > trim_bank_max {
-    SET bank_scale TO MIN(bank_scale, trim_bank_max / ABS(bank_ang)).
-  }
-  IF trim_roll_rate_max > 0 AND ABS(roll_rate_degs) > trim_roll_rate_max {
-    SET bank_scale TO MIN(bank_scale, trim_roll_rate_max / ABS(roll_rate_degs)).
-  }
-  IF pitch_scale < trim_activity_min { SET pitch_scale TO trim_activity_min. }
-  IF bank_scale < trim_activity_min { SET bank_scale TO trim_activity_min. }
-
-  LOCAL pitch_drive IS pitch_err * pitch_scale.
-  LOCAL bank_drive IS bank_err * bank_scale.
+  LOCAL pitch_drive IS pitch_err.
+  LOCAL bank_drive IS bank_err.
 
   LOCAL trim_rate_pitch IS _AMO_CFG_NUM("vtol_trim_rate", VTOL_TRIM_RATE, 0).
   LOCAL trim_rate_roll IS _AMO_CFG_NUM("vtol_trim_roll_rate", VTOL_TRIM_ROLL_RATE, 0).
@@ -707,15 +828,30 @@ FUNCTION _VTOL_ADAPT_TRIM {
 // wings-level auto-correction, and pilot differential (roll/pitch/yaw).
 FUNCTION VTOL_TICK_PREARM {
   IF NOT _VTOL_ENABLED() {
+    _VTOL_CLEAR_DIAG().
+    SET VTOL_CMD_ROLL_ACTUAL TO 0.
+    SET VTOL_CMD_PITCH_ACTUAL TO 0.
+    VTOL_ENG_LIM_ACTUAL:CLEAR().
+    SET VTOL_UPSET_ACTIVE TO FALSE.
+    SET VTOL_THR_GUARD_ACTIVE TO FALSE.
+    SET VTOL_THR_INPUT_USED TO 0.5.
     IF VTOL_ACTIVE { VTOL_RELEASE(). }
     RETURN.
   }
 
   VTOL_DISCOVER().
   IF NOT VTOL_DIFF_AVAILABLE {
+    _VTOL_CLEAR_DIAG().
+    SET VTOL_CMD_ROLL_ACTUAL TO 0.
+    SET VTOL_CMD_PITCH_ACTUAL TO 0.
+    VTOL_ENG_LIM_ACTUAL:CLEAR().
+    SET VTOL_UPSET_ACTIVE TO FALSE.
+    SET VTOL_THR_GUARD_ACTIVE TO FALSE.
+    SET VTOL_THR_INPUT_USED TO 0.5.
     IF VTOL_ACTIVE { VTOL_RELEASE(). }
     RETURN.
   }
+  _VTOL_CLEAR_DIAG().
 
   // ?????? Pilot inputs ????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
   LOCAL inputs  IS _VTOL_PILOT_INPUTS().
@@ -726,6 +862,37 @@ FUNCTION VTOL_TICK_PREARM {
   IF SHIP:HASSUFFIX("CONTROL") AND SHIP:CONTROL:HASSUFFIX("PILOTMAINTHROTTLE") {
     SET p_thr TO SHIP:CONTROL:PILOTMAINTHROTTLE.
   }
+
+  // Low-alt upset throttle guard:
+  // when badly banked/pitched near the ground, prevent pilot throttle
+  // from collapsing to zero (which maps to strong descent command in VS-hold).
+  SET VTOL_THR_GUARD_ACTIVE TO FALSE.
+  LOCAL guard_agl_m IS _AMO_CFG_NUM("vtol_upset_guard_agl_m", VTOL_UPSET_GUARD_AGL_M, 0).
+  LOCAL guard_thr_min IS _AMO_CFG_NUM("vtol_upset_guard_thr_min", VTOL_UPSET_GUARD_THR_MIN, 0).
+  IF guard_thr_min < 0 { SET guard_thr_min TO 0. }
+  IF guard_thr_min > 1 { SET guard_thr_min TO 1. }
+  IF guard_agl_m > 0 AND GET_AGL() <= guard_agl_m {
+    LOCAL guard_bank_abs IS ABS(ARCSIN(CLAMP(-VDOT(SHIP:FACING:STARVECTOR, SHIP:UP:VECTOR), -1, 1))).
+    LOCAL guard_pitch_abs IS ABS(90 - VANG(SHIP:FACING:FOREVECTOR, SHIP:UP:VECTOR)).
+    LOCAL guard_ang_vel IS SHIP:ANGULARVEL.
+    LOCAL guard_deg_per_rad IS 180 / CONSTANT:PI.
+    LOCAL guard_roll_rate_abs IS ABS(-VDOT(guard_ang_vel, SHIP:FACING:FOREVECTOR) * guard_deg_per_rad).
+    LOCAL guard_pitch_rate_abs IS ABS(VDOT(guard_ang_vel, SHIP:FACING:STARVECTOR) * guard_deg_per_rad).
+    LOCAL upset_bank_deg_g IS _AMO_CFG_NUM("vtol_upset_bank_deg", VTOL_UPSET_BANK_DEG, 0).
+    LOCAL upset_pitch_deg_g IS _AMO_CFG_NUM("vtol_upset_pitch_deg", VTOL_UPSET_PITCH_DEG, 0).
+    LOCAL upset_roll_rate_degs_g IS _AMO_CFG_NUM("vtol_upset_roll_rate_degs", VTOL_UPSET_ROLL_RATE_DEGS, 0).
+    LOCAL upset_pitch_rate_degs_g IS _AMO_CFG_NUM("vtol_upset_pitch_rate_degs", VTOL_UPSET_PITCH_RATE_DEGS, 0).
+    LOCAL guard_upset IS FALSE.
+    IF guard_bank_abs > upset_bank_deg_g { SET guard_upset TO TRUE. }
+    IF guard_pitch_abs > upset_pitch_deg_g { SET guard_upset TO TRUE. }
+    IF guard_roll_rate_abs > upset_roll_rate_degs_g { SET guard_upset TO TRUE. }
+    IF guard_pitch_rate_abs > upset_pitch_rate_degs_g { SET guard_upset TO TRUE. }
+    IF guard_upset AND p_thr < guard_thr_min {
+      SET p_thr TO guard_thr_min.
+      SET VTOL_THR_GUARD_ACTIVE TO TRUE.
+    }
+  }
+  SET VTOL_THR_INPUT_USED TO p_thr.
 
   // ?????? VS hold: pilot throttle ??? collective limiter level ???????????????
   // 50 % throttle ??? 0 m/s VS command.  PI controller integrates
@@ -765,6 +932,9 @@ FUNCTION VTOL_TICK_PREARM {
   // structural pitch bias that exists only because the gear is still loaded.
   LOCAL status_str IS SHIP:STATUS.
   LOCAL truly_airborne IS (status_str <> "LANDED" AND status_str <> "PRELAUNCH").
+  SET VTOL_DIAG_LEVEL_ACTIVE TO level_active.
+  SET VTOL_DIAG_TRULY_AIRBORNE TO truly_airborne.
+  SET VTOL_DIAG_IS_GROUNDED TO is_grounded.
 
   // Angular rates from SHIP:ANGULARVEL (world frame, rad/s).
   // Dot with ship axis vectors to get component around each axis.
@@ -779,9 +949,10 @@ FUNCTION VTOL_TICK_PREARM {
     LOCAL bank_ang IS ARCSIN(CLAMP(-VDOT(SHIP:FACING:STARVECTOR, SHIP:UP:VECTOR), -1, 1)).
     LOCAL roll_rate_degs IS roll_rate_rads * deg_per_rad.
     LOCAL roll_err IS -bank_ang.
-    LOCAL roll_unsat IS roll_err * level_roll_kp
-                     + roll_rate_degs * level_roll_kd
-                     + VTOL_LEVEL_ROLL_INT * level_roll_ki.
+    LOCAL roll_p_term IS roll_err * level_roll_kp.
+    LOCAL roll_d_term IS -roll_rate_degs * level_roll_kd.
+    LOCAL roll_i_term IS VTOL_LEVEL_ROLL_INT * level_roll_ki.
+    LOCAL roll_unsat IS roll_p_term + roll_d_term + roll_i_term.
     LOCAL roll_at_hi IS roll_unsat >= 1 AND roll_err > 0.
     LOCAL roll_at_lo IS roll_unsat <= -1 AND roll_err < 0.
     IF NOT truly_airborne {
@@ -792,25 +963,31 @@ FUNCTION VTOL_TICK_PREARM {
         -level_i_lim,
          level_i_lim
       ).
+      SET roll_i_term TO VTOL_LEVEL_ROLL_INT * level_roll_ki.
+      SET roll_unsat TO roll_p_term + roll_d_term + roll_i_term.
     }
-    // KSP angular velocity sign convention: positive roll_rate_rads = rolling LEFT.
-    // To damp a right-roll (positive bank): bank_ang > 0, roll_rate_degs > 0 while diverging.
-    // KD sign must oppose the rate: +roll_rate_degs * KD adds to the left-roll correction.
+    // Roll-rate damping must oppose rotational rate to avoid overshoot.
     SET roll_cmd TO CLAMP(
       roll_err         * level_roll_kp
-      +roll_rate_degs  * level_roll_kd
+      -roll_rate_degs  * level_roll_kd
       +VTOL_LEVEL_ROLL_INT * level_roll_ki,
       -1, 1).
+    SET VTOL_DIAG_ROLL_ERR TO roll_err.
+    SET VTOL_DIAG_ROLL_P TO roll_p_term.
+    SET VTOL_DIAG_ROLL_I TO roll_i_term.
+    SET VTOL_DIAG_ROLL_D TO roll_d_term.
+    SET VTOL_DIAG_ROLL_UNSAT TO roll_unsat.
   } ELSE {
     SET VTOL_LEVEL_ROLL_INT TO 0.
   }
   IF level_active AND ABS(p_pitch) < VTOL_TRIM_DEADBAND {
     LOCAL pitch_ang IS 90 - VANG(SHIP:FACING:FOREVECTOR, SHIP:UP:VECTOR).
     LOCAL pitch_rate_degs IS pitch_rate_rads * deg_per_rad.
-    LOCAL pitch_err IS -pitch_ang.
-    LOCAL pitch_unsat IS pitch_err * level_pitch_kp
-                      + pitch_rate_degs * level_pitch_kd
-                      + VTOL_LEVEL_PITCH_INT * level_pitch_ki.
+    LOCAL pitch_err IS pitch_ang.
+    LOCAL pitch_p_term IS pitch_err * level_pitch_kp.
+    LOCAL pitch_d_term IS -pitch_rate_degs * level_pitch_kd.
+    LOCAL pitch_i_term IS VTOL_LEVEL_PITCH_INT * level_pitch_ki.
+    LOCAL pitch_unsat IS pitch_p_term + pitch_d_term + pitch_i_term.
     LOCAL pitch_at_hi IS pitch_unsat >= 1 AND pitch_err > 0.
     LOCAL pitch_at_lo IS pitch_unsat <= -1 AND pitch_err < 0.
     IF NOT truly_airborne {
@@ -821,18 +998,92 @@ FUNCTION VTOL_TICK_PREARM {
         -level_i_lim,
          level_i_lim
       ).
+      SET pitch_i_term TO VTOL_LEVEL_PITCH_INT * level_pitch_ki.
+      SET pitch_unsat TO pitch_p_term + pitch_d_term + pitch_i_term.
     }
     // KSP angular velocity sign convention: positive pitch_rate_rads = pitching DOWN.
-    // To damp a nose-up divergence (positive pitch_ang, negative pitch_rate_degs):
-    // KD sign must oppose the rate: +pitch_rate_degs * KD adds to the nose-down correction.
+    // With this airframe mixer, positive pitch_cmd commands nose-DOWN torque.
+    // Damping must oppose rate, so use -pitch_rate_degs * KD.
     SET pitch_cmd TO CLAMP(
       pitch_err         * level_pitch_kp
-      +pitch_rate_degs  * level_pitch_kd
+      -pitch_rate_degs  * level_pitch_kd
       +VTOL_LEVEL_PITCH_INT * level_pitch_ki,
       -1, 1).
+    SET VTOL_DIAG_PITCH_ERR TO pitch_err.
+    SET VTOL_DIAG_PITCH_P TO pitch_p_term.
+    SET VTOL_DIAG_PITCH_I TO pitch_i_term.
+    SET VTOL_DIAG_PITCH_D TO pitch_d_term.
+    SET VTOL_DIAG_PITCH_UNSAT TO pitch_unsat.
   } ELSE {
     SET VTOL_LEVEL_PITCH_INT TO 0.
   }
+
+  // Hard command caps keep the differential mixer out of bang-bang saturation.
+  SET VTOL_DIAG_CMD_ROLL_PRECAP TO roll_cmd.
+  SET VTOL_DIAG_CMD_PITCH_PRECAP TO pitch_cmd.
+  LOCAL roll_cap IS _AMO_CFG_NUM("vtol_cmd_roll_max", VTOL_CMD_ROLL_MAX, 0).
+  LOCAL pitch_cap IS _AMO_CFG_NUM("vtol_cmd_pitch_max", VTOL_CMD_PITCH_MAX, 0).
+  IF roll_cap <= 0 { SET roll_cap TO 1.0. }
+  IF pitch_cap <= 0 { SET pitch_cap TO 1.0. }
+  SET roll_cmd TO CLAMP(roll_cmd, -roll_cap, roll_cap).
+  SET pitch_cmd TO CLAMP(pitch_cmd, -pitch_cap, pitch_cap).
+  SET VTOL_DIAG_CMD_ROLL_POSTCAP TO roll_cmd.
+  SET VTOL_DIAG_CMD_PITCH_POSTCAP TO pitch_cmd.
+
+  // Upset mode: if attitude/rates are large, force conservative damping
+  // commands and clear integrators to avoid runaway oscillation.
+  LOCAL bank_abs_u IS ABS(ARCSIN(CLAMP(-VDOT(SHIP:FACING:STARVECTOR, SHIP:UP:VECTOR), -1, 1))).
+  LOCAL pitch_abs_u IS ABS(90 - VANG(SHIP:FACING:FOREVECTOR, SHIP:UP:VECTOR)).
+  LOCAL roll_rate_abs_u IS ABS(roll_rate_rads * deg_per_rad).
+  LOCAL pitch_rate_abs_u IS ABS(pitch_rate_rads * deg_per_rad).
+  LOCAL upset_bank_deg IS _AMO_CFG_NUM("vtol_upset_bank_deg", VTOL_UPSET_BANK_DEG, 0).
+  LOCAL upset_pitch_deg IS _AMO_CFG_NUM("vtol_upset_pitch_deg", VTOL_UPSET_PITCH_DEG, 0).
+  LOCAL upset_roll_rate_degs IS _AMO_CFG_NUM("vtol_upset_roll_rate_degs", VTOL_UPSET_ROLL_RATE_DEGS, 0).
+  LOCAL upset_pitch_rate_degs IS _AMO_CFG_NUM("vtol_upset_pitch_rate_degs", VTOL_UPSET_PITCH_RATE_DEGS, 0).
+  LOCAL upset_active IS FALSE.
+  IF bank_abs_u > upset_bank_deg { SET upset_active TO TRUE. }
+  IF pitch_abs_u > upset_pitch_deg { SET upset_active TO TRUE. }
+  IF roll_rate_abs_u > upset_roll_rate_degs { SET upset_active TO TRUE. }
+  IF pitch_rate_abs_u > upset_pitch_rate_degs { SET upset_active TO TRUE. }
+  SET VTOL_UPSET_ACTIVE TO upset_active.
+  IF upset_active {
+    LOCAL upset_cmd_roll_max IS _AMO_CFG_NUM("vtol_upset_cmd_roll_max", VTOL_UPSET_CMD_MAX_ROLL, 0).
+    LOCAL upset_cmd_pitch_max IS _AMO_CFG_NUM("vtol_upset_cmd_pitch_max", VTOL_UPSET_CMD_MAX_PITCH, 0).
+    LOCAL upset_cmd_legacy IS _AMO_CFG_NUM("vtol_upset_cmd_max", VTOL_UPSET_CMD_MAX, 0).
+    IF upset_cmd_legacy <= 0 { SET upset_cmd_legacy TO 0.35. }
+    IF upset_cmd_legacy > 1 { SET upset_cmd_legacy TO 1.0. }
+    IF upset_cmd_roll_max <= 0 { SET upset_cmd_roll_max TO upset_cmd_legacy. }
+    IF upset_cmd_pitch_max <= 0 { SET upset_cmd_pitch_max TO upset_cmd_legacy. }
+    IF upset_cmd_roll_max > 1 { SET upset_cmd_roll_max TO 1.0. }
+    IF upset_cmd_pitch_max > 1 { SET upset_cmd_pitch_max TO 1.0. }
+    LOCAL bank_err_u IS -ARCSIN(CLAMP(-VDOT(SHIP:FACING:STARVECTOR, SHIP:UP:VECTOR), -1, 1)).
+    LOCAL pitch_err_u IS (90 - VANG(SHIP:FACING:FOREVECTOR, SHIP:UP:VECTOR)).
+    LOCAL roll_rate_u_degs IS roll_rate_rads * deg_per_rad.
+    LOCAL pitch_rate_u_degs IS pitch_rate_rads * deg_per_rad.
+    SET VTOL_LEVEL_ROLL_INT TO 0.
+    SET VTOL_LEVEL_PITCH_INT TO 0.
+    SET roll_cmd TO CLAMP(
+      bank_err_u * level_roll_kp - roll_rate_u_degs * level_roll_kd,
+      -upset_cmd_roll_max, upset_cmd_roll_max).
+    SET pitch_cmd TO CLAMP(
+      pitch_err_u * level_pitch_kp - pitch_rate_u_degs * level_pitch_kd,
+      -upset_cmd_pitch_max, upset_cmd_pitch_max).
+  }
+  SET VTOL_DIAG_CMD_ROLL_POSTUPSET TO roll_cmd.
+  SET VTOL_DIAG_CMD_PITCH_POSTUPSET TO pitch_cmd.
+
+  LOCAL cmd_slew IS _AMO_CFG_NUM("vtol_cmd_slew_per_s", VTOL_CMD_SLEW_PER_S, 0).
+  IF cmd_slew > 0 {
+    LOCAL cmd_step IS cmd_slew * IFC_ACTUAL_DT.
+    SET roll_cmd TO CLAMP(roll_cmd, _vtol_prev_roll_cmd - cmd_step, _vtol_prev_roll_cmd + cmd_step).
+    SET pitch_cmd TO CLAMP(pitch_cmd, _vtol_prev_pitch_cmd - cmd_step, _vtol_prev_pitch_cmd + cmd_step).
+  }
+  SET VTOL_DIAG_CMD_ROLL_POSTSLEW TO roll_cmd.
+  SET VTOL_DIAG_CMD_PITCH_POSTSLEW TO pitch_cmd.
+  SET _vtol_prev_roll_cmd TO roll_cmd.
+  SET _vtol_prev_pitch_cmd TO pitch_cmd.
+  SET VTOL_CMD_ROLL_ACTUAL TO roll_cmd.
+  SET VTOL_CMD_PITCH_ACTUAL TO pitch_cmd.
 
   _VTOL_APPLY_ENGINES(VTOL_COLLECTIVE, roll_cmd, pitch_cmd).
   _VTOL_APPLY_SERVOS(p_yaw).
@@ -848,21 +1099,39 @@ FUNCTION VTOL_TICK_PREARM {
 FUNCTION VTOL_TICK {
   PARAMETER roll_cmd, pitch_cmd, yaw_cmd, thr_input.
   IF NOT _VTOL_ENABLED() {
+    _VTOL_CLEAR_DIAG().
     IF VTOL_ACTIVE { VTOL_RELEASE(). }
     RETURN.
   }
 
   VTOL_DISCOVER().
   IF NOT VTOL_DIFF_AVAILABLE {
+    _VTOL_CLEAR_DIAG().
     IF VTOL_ACTIVE { VTOL_RELEASE(). }
     RETURN.
   }
+  _VTOL_CLEAR_DIAG().
 
   SET VTOL_COLLECTIVE TO _VTOL_VS_HOLD(thr_input).
+  SET VTOL_THR_INPUT_USED TO thr_input.
+  SET VTOL_THR_GUARD_ACTIVE TO FALSE.
+  SET VTOL_UPSET_ACTIVE TO FALSE.
+  LOCAL roll_use IS CLAMP(roll_cmd,  -1, 1).
+  LOCAL pitch_use IS CLAMP(pitch_cmd, -1, 1).
+  SET VTOL_DIAG_CMD_ROLL_PRECAP TO roll_cmd.
+  SET VTOL_DIAG_CMD_PITCH_PRECAP TO pitch_cmd.
+  SET VTOL_DIAG_CMD_ROLL_POSTCAP TO roll_use.
+  SET VTOL_DIAG_CMD_PITCH_POSTCAP TO pitch_use.
+  SET VTOL_DIAG_CMD_ROLL_POSTUPSET TO roll_use.
+  SET VTOL_DIAG_CMD_PITCH_POSTUPSET TO pitch_use.
+  SET VTOL_DIAG_CMD_ROLL_POSTSLEW TO roll_use.
+  SET VTOL_DIAG_CMD_PITCH_POSTSLEW TO pitch_use.
+  SET VTOL_CMD_ROLL_ACTUAL TO roll_use.
+  SET VTOL_CMD_PITCH_ACTUAL TO pitch_use.
   _VTOL_APPLY_ENGINES(
     VTOL_COLLECTIVE,
-    CLAMP(roll_cmd,  -1, 1),
-    CLAMP(pitch_cmd, -1, 1)
+    roll_use,
+    pitch_use
   ).
   _VTOL_APPLY_SERVOS(CLAMP(yaw_cmd, -1, 1)).
   SET VTOL_ACTIVE TO TRUE.
@@ -879,6 +1148,13 @@ FUNCTION VTOL_RELEASE {
   SET VTOL_VS_INTEGRAL TO 0.
   SET VTOL_LEVEL_ROLL_INT TO 0.
   SET VTOL_LEVEL_PITCH_INT TO 0.
+  _VTOL_CLEAR_DIAG().
+  SET VTOL_CMD_ROLL_ACTUAL TO 0.
+  SET VTOL_CMD_PITCH_ACTUAL TO 0.
+  VTOL_ENG_LIM_ACTUAL:CLEAR().
+  SET VTOL_UPSET_ACTIVE TO FALSE.
+  SET VTOL_THR_GUARD_ACTIVE TO FALSE.
+  SET VTOL_THR_INPUT_USED TO 0.5.
   SET VTOL_ACTIVE TO FALSE.
 }
 
@@ -906,4 +1182,7 @@ FUNCTION VTOL_RESET {
   SET VTOL_ALLOC_SHIFT      TO 0.0.
   SET VTOL_LEVEL_ROLL_INT   TO 0.0.
   SET VTOL_LEVEL_PITCH_INT  TO 0.0.
+  _VTOL_CLEAR_DIAG().
+  SET _vtol_prev_roll_cmd   TO 0.0.
+  SET _vtol_prev_pitch_cmd  TO 0.0.
 }

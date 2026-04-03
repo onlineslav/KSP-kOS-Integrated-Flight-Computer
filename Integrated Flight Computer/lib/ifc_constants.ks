@@ -500,6 +500,30 @@ GLOBAL VTOL_TRIM_ROLL_RATE IS 0.0015. // limit change per degree of bank error p
 GLOBAL VTOL_TRIM_BANK_CLAMP IS 12.0. // max bank error (deg) considered by trim integrator
 GLOBAL VTOL_TRIM_ACTIVE_BANK_MAX IS 8.0. // adaptive trim only while |bank| is below this
 GLOBAL VTOL_TRIM_ACTIVE_ROLL_RATE_MAX IS 12.0. // adaptive trim only while |roll_rate| is below this
+GLOBAL VTOL_ENGINE_LIMIT_FLOOR IS 0.10. // minimum per-engine limiter fraction while differential is active
+GLOBAL VTOL_CMD_SLEW_PER_S IS 5.0. // max change per second for roll/pitch command before engine allocation
+GLOBAL VTOL_DIFF_ATTEN_MIN IS 0.10. // lower bound on differential authority attenuation factor
+GLOBAL VTOL_DIFF_SOFT_BANK_DEG IS 8.0. // begin reducing differential authority above this bank angle
+GLOBAL VTOL_DIFF_HARD_BANK_DEG IS 35.0. // fully reduced differential authority at/above this bank angle
+GLOBAL VTOL_DIFF_SOFT_PITCH_DEG IS 8.0. // begin reducing differential authority above this pitch angle
+GLOBAL VTOL_DIFF_HARD_PITCH_DEG IS 25.0. // fully reduced differential authority at/above this pitch angle
+GLOBAL VTOL_DIFF_SOFT_ROLL_RATE_DEGS IS 10.0. // begin reducing differential authority above this roll rate
+GLOBAL VTOL_DIFF_HARD_ROLL_RATE_DEGS IS 30.0. // fully reduced differential authority at/above this roll rate
+GLOBAL VTOL_DIFF_SOFT_PITCH_RATE_DEGS IS 10.0. // begin reducing differential authority above this pitch rate
+GLOBAL VTOL_DIFF_HARD_PITCH_RATE_DEGS IS 30.0. // fully reduced differential authority at/above this pitch rate
+GLOBAL VTOL_CMD_ROLL_MAX IS 0.65. // hard cap on roll command into differential mixer
+GLOBAL VTOL_CMD_PITCH_MAX IS 0.65. // hard cap on pitch command into differential mixer
+GLOBAL VTOL_UPSET_BANK_DEG IS 18.0. // upset mode activates above this absolute bank
+GLOBAL VTOL_UPSET_PITCH_DEG IS 14.0. // upset mode activates above this absolute pitch
+GLOBAL VTOL_UPSET_ROLL_RATE_DEGS IS 18.0. // upset mode activates above this absolute roll rate
+GLOBAL VTOL_UPSET_PITCH_RATE_DEGS IS 18.0. // upset mode activates above this absolute pitch rate
+GLOBAL VTOL_UPSET_CMD_MAX IS 0.35. // max |roll/pitch command| allowed while upset mode is active
+GLOBAL VTOL_UPSET_CMD_MAX_ROLL IS 0.70. // upset-mode roll command cap (higher to preserve recovery authority)
+GLOBAL VTOL_UPSET_CMD_MAX_PITCH IS 0.35. // upset-mode pitch command cap
+GLOBAL VTOL_UPSET_DIFF_ATTEN_MIN IS 0.55. // minimum differential authority scale while upset is active
+GLOBAL VTOL_UPSET_ENGINE_LIMIT_FLOOR IS 0.02. // per-engine limiter floor while upset is active
+GLOBAL VTOL_UPSET_GUARD_AGL_M IS 20.0. // below this AGL, upset + low pilot throttle is clamped to preserve lift
+GLOBAL VTOL_UPSET_GUARD_THR_MIN IS 0.55. // minimum pilot throttle surrogate when low-alt upset guard is active
 
 // ----------------------------
 // UI event queue
