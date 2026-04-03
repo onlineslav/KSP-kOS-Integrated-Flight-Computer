@@ -32,6 +32,8 @@ LOCAL _em_db             IS LEXICON().
 LOCAL _em_engine_list    IS LIST().
 LOCAL _em_intake_list    IS LIST().
 LOCAL _em_spool_states   IS LIST().
+LOCAL _em_model_q_states IS LIST().
+LOCAL _em_model_t_states IS LIST().
 LOCAL _em_initialized    IS FALSE.
 LOCAL _em_last_warn_ut   IS -99.
 LOCAL _em_any_db_intake  IS FALSE.
@@ -46,21 +48,22 @@ FUNCTION EM_INIT {
     SET _em_engine_list  TO LIST().
     SET _em_intake_list  TO LIST().
     SET _em_spool_states TO LIST().
+    SET _em_model_q_states TO LIST().
+    SET _em_model_t_states TO LIST().
     SET _em_any_db_intake TO FALSE.
 
-    // -- Enumerate air-breathing engines (ONE call to LIST ENGINES) --
-    LIST ENGINES IN _em_raw_eng_list.
+    // -- Enumerate engines and keep only air-breathing capable ones --
+    LOCAL _em_raw_eng_list IS SHIP:ENGINES.
     LOCAL ei IS 0.
     UNTIL ei >= _em_raw_eng_list:LENGTH {
         LOCAL eng IS _em_raw_eng_list[ei].
-        LOCAL is_air IS FALSE.
-        IF eng:CONSUMEDRESOURCES:HASKEY("IntakeAir") {
-            SET is_air TO TRUE.
-        }
+        LOCAL is_air IS _EM_IS_AIR_BREATHING_ENGINE(eng).
         IF is_air {
             LOCAL desc IS _EM_BUILD_ENGINE_DESCRIPTOR(eng).
             _em_engine_list:ADD(desc).
             _em_spool_states:ADD(THROTTLE_CMD).
+            _em_model_q_states:ADD(0).
+            _em_model_t_states:ADD(0).
         }
         SET ei TO ei + 1.
     }
@@ -80,7 +83,7 @@ FUNCTION EM_INIT {
     SET TELEM_EM_ENG_COUNT    TO _em_engine_list:LENGTH.
     SET TELEM_EM_INTAKE_COUNT TO _em_intake_list:LENGTH.
 
-    IFC_PUSH_EVENT("EM: init done — " + _em_engine_list:LENGTH + " eng, " + _em_intake_list:LENGTH + " intakes").
+    IFC_PUSH_EVENT("EM: init done - " + _em_engine_list:LENGTH + " eng, " + _em_intake_list:LENGTH + " intakes").
 
     IF _em_engine_list:LENGTH = 0 {
         IFC_SET_ALERT("EM: no air-breathing engines found", "WARN").
@@ -95,8 +98,7 @@ FUNCTION EM_TICK {
     IF NOT _em_initialized { RETURN. }
 
     // -- Atmosphere --
-    LOCAL mach IS 0.
-    IF SHIP:SOUNDSPEED > 1 { SET mach TO SHIP:AIRSPEED / SHIP:SOUNDSPEED. }
+    LOCAL mach IS _EM_GET_MACH().
     LOCAL p_atm  IS SHIP:BODY:ATM:ALTITUDEPRESSURE(SHIP:ALTITUDE).
     LOCAL rho    IS EM_KSL_RHO * p_atm.
     LOCAL thr    IS THROTTLE_CMD.
@@ -115,16 +117,21 @@ FUNCTION EM_TICK {
         _EM_COMPUTE_SPOOL(i, thr, dt).
         LOCAL spool IS _em_spool_states[i].
 
-        // IntakeAir demand
-        LOCAL q_eng IS _EM_DEMAND_SINGLE(ed, thr, mach, p_atm).
+        // Use spool state as effective throttle to model transient lag.
+        LOCAL t_eng IS _EM_THRUST_SINGLE(ed, spool, mach, p_atm).
+        LOCAL q_eng IS _EM_DEMAND_SINGLE(ed, spool, mach, p_atm).
+        SET _em_model_t_states[i] TO t_eng.
+        SET _em_model_q_states[i] TO q_eng.
         SET q_demand TO q_demand + q_eng.
 
         // Spool lag estimate
         LOCAL delta IS ABS(thr - spool).
         IF delta > 0.01 {
             LOCAL me IS _EM_GET_ACTIVE_MODE_ENTRY(ed).
-            LOCAL k_eff IS me["k_down"].
-            IF thr > spool { SET k_eff TO me["k_up"]. }
+            LOCAL k_dn IS _EM_DB_NUM(me, "k_down", 0.5).
+            LOCAL k_up IS _EM_DB_NUM(me, "k_up",   k_dn).
+            LOCAL k_eff IS k_dn.
+            IF thr > spool { SET k_eff TO k_up. }
             IF k_eff > 0.001 {
                 LOCAL lag IS -LN(0.01 / delta) / k_eff.
                 IF lag > worst_lag { SET worst_lag TO lag. }
@@ -146,8 +153,9 @@ FUNCTION EM_TICK {
     // Fallback if no intake is in DB: use live aggregate buffer drain rate
     IF NOT _em_any_db_intake AND q_demand > 0 AND dt > 0.001 {
         // Approximate: buffer per tick / dt
-        // SHIP:INTAKEAIR:AMOUNT is current buffer in units
-        SET q_supply TO SHIP:INTAKEAIR:AMOUNT / dt.
+        // SHIP:INTAKEAIR may be either a scalar or a resource object
+        // depending on kOS version/build.
+        SET q_supply TO _EM_GET_INTAKEAIR_BUFFER() / dt.
     }
 
     // -- Margin --
@@ -191,13 +199,138 @@ FUNCTION EM_TICK {
 FUNCTION EM_GET_MARGIN          { RETURN TELEM_EM_MARGIN. }
 FUNCTION EM_GET_LOOKAHEAD_MARGIN { RETURN TELEM_EM_LOOKAHEAD_MARGIN. }
 FUNCTION EM_GET_SPOOL_LAG_S     { RETURN TELEM_EM_WORST_SPOOL_LAG. }
+FUNCTION EM_GET_SPOOL_AT {
+    PARAMETER idx.
+    IF idx < 0 { RETURN -1. }
+    IF idx >= _em_spool_states:LENGTH { RETURN -1. }
+    RETURN _em_spool_states[idx].
+}
+FUNCTION EM_GET_MODEL_Q_DEMAND_AT {
+    PARAMETER idx.
+    IF idx < 0 { RETURN -1. }
+    IF idx >= _em_model_q_states:LENGTH { RETURN -1. }
+    RETURN _em_model_q_states[idx].
+}
+FUNCTION EM_GET_MODEL_THRUST_AT {
+    PARAMETER idx.
+    IF idx < 0 { RETURN -1. }
+    IF idx >= _em_model_t_states:LENGTH { RETURN -1. }
+    RETURN _em_model_t_states[idx].
+}
 
 // ============================================================
 // INTERNAL HELPERS
 // ============================================================
 
+FUNCTION _EM_GET_MACH {
+    // Prefer direct Mach suffix when present; it is more portable than
+    // reconstructing from AIRSPEED/SOUNDSPEED across kOS versions.
+    IF SHIP:HASSUFFIX("MACH") {
+        LOCAL ship_mach IS SHIP:MACH.
+        IF ship_mach > 0.0001 {
+            RETURN MAX(0, ship_mach).
+        }
+    }
+
+    // FAR fallback when stock MACH is unavailable/stuck at zero.
+    IF ADDONS:AVAILABLE("FAR") {
+        LOCAL far_mach IS ADDONS:FAR:MACH.
+        IF far_mach > 0.0001 {
+            RETURN MAX(0, far_mach).
+        }
+    }
+
+    IF SHIP:HASSUFFIX("SOUNDSPEED") {
+        LOCAL ss IS SHIP:SOUNDSPEED.
+        IF ss > 1 {
+            RETURN MAX(0, SHIP:AIRSPEED / ss).
+        }
+    }
+
+    RETURN 0.
+}
+
+FUNCTION _EM_GET_INTAKEAIR_BUFFER {
+    IF NOT SHIP:HASSUFFIX("INTAKEAIR") { RETURN 0. }
+
+    LOCAL ia_buf IS SHIP:INTAKEAIR.
+    IF ia_buf:HASSUFFIX("AMOUNT") {
+        RETURN ia_buf:AMOUNT.
+    }
+    RETURN ia_buf.
+}
+
+FUNCTION _EM_DB_NUM {
+    PARAMETER entry.
+    PARAMETER key_name.
+    PARAMETER fallback_val.
+
+    IF entry:HASKEY(key_name) { RETURN entry[key_name]. }
+    RETURN fallback_val.
+}
+
+FUNCTION _EM_DB_CURVE {
+    PARAMETER entry.
+    PARAMETER key_name.
+
+    IF entry:HASKEY(key_name) { RETURN entry[key_name]. }
+    RETURN LIST().
+}
+
+FUNCTION _EM_IS_AIR_BREATHING_ENGINE {
+    PARAMETER eng.
+
+    LOCAL part_name IS _EM_GET_ENGINE_NAME(eng).
+    LOCAL eng_db IS _em_db["engines"].
+
+    // Prefer DB classification when available. This catches multimode
+    // engines that may currently be in closed-cycle and not consuming IntakeAir.
+    IF part_name <> "" AND eng_db:HASKEY(part_name) {
+        LOCAL db_entry IS eng_db[part_name].
+        IF db_entry:HASKEY("ratio_ia") AND db_entry["ratio_ia"] > 0 {
+            RETURN TRUE.
+        }
+        IF db_entry:HASKEY("multimode") AND db_entry["multimode"] > 0 {
+            RETURN TRUE.
+        }
+    }
+
+    // Fallback for unknown engines: inspect live resource requirements.
+    IF eng:HASSUFFIX("CONSUMEDRESOURCES") {
+        LOCAL cr IS eng:CONSUMEDRESOURCES.
+        IF cr:HASKEY("IntakeAir") {
+            RETURN TRUE.
+        }
+    }
+
+    // Fail-open fallback: if this object behaves like an engine but we
+    // cannot inspect enough suffixes on this kOS build, keep it.
+    RETURN TRUE.
+}
+
+FUNCTION _EM_GET_ENGINE_NAME {
+    PARAMETER eng.
+
+    LOCAL out_name IS "".
+
+    IF eng:HASSUFFIX("PART") {
+        LOCAL p IS eng:PART.
+        IF p:HASSUFFIX("NAME") {
+            SET out_name TO p:NAME.
+        }
+    }
+
+    IF out_name = "" AND eng:HASSUFFIX("NAME") {
+        SET out_name TO eng:NAME.
+    }
+
+    RETURN out_name.
+}
+
 FUNCTION _EM_LOAD_DB {
-    LOCAL db_path IS "0:/Integrated Flight Computer/data/engine_database.json".
+    // READJSON expects kOS-typed JSON (WRITEJSON format), not plain JSON.
+    // Regenerate this file with data/build_kos_engine_db.py after DB edits.
+    LOCAL db_path IS "0:/Integrated Flight Computer/data/engine_database_kos.json".
     IF NOT EXISTS(db_path) {
         IFC_SET_ALERT("EM: DB not found at " + db_path, "WARN").
         SET _em_db TO LEXICON("engines", LEXICON(), "intakes", LEXICON()).
@@ -254,36 +387,39 @@ FUNCTION _EM_DETECT_SCALE {
     PARAMETER eng.
     PARAMETER db_entry.
 
-    LOCAL default_d IS db_entry["defaultDiameter"].
+    LOCAL default_d IS _EM_DB_NUM(db_entry, "defaultDiameter", 0).
 
     // Step 1: TweakScale module query
-    LOCAL ts_mods IS SHIP:MODULESNAMED("TweakScale").
-    LOCAL mi IS 0.
-    UNTIL mi >= ts_mods:LENGTH {
-        LOCAL ts_m IS ts_mods[mi].
-        IF ts_m:PART = eng:PART {
-            LOCAL field_names IS LIST("Scale", "currentScale", "Current Scale").
-            LOCAL fi IS 0.
-            UNTIL fi >= field_names:LENGTH {
-                IF ts_m:HASFIELD(field_names[fi]) {
-                    LOCAL raw IS ("" + ts_m:GETFIELD(field_names[fi])):TONUMBER(-1).
-                    IF raw > 0 AND default_d > 0 {
-                        RETURN CLAMP(raw / default_d, EM_SCALE_MIN, EM_SCALE_MAX).
+    IF eng:HASSUFFIX("PART") {
+        LOCAL eng_part IS eng:PART.
+        LOCAL ts_mods IS SHIP:MODULESNAMED("TweakScale").
+        LOCAL mi IS 0.
+        UNTIL mi >= ts_mods:LENGTH {
+            LOCAL ts_m IS ts_mods[mi].
+            IF ts_m:PART = eng_part {
+                LOCAL field_names IS LIST("Scale", "currentScale", "Current Scale").
+                LOCAL fi IS 0.
+                UNTIL fi >= field_names:LENGTH {
+                    IF ts_m:HASFIELD(field_names[fi]) {
+                        LOCAL raw IS ("" + ts_m:GETFIELD(field_names[fi])):TONUMBER(-1).
+                        IF raw > 0 AND default_d > 0 {
+                            RETURN CLAMP(raw / default_d, EM_SCALE_MIN, EM_SCALE_MAX).
+                        }
                     }
+                    SET fi TO fi + 1.
                 }
-                SET fi TO fi + 1.
             }
+            SET mi TO mi + 1.
         }
-        SET mi TO mi + 1.
     }
 
     // Step 2: Thrust-ratio inference
     // eng:MAXTHRUST at ground = maxThrust * velCurve(0) * atmCurve(1.0)
     // Use stored vel_at_zero and atm_at_one to correct for curve offset
-    LOCAL db_thrust IS db_entry["maxThrust"].
-    IF db_thrust > 0 AND eng:MAXTHRUST > 0 {
-        LOCAL vel0 IS db_entry["vel_at_zero"].
-        LOCAL atm1 IS db_entry["atm_at_one"].
+    LOCAL db_thrust IS _EM_DB_NUM(db_entry, "maxThrust", 0).
+    IF db_thrust > 0 AND eng:HASSUFFIX("MAXTHRUST") AND eng:MAXTHRUST > 0 {
+        LOCAL vel0 IS _EM_DB_NUM(db_entry, "vel_at_zero", 1).
+        LOCAL atm1 IS _EM_DB_NUM(db_entry, "atm_at_one", 1).
         LOCAL corrected_ref IS db_thrust * vel0 * atm1.
         IF corrected_ref > 0 {
             LOCAL ratio IS eng:MAXTHRUST / corrected_ref.
@@ -306,20 +442,23 @@ FUNCTION _EM_GET_ACTIVE_MODE_ENTRY {
     PARAMETER ed.  // engine descriptor lexicon
 
     IF NOT ed["is_mm"] { RETURN ed["db_entry"]. }
-    IF NOT ed["eng_ref"]:IGNITION { RETURN ed["db_entry"]. }
 
     // Flattened DB: mode entries are stored as "partName__ModeName"
-    LOCAL mode_name IS ed["eng_ref"]:MODE.
-    LOCAL flat_key  IS ed["part_name"] + "__" + mode_name.
-    LOCAL eng_db    IS _em_db["engines"].
+    LOCAL eng_ref IS ed["eng_ref"].
+    LOCAL eng_db  IS _em_db["engines"].
+    IF eng_ref:HASSUFFIX("MODE") {
+        LOCAL mode_name IS eng_ref:MODE.
+        LOCAL flat_key  IS ed["part_name"] + "__" + mode_name.
 
-    IF eng_db:HASKEY(flat_key) { RETURN eng_db[flat_key]. }
+        IF eng_db:HASKEY(flat_key) { RETURN eng_db[flat_key]. }
 
-    // Mode not found — one-shot warning, return top-level entry
-    IF NOT ed["warn_issued"] {
-        IFC_PUSH_EVENT("EM: unknown mode '" + mode_name + "' for " + ed["part_name"]).
-        SET ed["warn_issued"] TO TRUE.
+        // Mode not found - one-shot warning, return top-level entry
+        IF NOT ed["warn_issued"] {
+            IFC_PUSH_EVENT("EM: unknown mode '" + mode_name + "' for " + ed["part_name"]).
+            SET ed["warn_issued"] TO TRUE.
+        }
     }
+
     RETURN ed["db_entry"].
 }
 
@@ -329,7 +468,8 @@ FUNCTION _EM_GET_ACTIVE_MODE_ENTRY {
 FUNCTION _EM_BUILD_ENGINE_DESCRIPTOR {
     PARAMETER eng.
 
-    LOCAL part_name IS eng:PART:NAME.
+    LOCAL part_name IS _EM_GET_ENGINE_NAME(eng).
+    IF part_name = "" { SET part_name TO "UNKNOWN_ENGINE". }
     LOCAL eng_db    IS _em_db["engines"].
     LOCAL in_db     IS eng_db:HASKEY(part_name).
     LOCAL db_entry  IS LEXICON().
@@ -339,7 +479,9 @@ FUNCTION _EM_BUILD_ENGINE_DESCRIPTOR {
     IF in_db {
         SET db_entry TO eng_db[part_name].
         SET scale_f  TO _EM_DETECT_SCALE(eng, db_entry).
-        SET is_mm    TO db_entry["multimode"].
+        IF db_entry:HASKEY("multimode") AND db_entry["multimode"] > 0 {
+            SET is_mm TO TRUE.
+        }
     }
 
     RETURN LEXICON(
@@ -392,7 +534,7 @@ FUNCTION _EM_UPDATE_INTAKE_OPEN {
         LOCAL val IS ("" + intake_m:GETFIELD("Intake")):TOLOWER.
         SET id["open"] TO val <> "closed".
     } ELSE {
-        // Field name not found — assume open; log once
+        // Field name not found - assume open; log once
         SET id["open"] TO TRUE.
     }
 }
@@ -410,8 +552,10 @@ FUNCTION _EM_COMPUTE_SPOOL {
     LOCAL ed      IS _em_engine_list[idx].
     LOCAL current IS _em_spool_states[idx].
     LOCAL me      IS _EM_GET_ACTIVE_MODE_ENTRY(ed).
-    LOCAL k_use   IS me["k_down"].
-    IF throttle_cmd > current { SET k_use TO me["k_up"]. }
+    LOCAL k_dn IS _EM_DB_NUM(me, "k_down", 0.5).
+    LOCAL k_up IS _EM_DB_NUM(me, "k_up",   k_dn).
+    LOCAL k_use   IS k_dn.
+    IF throttle_cmd > current { SET k_use TO k_up. }
     LOCAL new_val IS current + (throttle_cmd - current) * k_use * dt.
     SET _em_spool_states[idx] TO CLAMP(new_val, 0.0, 1.0).
 }
@@ -428,44 +572,93 @@ FUNCTION _EM_DEMAND_SINGLE {
     PARAMETER p_atm.
 
     LOCAL eng IS ed["eng_ref"].
-    IF eng:FLAMEOUT OR NOT eng:IGNITION { RETURN 0. }
+    IF eng:HASSUFFIX("FLAMEOUT") AND eng:FLAMEOUT { RETURN 0. }
+    IF eng:HASSUFFIX("IGNITION") AND NOT eng:IGNITION { RETURN 0. }
 
     // Unknown engine: fall back to live runtime data
     IF NOT ed["in_db"] {
         IF NOT ed["warn_issued"] {
-            IFC_PUSH_EVENT("EM: unknown eng '" + ed["part_name"] + "' — using live REQUIREDFLOW").
+            IFC_PUSH_EVENT("EM: unknown eng '" + ed["part_name"] + "' - using live REQUIREDFLOW").
             SET ed["warn_issued"] TO TRUE.
         }
-        LOCAL cr IS eng:CONSUMEDRESOURCES.
-        IF cr:HASKEY("IntakeAir") { RETURN cr["IntakeAir"]:REQUIREDFLOW. }
+        IF eng:HASSUFFIX("CONSUMEDRESOURCES") {
+            LOCAL cr IS eng:CONSUMEDRESOURCES.
+            IF cr:HASKEY("IntakeAir") { RETURN cr["IntakeAir"]:REQUIREDFLOW. }
+        }
         RETURN 0.
     }
 
     LOCAL me IS _EM_GET_ACTIVE_MODE_ENTRY(ed).
 
     // Skip if this mode consumes no IntakeAir (e.g. RAPIER closed-cycle)
-    IF me["ratio_ia"] <= 0 { RETURN 0. }
+    LOCAL ratio_ia IS _EM_DB_NUM(me, "ratio_ia", 0).
+    IF ratio_ia <= 0 { RETURN 0. }
 
-    LOCAL scale IS ed["scale"].
-    LOCAL scale2 IS scale * scale.  // thrust scales as D²
+    LOCAL thrust IS _EM_THRUST_SINGLE(ed, throttle_cmd, mach, p_atm).  // kN
+    IF thrust <= 0 { RETURN 0. }
 
-    LOCAL vel_m  IS _EM_CURVE_EVAL(me["velCurve"], mach).
-    LOCAL atm_m  IS _EM_CURVE_EVAL(me["atmCurve"], p_atm).
-    LOCAL thrust IS me["maxThrust"] * scale2 * throttle_cmd * vel_m * atm_m.  // kN
-
-    // Mass flow: ṁ = F(kN)*1000 / (Isp * g0)   [kg/s]
-    LOCAL isp IS me["isp_vac"].
+    // Mass flow: mdot = F(kN)*1000 / (Isp * g0)   [kg/s]
+    LOCAL isp IS _EM_DB_NUM(me, "isp_vac", 0).
     IF isp < 1 { RETURN 0. }
     LOCAL mdot IS (thrust * 1000.0) / (isp * EM_G0).  // kg/s
 
     // IntakeAir fraction by mass (density equal to LF, so mass ratio = volume ratio)
-    LOCAL r_ia IS me["ratio_ia"].
-    LOCAL r_lf IS me["ratio_lf"].
+    LOCAL r_ia IS ratio_ia.
+    LOCAL r_lf IS _EM_DB_NUM(me, "ratio_lf", 1).
+    IF r_ia + r_lf <= 0 { RETURN 0. }
     LOCAL ia_frac IS r_ia / (r_ia + r_lf).
     LOCAL mdot_ia IS mdot * ia_frac.  // kg/s IntakeAir
 
     // Convert to units/s
     RETURN mdot_ia / EM_IA_DENSITY.
+}
+
+// ------------------------------------------------------------
+// _EM_THRUST_SINGLE
+// Model-predicted thrust in kN for one engine.
+// Unknown engines fall back to live eng:THRUST when available.
+// ------------------------------------------------------------
+FUNCTION _EM_THRUST_SINGLE {
+    PARAMETER ed.
+    PARAMETER throttle_cmd.
+    PARAMETER mach.
+    PARAMETER p_atm.
+
+    LOCAL eng IS ed["eng_ref"].
+    IF eng:HASSUFFIX("FLAMEOUT") AND eng:FLAMEOUT { RETURN 0. }
+    IF eng:HASSUFFIX("IGNITION") AND NOT eng:IGNITION { RETURN 0. }
+
+    IF NOT ed["in_db"] {
+        IF eng:HASSUFFIX("THRUST") { RETURN MAX(0, eng:THRUST). }
+        RETURN 0.
+    }
+
+    LOCAL me IS _EM_GET_ACTIVE_MODE_ENTRY(ed).
+    LOCAL scale IS ed["scale"].
+    LOCAL vel_m  IS _EM_CURVE_EVAL(_EM_DB_CURVE(me, "velCurve"), mach).
+    LOCAL atm_m  IS _EM_CURVE_EVAL(_EM_DB_CURVE(me, "atmCurve"), p_atm).
+    LOCAL thrust_ref IS _EM_DB_NUM(me, "maxThrust", 0).
+    IF thrust_ref <= 0 { RETURN 0. }
+
+    // Static scale estimate from init.
+    LOCAL scale2_static IS scale * scale.
+    LOCAL scale2_use IS scale2_static.
+
+    // Runtime scale correction from AVAILABLETHRUST to handle mixed-size
+    // engines where init-time MAXTHRUST may be unavailable/ambiguous.
+    IF eng:HASSUFFIX("AVAILABLETHRUST") {
+        LOCAL denom IS thrust_ref * vel_m * atm_m.
+        IF denom > 0.001 {
+            LOCAL scale2_runtime IS eng:AVAILABLETHRUST / denom.
+            LOCAL min_s2 IS EM_SCALE_MIN * EM_SCALE_MIN.
+            LOCAL max_s2 IS EM_SCALE_MAX * EM_SCALE_MAX.
+            IF scale2_runtime > min_s2 * 0.5 {
+                SET scale2_use TO CLAMP(scale2_runtime, min_s2, max_s2).
+            }
+        }
+    }
+
+    RETURN MAX(0, thrust_ref * scale2_use * throttle_cmd * vel_m * atm_m).
 }
 
 // ------------------------------------------------------------
@@ -483,8 +676,12 @@ FUNCTION _EM_SUPPLY_SINGLE {
     IF NOT id["in_db"] { RETURN 0. }
 
     LOCAL de  IS id["db_entry"].
-    LOCAL eff IS _EM_CURVE_EVAL(de["machCurve"], mach).
+    LOCAL eff IS _EM_CURVE_EVAL(_EM_DB_CURVE(de, "machCurve"), mach).
+    LOCAL area IS _EM_DB_NUM(de, "area", 0).
+    LOCAL intake_speed IS _EM_DB_NUM(de, "intakeSpeed", 0).
+    IF area <= 0 OR intake_speed <= 0 { RETURN 0. }
     // Formula assumed to give units/s directly.
     // If this turns out to give kg/s, divide by EM_IA_DENSITY here.
-    RETURN de["area"] * de["intakeSpeed"] * rho * eff.
+    RETURN area * intake_speed * rho * eff.
 }
+
