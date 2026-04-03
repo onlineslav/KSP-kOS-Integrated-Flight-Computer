@@ -373,13 +373,13 @@ FUNCTION _VTOL_AUTH_AXIS_SCALE {
 }
 
 FUNCTION _VTOL_DIFF_ATTENUATION {
-  LOCAL bank_abs IS ABS(ARCSIN(CLAMP(-VDOT(SHIP:FACING:STARVECTOR, SHIP:UP:VECTOR), -1, 1))).
-  LOCAL pitch_abs IS ABS(90 - VANG(SHIP:FACING:FOREVECTOR, SHIP:UP:VECTOR)).
+  PARAMETER starvec, forevec, upvec, angvel.
+  LOCAL bank_abs IS ABS(ARCSIN(CLAMP(-VDOT(starvec, upvec), -1, 1))).
+  LOCAL pitch_abs IS ABS(90 - VANG(forevec, upvec)).
 
-  LOCAL ang_vel IS SHIP:ANGULARVEL.
   LOCAL deg_per_rad IS 180 / CONSTANT:PI.
-  LOCAL roll_rate_abs IS ABS(-VDOT(ang_vel, SHIP:FACING:FOREVECTOR) * deg_per_rad).
-  LOCAL pitch_rate_abs IS ABS(VDOT(ang_vel, SHIP:FACING:STARVECTOR) * deg_per_rad).
+  LOCAL roll_rate_abs IS ABS(-VDOT(angvel, forevec) * deg_per_rad).
+  LOCAL pitch_rate_abs IS ABS(VDOT(angvel, starvec) * deg_per_rad).
 
   LOCAL bank_soft IS _AMO_CFG_NUM("vtol_diff_soft_bank_deg", VTOL_DIFF_SOFT_BANK_DEG, 0).
   LOCAL bank_hard IS _AMO_CFG_NUM("vtol_diff_hard_bank_deg", VTOL_DIFF_HARD_BANK_DEG, 0).
@@ -412,7 +412,7 @@ FUNCTION _VTOL_DIFF_ATTENUATION {
 //   2) apply a common-mode shift to preserve attitude authority,
 //   3) only scale differential if no bounded solution exists.
 FUNCTION _VTOL_APPLY_ENGINES {
-  PARAMETER collective_in, roll_cmd, pitch_cmd.
+  PARAMETER collective_in, roll_cmd, pitch_cmd, starvec, forevec, upvec, angvel.
   IF VTOL_ENG_LIST:LENGTH = 0 { RETURN. }
   VTOL_ENG_LIM_ACTUAL:CLEAR().
 
@@ -430,7 +430,7 @@ FUNCTION _VTOL_APPLY_ENGINES {
     SET diff_scale TO CLAMP((collective_in - diff_min) / span, 0, 1).
   }
   SET VTOL_DIAG_DIFF_SCALE_RAW TO diff_scale.
-  SET diff_scale TO diff_scale * _VTOL_DIFF_ATTENUATION().
+  SET diff_scale TO diff_scale * _VTOL_DIFF_ATTENUATION(starvec, forevec, upvec, angvel).
   SET VTOL_DIAG_DIFF_SCALE_ATTN TO diff_scale.
   IF VTOL_UPSET_ACTIVE AND collective_in > diff_min {
     LOCAL upset_diff_min IS _AMO_CFG_NUM(
@@ -726,6 +726,7 @@ FUNCTION _VTOL_VS_HOLD {
 // increasing this engine's limit pitches the nose.  To correct
 // a nose-down error we nudge each engine in its nose-UP direction.
 FUNCTION _VTOL_ADAPT_TRIM {
+  PARAMETER starvec, forevec, upvec, angvel.
   IF VTOL_ENG_LIST:LENGTH = 0 { RETURN. }
   IF VTOL_PITCH_MIX:LENGTH <> VTOL_ENG_LIST:LENGTH { RETURN. }
   IF VTOL_ROLL_MIX:LENGTH <> VTOL_ENG_LIST:LENGTH { RETURN. }
@@ -759,10 +760,10 @@ FUNCTION _VTOL_ADAPT_TRIM {
   IF ABS(pilot_roll_in) > VTOL_TRIM_DEADBAND { RETURN. }
 
   // Current pitch: positive = nose up.
-  LOCAL pitch_ang IS 90 - VANG(SHIP:FACING:FOREVECTOR, SHIP:UP:VECTOR).
-  LOCAL bank_ang IS ARCSIN(CLAMP(-VDOT(SHIP:FACING:STARVECTOR, SHIP:UP:VECTOR), -1, 1)).
-  LOCAL roll_rate_rads IS -VDOT(SHIP:ANGULARVEL, SHIP:FACING:FOREVECTOR).
-  LOCAL pitch_rate_rads IS VDOT(SHIP:ANGULARVEL, SHIP:FACING:STARVECTOR).
+  LOCAL pitch_ang IS 90 - VANG(forevec, upvec).
+  LOCAL bank_ang IS ARCSIN(CLAMP(-VDOT(starvec, upvec), -1, 1)).
+  LOCAL roll_rate_rads IS -VDOT(angvel, forevec).
+  LOCAL pitch_rate_rads IS VDOT(angvel, starvec).
   LOCAL roll_rate_degs IS roll_rate_rads * (180 / CONSTANT:PI).
   LOCAL pitch_rate_degs IS pitch_rate_rads * (180 / CONSTANT:PI).
   LOCAL trim_pitch_max IS _AMO_CFG_NUM("vtol_trim_active_pitch_max", VTOL_TRIM_ACTIVE_PITCH_MAX, 0).
@@ -863,6 +864,15 @@ FUNCTION VTOL_TICK_PREARM {
     SET p_thr TO SHIP:CONTROL:PILOTMAINTHROTTLE.
   }
 
+  // Cache facing vectors and angular velocity once per tick.
+  // SHIP:FACING:* and SHIP:ANGULARVEL traverse the part tree on each access;
+  // reading them once here eliminates repeated redundant reads across the
+  // upset guard, leveling PID, upset detection, upset recovery, and sub-functions.
+  LOCAL _starvec IS SHIP:FACING:STARVECTOR.
+  LOCAL _forevec IS SHIP:FACING:FOREVECTOR.
+  LOCAL _upvec   IS SHIP:UP:VECTOR.
+  LOCAL _angvel  IS SHIP:ANGULARVEL.
+
   // Low-alt upset throttle guard:
   // when badly banked/pitched near the ground, prevent pilot throttle
   // from collapsing to zero (which maps to strong descent command in VS-hold).
@@ -872,12 +882,11 @@ FUNCTION VTOL_TICK_PREARM {
   IF guard_thr_min < 0 { SET guard_thr_min TO 0. }
   IF guard_thr_min > 1 { SET guard_thr_min TO 1. }
   IF guard_agl_m > 0 AND GET_AGL() <= guard_agl_m {
-    LOCAL guard_bank_abs IS ABS(ARCSIN(CLAMP(-VDOT(SHIP:FACING:STARVECTOR, SHIP:UP:VECTOR), -1, 1))).
-    LOCAL guard_pitch_abs IS ABS(90 - VANG(SHIP:FACING:FOREVECTOR, SHIP:UP:VECTOR)).
-    LOCAL guard_ang_vel IS SHIP:ANGULARVEL.
+    LOCAL guard_bank_abs IS ABS(ARCSIN(CLAMP(-VDOT(_starvec, _upvec), -1, 1))).
+    LOCAL guard_pitch_abs IS ABS(90 - VANG(_forevec, _upvec)).
     LOCAL guard_deg_per_rad IS 180 / CONSTANT:PI.
-    LOCAL guard_roll_rate_abs IS ABS(-VDOT(guard_ang_vel, SHIP:FACING:FOREVECTOR) * guard_deg_per_rad).
-    LOCAL guard_pitch_rate_abs IS ABS(VDOT(guard_ang_vel, SHIP:FACING:STARVECTOR) * guard_deg_per_rad).
+    LOCAL guard_roll_rate_abs IS ABS(-VDOT(_angvel, _forevec) * guard_deg_per_rad).
+    LOCAL guard_pitch_rate_abs IS ABS(VDOT(_angvel, _starvec) * guard_deg_per_rad).
     LOCAL upset_bank_deg_g IS _AMO_CFG_NUM("vtol_upset_bank_deg", VTOL_UPSET_BANK_DEG, 0).
     LOCAL upset_pitch_deg_g IS _AMO_CFG_NUM("vtol_upset_pitch_deg", VTOL_UPSET_PITCH_DEG, 0).
     LOCAL upset_roll_rate_degs_g IS _AMO_CFG_NUM("vtol_upset_roll_rate_degs", VTOL_UPSET_ROLL_RATE_DEGS, 0).
@@ -900,7 +909,7 @@ FUNCTION VTOL_TICK_PREARM {
   SET VTOL_COLLECTIVE TO _VTOL_VS_HOLD(p_thr).
 
   // ?????? Adaptive trim (slow pitch balance integrator) ?????????????????????????????????
-  _VTOL_ADAPT_TRIM().
+  _VTOL_ADAPT_TRIM(_starvec, _forevec, _upvec, _angvel).
 
   // ?????? Wings-level auto-correction ???????????????????????????????????????????????????????????????????????????????????????
   // When the pilot is not commanding roll or pitch, apply a
@@ -940,13 +949,13 @@ FUNCTION VTOL_TICK_PREARM {
   // Dot with ship axis vectors to get component around each axis.
   // Nose-up pitch rate  = positive VDOT with STARVECTOR.
   // Roll-right roll rate = negative VDOT with FOREVECTOR.
-  LOCAL ang_vel IS SHIP:ANGULARVEL.
-  LOCAL pitch_rate_rads IS VDOT(ang_vel, SHIP:FACING:STARVECTOR).
-  LOCAL roll_rate_rads  IS -VDOT(ang_vel, SHIP:FACING:FOREVECTOR).
+  LOCAL ang_vel IS _angvel.
+  LOCAL pitch_rate_rads IS VDOT(ang_vel, _starvec).
+  LOCAL roll_rate_rads  IS -VDOT(ang_vel, _forevec).
   LOCAL deg_per_rad IS 180 / CONSTANT:PI.
 
   IF level_active AND ABS(p_roll) < VTOL_TRIM_DEADBAND {
-    LOCAL bank_ang IS ARCSIN(CLAMP(-VDOT(SHIP:FACING:STARVECTOR, SHIP:UP:VECTOR), -1, 1)).
+    LOCAL bank_ang IS ARCSIN(CLAMP(-VDOT(_starvec, _upvec), -1, 1)).
     LOCAL roll_rate_degs IS roll_rate_rads * deg_per_rad.
     LOCAL roll_err IS -bank_ang.
     LOCAL roll_p_term IS roll_err * level_roll_kp.
@@ -957,6 +966,8 @@ FUNCTION VTOL_TICK_PREARM {
     LOCAL roll_at_lo IS roll_unsat <= -1 AND roll_err < 0.
     IF NOT truly_airborne {
       SET VTOL_LEVEL_ROLL_INT TO 0.
+      SET roll_i_term TO 0.
+      SET roll_unsat TO roll_p_term + roll_d_term.
     } ELSE IF NOT roll_at_hi AND NOT roll_at_lo {
       SET VTOL_LEVEL_ROLL_INT TO CLAMP(
         VTOL_LEVEL_ROLL_INT + roll_err * IFC_ACTUAL_DT,
@@ -981,10 +992,17 @@ FUNCTION VTOL_TICK_PREARM {
     SET VTOL_LEVEL_ROLL_INT TO 0.
   }
   IF level_active AND ABS(p_pitch) < VTOL_TRIM_DEADBAND {
-    LOCAL pitch_ang IS 90 - VANG(SHIP:FACING:FOREVECTOR, SHIP:UP:VECTOR).
+    LOCAL pitch_ang IS 90 - VANG(_forevec, _upvec).
     LOCAL pitch_rate_degs IS pitch_rate_rads * deg_per_rad.
-    LOCAL pitch_err IS pitch_ang.
+    // pitch_err is negated: nose-up (positive pitch_ang) must produce a nose-DOWN
+    // corrective command.  With pitch_mix_sign=+1, positive pitch_cmd lifts the nose
+    // further UP (more thrust from the front engines), so the leveling controller must
+    // output a negative command when nose is up.  This mirrors roll: roll_err = -bank_ang.
+    LOCAL pitch_err IS -pitch_ang.
     LOCAL pitch_p_term IS pitch_err * level_pitch_kp.
+    // positive pitch_rate_rads = pitching UP (VDOT with STARVECTOR).
+    // Damping must oppose rate, so -pitch_rate_degs * KD gives a negative (nose-DOWN)
+    // contribution when the nose is pitching UP, which is correct.
     LOCAL pitch_d_term IS -pitch_rate_degs * level_pitch_kd.
     LOCAL pitch_i_term IS VTOL_LEVEL_PITCH_INT * level_pitch_ki.
     LOCAL pitch_unsat IS pitch_p_term + pitch_d_term + pitch_i_term.
@@ -992,6 +1010,8 @@ FUNCTION VTOL_TICK_PREARM {
     LOCAL pitch_at_lo IS pitch_unsat <= -1 AND pitch_err < 0.
     IF NOT truly_airborne {
       SET VTOL_LEVEL_PITCH_INT TO 0.
+      SET pitch_i_term TO 0.
+      SET pitch_unsat TO pitch_p_term + pitch_d_term.
     } ELSE IF NOT pitch_at_hi AND NOT pitch_at_lo {
       SET VTOL_LEVEL_PITCH_INT TO CLAMP(
         VTOL_LEVEL_PITCH_INT + pitch_err * IFC_ACTUAL_DT,
@@ -1001,9 +1021,6 @@ FUNCTION VTOL_TICK_PREARM {
       SET pitch_i_term TO VTOL_LEVEL_PITCH_INT * level_pitch_ki.
       SET pitch_unsat TO pitch_p_term + pitch_d_term + pitch_i_term.
     }
-    // KSP angular velocity sign convention: positive pitch_rate_rads = pitching DOWN.
-    // With this airframe mixer, positive pitch_cmd commands nose-DOWN torque.
-    // Damping must oppose rate, so use -pitch_rate_degs * KD.
     SET pitch_cmd TO CLAMP(
       pitch_err         * level_pitch_kp
       -pitch_rate_degs  * level_pitch_kd
@@ -1032,8 +1049,8 @@ FUNCTION VTOL_TICK_PREARM {
 
   // Upset mode: if attitude/rates are large, force conservative damping
   // commands and clear integrators to avoid runaway oscillation.
-  LOCAL bank_abs_u IS ABS(ARCSIN(CLAMP(-VDOT(SHIP:FACING:STARVECTOR, SHIP:UP:VECTOR), -1, 1))).
-  LOCAL pitch_abs_u IS ABS(90 - VANG(SHIP:FACING:FOREVECTOR, SHIP:UP:VECTOR)).
+  LOCAL bank_abs_u IS ABS(ARCSIN(CLAMP(-VDOT(_starvec, _upvec), -1, 1))).
+  LOCAL pitch_abs_u IS ABS(90 - VANG(_forevec, _upvec)).
   LOCAL roll_rate_abs_u IS ABS(roll_rate_rads * deg_per_rad).
   LOCAL pitch_rate_abs_u IS ABS(pitch_rate_rads * deg_per_rad).
   LOCAL upset_bank_deg IS _AMO_CFG_NUM("vtol_upset_bank_deg", VTOL_UPSET_BANK_DEG, 0).
@@ -1056,8 +1073,10 @@ FUNCTION VTOL_TICK_PREARM {
     IF upset_cmd_pitch_max <= 0 { SET upset_cmd_pitch_max TO upset_cmd_legacy. }
     IF upset_cmd_roll_max > 1 { SET upset_cmd_roll_max TO 1.0. }
     IF upset_cmd_pitch_max > 1 { SET upset_cmd_pitch_max TO 1.0. }
-    LOCAL bank_err_u IS -ARCSIN(CLAMP(-VDOT(SHIP:FACING:STARVECTOR, SHIP:UP:VECTOR), -1, 1)).
-    LOCAL pitch_err_u IS (90 - VANG(SHIP:FACING:FOREVECTOR, SHIP:UP:VECTOR)).
+    LOCAL bank_err_u IS -ARCSIN(CLAMP(-VDOT(_starvec, _upvec), -1, 1)).
+    // Negated: nose-up (positive pitch_ang) needs a nose-DOWN command.
+    // Same sign convention as the normal leveling PID (pitch_err = -pitch_ang).
+    LOCAL pitch_err_u IS -(90 - VANG(_forevec, _upvec)).
     LOCAL roll_rate_u_degs IS roll_rate_rads * deg_per_rad.
     LOCAL pitch_rate_u_degs IS pitch_rate_rads * deg_per_rad.
     SET VTOL_LEVEL_ROLL_INT TO 0.
@@ -1085,7 +1104,7 @@ FUNCTION VTOL_TICK_PREARM {
   SET VTOL_CMD_ROLL_ACTUAL TO roll_cmd.
   SET VTOL_CMD_PITCH_ACTUAL TO pitch_cmd.
 
-  _VTOL_APPLY_ENGINES(VTOL_COLLECTIVE, roll_cmd, pitch_cmd).
+  _VTOL_APPLY_ENGINES(VTOL_COLLECTIVE, roll_cmd, pitch_cmd, _starvec, _forevec, _upvec, _angvel).
   _VTOL_APPLY_SERVOS(p_yaw).
   SET VTOL_ACTIVE TO TRUE.
 }
@@ -1128,10 +1147,15 @@ FUNCTION VTOL_TICK {
   SET VTOL_DIAG_CMD_PITCH_POSTSLEW TO pitch_use.
   SET VTOL_CMD_ROLL_ACTUAL TO roll_use.
   SET VTOL_CMD_PITCH_ACTUAL TO pitch_use.
+  LOCAL _starvec IS SHIP:FACING:STARVECTOR.
+  LOCAL _forevec IS SHIP:FACING:FOREVECTOR.
+  LOCAL _upvec   IS SHIP:UP:VECTOR.
+  LOCAL _angvel  IS SHIP:ANGULARVEL.
   _VTOL_APPLY_ENGINES(
     VTOL_COLLECTIVE,
     roll_use,
-    pitch_use
+    pitch_use,
+    _starvec, _forevec, _upvec, _angvel
   ).
   _VTOL_APPLY_SERVOS(CLAMP(yaw_cmd, -1, 1)).
   SET VTOL_ACTIVE TO TRUE.

@@ -59,7 +59,8 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_yaw_gain",          8,
   "vtol_roll_gain",         0.25,
   "vtol_pitch_gain",        0.30,
-  "vtol_pitch_mix_sign",    1,   // +1: forward engines increase on nose-up cmd, aft engines decrease = corrective (CORRECT for fwd engines ahead of CoM)
+  "vtol_pitch_mix_sign",    1,   // +1 = positive pitch_cmd lifts the nose UP (more front engine thrust).r
+                                  // a negative (nose-DOWN) corrective command. Do NOT confuse command sign with error sign.
   "vtol_level_roll_kp",     0.10,
   "vtol_level_roll_kd",     0.03,
   "vtol_level_roll_ki",     0.010,
