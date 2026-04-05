@@ -1683,7 +1683,11 @@ FUNCTION _VTOL_VEL_HOLD {
   SET VTOL_PHI_CMD TO CLAMP(bank_target_deg, -max_bank_use, max_bank_use).
 
   IF VTOL_KHV_ACTIVE {
-    IF ABS(VTOL_VN_ACTUAL) <= khv_capture_ms AND ABS(VTOL_VE_ACTUAL) <= khv_capture_ms {
+    // Only auto-clear KHV when a higher-level position objective is active.
+    // This prevents entering a dead state where both KHV and POS hold are off.
+    IF VTOL_POS_HOLD_ACTIVE AND
+       ABS(VTOL_VN_ACTUAL) <= khv_capture_ms AND
+       ABS(VTOL_VE_ACTUAL) <= khv_capture_ms {
       SET VTOL_KHV_ACTIVE TO FALSE.
     }
   }
