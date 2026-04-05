@@ -1489,10 +1489,37 @@ FUNCTION _VTOL_POS_HOLD {
   LOCAL pos_int_radius_m IS _AMO_CFG_NUM("vtol_pos_int_radius", VTOL_POS_INT_RADIUS, 0.1).
   LOCAL pos_capture_radius_m IS _AMO_CFG_NUM("vtol_pos_capture_radius", VTOL_POS_CAPTURE_RADIUS, 0.1).
   LOCAL max_horiz_speed_ms IS _AMO_CFG_NUM("vtol_max_horiz_speed", VTOL_MAX_HORIZ_SPEED, 0.1).
+  LOCAL em_lag_s IS _VTOL_FILTERED_EM_LAG_S().
+  LOCAL gain_lag_ref_s IS _AMO_CFG_NUM("vtol_pos_gain_lag_ref_s", VTOL_POS_GAIN_LAG_REF_S, 0.01).
+  LOCAL pos_kp_min_scale IS _AMO_CFG_NUM("vtol_pos_kp_min_scale", VTOL_POS_KP_MIN_SCALE, 0).
+  LOCAL pos_ki_min_scale IS _AMO_CFG_NUM("vtol_pos_ki_min_scale", VTOL_POS_KI_MIN_SCALE, 0).
+  LOCAL pos_speed_min_scale IS _AMO_CFG_NUM("vtol_pos_speed_min_scale", VTOL_POS_SPEED_MIN_SCALE, 0).
+  LOCAL pos_capture_min_scale IS _AMO_CFG_NUM("vtol_pos_capture_min_scale", VTOL_POS_CAPTURE_MIN_SCALE, 0.05).
   IF pos_int_lim < 0 { SET pos_int_lim TO 0. }
   IF pos_int_radius_m < 0.1 { SET pos_int_radius_m TO 0.1. }
   IF pos_capture_radius_m < 0.1 { SET pos_capture_radius_m TO 0.1. }
   IF max_horiz_speed_ms < 0.1 { SET max_horiz_speed_ms TO 0.1. }
+  IF em_lag_s < 0 { SET em_lag_s TO 0. }
+  IF pos_kp_min_scale < 0 { SET pos_kp_min_scale TO 0. }
+  IF pos_kp_min_scale > 1 { SET pos_kp_min_scale TO 1. }
+  IF pos_ki_min_scale < 0 { SET pos_ki_min_scale TO 0. }
+  IF pos_ki_min_scale > 1 { SET pos_ki_min_scale TO 1. }
+  IF pos_speed_min_scale < 0 { SET pos_speed_min_scale TO 0. }
+  IF pos_speed_min_scale > 1 { SET pos_speed_min_scale TO 1. }
+  IF pos_capture_min_scale < 0.05 { SET pos_capture_min_scale TO 0.05. }
+  IF pos_capture_min_scale > 1 { SET pos_capture_min_scale TO 1. }
+
+  LOCAL pos_lag_scale IS 1.0.
+  IF gain_lag_ref_s > 0.01 AND em_lag_s > gain_lag_ref_s {
+    SET pos_lag_scale TO gain_lag_ref_s / em_lag_s.
+  }
+  SET pos_lag_scale TO CLAMP(pos_lag_scale, 0, 1).
+  LOCAL pos_kp_use IS pos_kp * CLAMP(pos_lag_scale, pos_kp_min_scale, 1.0).
+  LOCAL pos_ki_use IS pos_ki * CLAMP(pos_lag_scale, pos_ki_min_scale, 1.0).
+  LOCAL max_horiz_speed_use IS max_horiz_speed_ms * CLAMP(pos_lag_scale, pos_speed_min_scale, 1.0).
+  IF max_horiz_speed_use < 0.1 { SET max_horiz_speed_use TO 0.1. }
+  LOCAL pos_capture_radius_use IS pos_capture_radius_m / CLAMP(pos_lag_scale, pos_capture_min_scale, 1.0).
+  IF pos_capture_radius_use < 0.1 { SET pos_capture_radius_use TO 0.1. }
 
   LOCAL target_geo IS LATLNG(VTOL_TARGET_LAT, VTOL_TARGET_LNG).
   LOCAL aircraft_geo IS SHIP:GEOPOSITION.
@@ -1501,16 +1528,26 @@ FUNCTION _VTOL_POS_HOLD {
   LOCAL pos_err_north_m IS pos_err_dist_m * COS(pos_err_bearing_deg).
   LOCAL pos_err_east_m IS pos_err_dist_m * SIN(pos_err_bearing_deg).
 
+  LOCAL pos_cmd_unsat_north IS pos_err_north_m * pos_kp_use + VTOL_POS_INT_N * pos_ki_use.
+  LOCAL pos_cmd_unsat_east IS pos_err_east_m * pos_kp_use + VTOL_POS_INT_E * pos_ki_use.
+  LOCAL pos_sat_hi_north IS pos_cmd_unsat_north >= max_horiz_speed_use AND pos_err_north_m > 0.
+  LOCAL pos_sat_lo_north IS pos_cmd_unsat_north <= -max_horiz_speed_use AND pos_err_north_m < 0.
+  LOCAL pos_sat_hi_east IS pos_cmd_unsat_east >= max_horiz_speed_use AND pos_err_east_m > 0.
+  LOCAL pos_sat_lo_east IS pos_cmd_unsat_east <= -max_horiz_speed_use AND pos_err_east_m < 0.
   IF pos_err_dist_m <= pos_int_radius_m {
-    SET VTOL_POS_INT_N TO CLAMP(VTOL_POS_INT_N + pos_err_north_m * IFC_ACTUAL_DT, -pos_int_lim, pos_int_lim).
-    SET VTOL_POS_INT_E TO CLAMP(VTOL_POS_INT_E + pos_err_east_m * IFC_ACTUAL_DT, -pos_int_lim, pos_int_lim).
+    IF NOT (pos_sat_hi_north OR pos_sat_lo_north) {
+      SET VTOL_POS_INT_N TO CLAMP(VTOL_POS_INT_N + pos_err_north_m * IFC_ACTUAL_DT, -pos_int_lim, pos_int_lim).
+    }
+    IF NOT (pos_sat_hi_east OR pos_sat_lo_east) {
+      SET VTOL_POS_INT_E TO CLAMP(VTOL_POS_INT_E + pos_err_east_m * IFC_ACTUAL_DT, -pos_int_lim, pos_int_lim).
+    }
   }
 
-  LOCAL pos_vel_cmd_north_ms IS pos_err_north_m * pos_kp + VTOL_POS_INT_N * pos_ki.
-  LOCAL pos_vel_cmd_east_ms IS pos_err_east_m * pos_kp + VTOL_POS_INT_E * pos_ki.
-  LOCAL capture_scale IS CLAMP(pos_err_dist_m / pos_capture_radius_m, 0, 1).
-  SET pos_vel_cmd_north_ms TO CLAMP(pos_vel_cmd_north_ms * capture_scale, -max_horiz_speed_ms, max_horiz_speed_ms).
-  SET pos_vel_cmd_east_ms TO CLAMP(pos_vel_cmd_east_ms * capture_scale, -max_horiz_speed_ms, max_horiz_speed_ms).
+  LOCAL pos_vel_cmd_north_ms IS pos_err_north_m * pos_kp_use + VTOL_POS_INT_N * pos_ki_use.
+  LOCAL pos_vel_cmd_east_ms IS pos_err_east_m * pos_kp_use + VTOL_POS_INT_E * pos_ki_use.
+  LOCAL capture_scale IS CLAMP(pos_err_dist_m / pos_capture_radius_use, 0, 1).
+  SET pos_vel_cmd_north_ms TO CLAMP(pos_vel_cmd_north_ms * capture_scale, -max_horiz_speed_use, max_horiz_speed_use).
+  SET pos_vel_cmd_east_ms TO CLAMP(pos_vel_cmd_east_ms * capture_scale, -max_horiz_speed_use, max_horiz_speed_use).
 
   SET VTOL_VN_CMD TO pos_vel_cmd_north_ms.
   SET VTOL_VE_CMD TO pos_vel_cmd_east_ms.
@@ -1527,6 +1564,12 @@ FUNCTION _VTOL_VEL_HOLD {
   LOCAL vel_int_lim IS _AMO_CFG_NUM("vtol_vel_int_lim", VTOL_VEL_INT_LIM, 0).
   LOCAL vel_deadband_ms IS _AMO_CFG_NUM("vtol_vel_int_deadband", VTOL_VEL_INT_DEADBAND, 0).
   LOCAL khv_capture_ms IS _AMO_CFG_NUM("vtol_khv_capture_mps", VTOL_KHV_CAPTURE_MPS, 0.05).
+  LOCAL em_lag_s IS _VTOL_FILTERED_EM_LAG_S().
+  LOCAL gain_lag_ref_s IS _AMO_CFG_NUM("vtol_vel_gain_lag_ref_s", VTOL_VEL_GAIN_LAG_REF_S, 0.01).
+  LOCAL vel_kp_min_scale IS _AMO_CFG_NUM("vtol_vel_kp_min_scale", VTOL_VEL_KP_MIN_SCALE, 0).
+  LOCAL vel_ki_min_scale IS _AMO_CFG_NUM("vtol_vel_ki_min_scale", VTOL_VEL_KI_MIN_SCALE, 0).
+  LOCAL vel_accel_min_scale IS _AMO_CFG_NUM("vtol_vel_accel_min_scale", VTOL_VEL_ACCEL_MIN_SCALE, 0).
+  LOCAL vel_angle_min_scale IS _AMO_CFG_NUM("vtol_vel_angle_min_scale", VTOL_VEL_ANGLE_MIN_SCALE, 0).
   IF max_fwd_pitch_deg < 0.1 { SET max_fwd_pitch_deg TO 0.1. }
   IF max_bank_deg < 0.1 { SET max_bank_deg TO 0.1. }
   IF max_horiz_speed_ms < 0.1 { SET max_horiz_speed_ms TO 0.1. }
@@ -1534,6 +1577,29 @@ FUNCTION _VTOL_VEL_HOLD {
   IF vel_int_lim < 0 { SET vel_int_lim TO 0. }
   IF vel_deadband_ms < 0 { SET vel_deadband_ms TO 0. }
   IF khv_capture_ms < 0.05 { SET khv_capture_ms TO 0.05. }
+  IF em_lag_s < 0 { SET em_lag_s TO 0. }
+  IF vel_kp_min_scale < 0 { SET vel_kp_min_scale TO 0. }
+  IF vel_kp_min_scale > 1 { SET vel_kp_min_scale TO 1. }
+  IF vel_ki_min_scale < 0 { SET vel_ki_min_scale TO 0. }
+  IF vel_ki_min_scale > 1 { SET vel_ki_min_scale TO 1. }
+  IF vel_accel_min_scale < 0 { SET vel_accel_min_scale TO 0. }
+  IF vel_accel_min_scale > 1 { SET vel_accel_min_scale TO 1. }
+  IF vel_angle_min_scale < 0 { SET vel_angle_min_scale TO 0. }
+  IF vel_angle_min_scale > 1 { SET vel_angle_min_scale TO 1. }
+
+  LOCAL vel_lag_scale IS 1.0.
+  IF gain_lag_ref_s > 0.01 AND em_lag_s > gain_lag_ref_s {
+    SET vel_lag_scale TO gain_lag_ref_s / em_lag_s.
+  }
+  SET vel_lag_scale TO CLAMP(vel_lag_scale, 0, 1).
+  LOCAL vel_kp_use IS vel_kp * CLAMP(vel_lag_scale, vel_kp_min_scale, 1.0).
+  LOCAL vel_ki_use IS vel_ki * CLAMP(vel_lag_scale, vel_ki_min_scale, 1.0).
+  LOCAL max_horiz_accel_use IS max_horiz_accel_ms2 * CLAMP(vel_lag_scale, vel_accel_min_scale, 1.0).
+  LOCAL max_fwd_pitch_use IS max_fwd_pitch_deg * CLAMP(vel_lag_scale, vel_angle_min_scale, 1.0).
+  LOCAL max_bank_use IS max_bank_deg * CLAMP(vel_lag_scale, vel_angle_min_scale, 1.0).
+  IF max_horiz_accel_use < 0.1 { SET max_horiz_accel_use TO 0.1. }
+  IF max_fwd_pitch_use < 0.1 { SET max_fwd_pitch_use TO 0.1. }
+  IF max_bank_use < 0.1 { SET max_bank_use TO 0.1. }
 
   LOCAL vel_meas IS _VTOL_GET_SURFACE_VEL().
   SET VTOL_VN_ACTUAL TO vel_meas["vn"].
@@ -1559,20 +1625,26 @@ FUNCTION _VTOL_VEL_HOLD {
 
   LOCAL vel_err_north_ms IS VTOL_VN_CMD - VTOL_VN_ACTUAL.
   LOCAL vel_err_east_ms IS VTOL_VE_CMD - VTOL_VE_ACTUAL.
-  IF ABS(vel_err_north_ms) > vel_deadband_ms {
+  LOCAL vel_cmd_unsat_north IS vel_err_north_ms * vel_kp_use + VTOL_VEL_INT_N * vel_ki_use.
+  LOCAL vel_cmd_unsat_east IS vel_err_east_ms * vel_kp_use + VTOL_VEL_INT_E * vel_ki_use.
+  LOCAL vel_sat_hi_north IS vel_cmd_unsat_north >= max_horiz_accel_use AND vel_err_north_ms > 0.
+  LOCAL vel_sat_lo_north IS vel_cmd_unsat_north <= -max_horiz_accel_use AND vel_err_north_ms < 0.
+  LOCAL vel_sat_hi_east IS vel_cmd_unsat_east >= max_horiz_accel_use AND vel_err_east_ms > 0.
+  LOCAL vel_sat_lo_east IS vel_cmd_unsat_east <= -max_horiz_accel_use AND vel_err_east_ms < 0.
+  IF ABS(vel_err_north_ms) > vel_deadband_ms AND NOT (vel_sat_hi_north OR vel_sat_lo_north) {
     SET VTOL_VEL_INT_N TO CLAMP(VTOL_VEL_INT_N + vel_err_north_ms * IFC_ACTUAL_DT, -vel_int_lim, vel_int_lim).
   }
-  IF ABS(vel_err_east_ms) > vel_deadband_ms {
+  IF ABS(vel_err_east_ms) > vel_deadband_ms AND NOT (vel_sat_hi_east OR vel_sat_lo_east) {
     SET VTOL_VEL_INT_E TO CLAMP(VTOL_VEL_INT_E + vel_err_east_ms * IFC_ACTUAL_DT, -vel_int_lim, vel_int_lim).
   }
 
   LOCAL accel_cmd_north_ms2 IS CLAMP(
-    vel_err_north_ms * vel_kp + VTOL_VEL_INT_N * vel_ki,
-    -max_horiz_accel_ms2, max_horiz_accel_ms2
+    vel_err_north_ms * vel_kp_use + VTOL_VEL_INT_N * vel_ki_use,
+    -max_horiz_accel_use, max_horiz_accel_use
   ).
   LOCAL accel_cmd_east_ms2 IS CLAMP(
-    vel_err_east_ms * vel_kp + VTOL_VEL_INT_E * vel_ki,
-    -max_horiz_accel_ms2, max_horiz_accel_ms2
+    vel_err_east_ms * vel_kp_use + VTOL_VEL_INT_E * vel_ki_use,
+    -max_horiz_accel_use, max_horiz_accel_use
   ).
   // Accel command is in world N/E; project it onto body-forward/starboard so
   // velocity hold remains correct when heading drifts away from North.
@@ -1607,8 +1679,8 @@ FUNCTION _VTOL_VEL_HOLD {
   LOCAL pitch_target_deg IS -ARCTAN(accel_cmd_fwd_ms2 / vertical_denom_ms2).
   LOCAL bank_target_deg IS ARCTAN(accel_cmd_star_ms2 / vertical_denom_ms2).
 
-  SET VTOL_THETA_CMD TO CLAMP(pitch_target_deg, -max_fwd_pitch_deg, max_fwd_pitch_deg).
-  SET VTOL_PHI_CMD TO CLAMP(bank_target_deg, -max_bank_deg, max_bank_deg).
+  SET VTOL_THETA_CMD TO CLAMP(pitch_target_deg, -max_fwd_pitch_use, max_fwd_pitch_use).
+  SET VTOL_PHI_CMD TO CLAMP(bank_target_deg, -max_bank_use, max_bank_use).
 
   IF VTOL_KHV_ACTIVE {
     IF ABS(VTOL_VN_ACTUAL) <= khv_capture_ms AND ABS(VTOL_VE_ACTUAL) <= khv_capture_ms {

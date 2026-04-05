@@ -593,11 +593,21 @@ GLOBAL VTOL_MAX_HORIZ_ACCEL IS 1.5. // max commanded horizontal acceleration
 GLOBAL VTOL_MAX_HORIZ_SPEED IS 8.0. // max commanded horizontal speed
 GLOBAL VTOL_MAX_FWD_PITCH IS 15.0. // max forward pitch command magnitude from velocity loop
 GLOBAL VTOL_MAX_BANK IS 15.0. // max bank command magnitude from velocity loop
+GLOBAL VTOL_VEL_GAIN_LAG_REF_S IS 0.8. // s spool-lag reference for velocity-loop gain scheduling
+GLOBAL VTOL_VEL_KP_MIN_SCALE IS 0.55. // lower bound on velocity proportional gain scale under high lag
+GLOBAL VTOL_VEL_KI_MIN_SCALE IS 0.35. // lower bound on velocity integral gain scale under high lag
+GLOBAL VTOL_VEL_ACCEL_MIN_SCALE IS 0.55. // lower bound on horizontal acceleration authority scale under high lag
+GLOBAL VTOL_VEL_ANGLE_MIN_SCALE IS 0.70. // lower bound on max tilt (pitch/bank) authority scale under high lag
 GLOBAL VTOL_POS_KP IS 0.08. // position error to velocity command proportional gain
 GLOBAL VTOL_POS_KI IS 0.002. // position integrator gain
 GLOBAL VTOL_POS_INT_LIM IS 3.0. // clamp for position integrators
 GLOBAL VTOL_POS_INT_RADIUS IS 50.0. // only integrate position error inside this radius (m)
 GLOBAL VTOL_POS_CAPTURE_RADIUS IS 10.0. // decel schedule radius for position hold (m)
+GLOBAL VTOL_POS_GAIN_LAG_REF_S IS 0.8. // s spool-lag reference for position-loop gain scheduling
+GLOBAL VTOL_POS_KP_MIN_SCALE IS 0.65. // lower bound on position proportional gain scale under high lag
+GLOBAL VTOL_POS_KI_MIN_SCALE IS 0.45. // lower bound on position integral gain scale under high lag
+GLOBAL VTOL_POS_SPEED_MIN_SCALE IS 0.70. // lower bound on position-loop speed-command limit scale under high lag
+GLOBAL VTOL_POS_CAPTURE_MIN_SCALE IS 0.55. // lower bound used to expand capture radius under high lag
 GLOBAL VTOL_KHV_CAPTURE_MPS IS 0.5. // kill-horizontal-velocity completion threshold
 GLOBAL VTOL_PHYSICAL_ALLOC_ENABLED_DEFAULT IS FALSE. // TRUE enables arm-based physical allocation path
 GLOBAL VTOL_INERTIA_RLS_ENABLED_DEFAULT IS TRUE. // TRUE enables online roll/pitch inertia estimation
