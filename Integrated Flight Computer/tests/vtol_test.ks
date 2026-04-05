@@ -43,6 +43,7 @@ RUNPATH(ifc_root + "lib/ifc_autobrake.ks").
 RUNPATH(ifc_root + "lib/ifc_amo.ks").
 RUNPATH(ifc_root + "lib/ifc_amo_vtol.ks").
 RUNPATH(ifc_root + "lib/ifc_engine_model.ks").
+RUNPATH(ifc_root + "nav/nav_math.ks").
 
 // ── Aircraft config ────────────────────────────────────────
 // Edit these values to match your test aircraft.
@@ -125,6 +126,15 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_upset_engine_limit_floor", 0.02, // allow deeper per-engine cut in upset for roll torque
   "vtol_upset_guard_agl_m",     20.0,  // below this AGL, upset + low throttle is clamped to preserve lift
   "vtol_upset_guard_thr_min",   0.55,  // guard minimum pilot-throttle surrogate into VS-hold
+  "vtol_rate_kd_roll_accel",    0.02,  // additional D term on roll angular acceleration
+  "vtol_rate_kd_pitch_accel",   0.02,  // additional D term on pitch angular acceleration
+  "vtol_rate_p_alpha",          0.70,
+  "vtol_rate_q_alpha",          0.70,
+  "vtol_rate_pdot_alpha",       0.35,
+  "vtol_rate_qdot_alpha",       0.35,
+  "vtol_rate_accel_clamp_degs2", 300.0,
+  "vtol_cos_att_alpha",         0.10,  // geometry correction filter speed
+  "vtol_cos_att_floor",         0.25,
   "vtol_trim_min_agl_m",        0.0,   // allow adaptive trim from first collective application
   "vtol_trim_rate",             0.003,
   "vtol_trim_roll_rate",        0.001,
@@ -166,6 +176,26 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_em_ff_max_lead",    0.20,
   "vtol_em_ff_lag_min_s",   0.10,
   "vtol_em_ff_alpha_min",   0.12,
+  "vtol_vel_kp",            0.15,
+  "vtol_vel_ki",            0.005,
+  "vtol_vel_int_lim",       2.0,
+  "vtol_vel_int_deadband",  0.5,
+  "vtol_max_horiz_accel",   1.5,
+  "vtol_max_horiz_speed",   8.0,
+  "vtol_max_fwd_pitch",     15.0,
+  "vtol_max_bank",          15.0,
+  "vtol_pos_kp",            0.08,
+  "vtol_pos_ki",            0.002,
+  "vtol_pos_int_lim",       3.0,
+  "vtol_pos_int_radius",    50.0,
+  "vtol_pos_capture_radius",10.0,
+  "vtol_khv_capture_mps",   0.5,
+  "vtol_physical_alloc_enabled", FALSE,
+  "vtol_trans_start_ias",   30.0,
+  "vtol_trans_end_ias",     80.0,
+  "vtol_nacelle_slew_dps",  5.0,
+  "vtol_nacelle_alpha_min", 10.0,
+  "vtol_nacelle_sin_floor", 0.10,
   // Keep feedback enabled for upstream controller validation runs.
   "vtol_bypass_attitude_feedback", FALSE
 ).
@@ -412,6 +442,11 @@ IF NOT VTOL_DIFF_AVAILABLE {
                  "vtol_diff_raw,vtol_diff_attn,vtol_diff_upset,vtol_lim_floor," +
                  "vtol_alloc_bmin,vtol_alloc_bmax,vtol_alloc_alpha_limited,vtol_clamp_low_n,vtol_clamp_high_n," +
                  "vtol_roll_moment,vtol_pitch_moment,vtol_limit_span," +
+                 "vtol_vel_hold,vtol_khv,vtol_pos_hold,vtol_trans_active," +
+                 "vtol_phi_cmd_deg,vtol_theta_cmd_deg,vtol_vn_actual_ms,vtol_ve_actual_ms,vtol_vn_cmd_ms,vtol_ve_cmd_ms," +
+                 "vtol_pos_err_n_m,vtol_pos_err_e_m,vtol_pos_err_dist_m,vtol_target_lat,vtol_target_lng,vtol_nacelle_cmd_deg,vtol_nacelle_est_deg,vtol_hover_blend," +
+                 "vtol_pdot_filt,vtol_qdot_filt,vtol_roll_d_accel,vtol_pitch_d_accel," +
+                 "vtol_cos_att_filt,vtol_coll_before_corr,vtol_coll_after_corr,vtol_physical_alloc_used," +
                  "em_mach,em_q_demand_u_s,em_q_supply_u_s,em_margin_u_s," +
                  "em_la_margin_u_s,em_spool_lag_s,em_starving,em_eng_count,em_intake_count".
     LOCAL hdr_ei IS 0.
@@ -517,6 +552,55 @@ IF NOT VTOL_DIFF_AVAILABLE {
         IF ctrl:HASSUFFIX("PILOTMAINTHROTTLE") { SET thr_disp   TO ctrl:PILOTMAINTHROTTLE. }
       }
 
+      LOCAL control_event_msg IS "".
+      UNTIL NOT TERMINAL:INPUT:HASCHAR {
+        LOCAL key_char IS TERMINAL:INPUT:GETCHAR().
+        IF key_char = "h" OR key_char = "H" {
+          SET VTOL_VEL_HOLD_ACTIVE TO NOT VTOL_VEL_HOLD_ACTIVE.
+          IF NOT VTOL_VEL_HOLD_ACTIVE {
+            SET VTOL_KHV_ACTIVE TO FALSE.
+            SET VTOL_POS_HOLD_ACTIVE TO FALSE.
+          }
+          SET control_event_msg TO "VEL_HOLD=" + VTOL_VEL_HOLD_ACTIVE.
+        } ELSE IF key_char = "k" OR key_char = "K" {
+          SET VTOL_KHV_ACTIVE TO TRUE.
+          SET VTOL_POS_HOLD_ACTIVE TO FALSE.
+          SET VTOL_VEL_HOLD_ACTIVE TO TRUE.
+          SET VTOL_VEL_INT_N TO 0.0.
+          SET VTOL_VEL_INT_E TO 0.0.
+          SET control_event_msg TO "KHV=TRUE".
+        } ELSE IF key_char = "p" OR key_char = "P" {
+          IF VTOL_POS_HOLD_ACTIVE {
+            SET VTOL_POS_HOLD_ACTIVE TO FALSE.
+            SET control_event_msg TO "POS_HOLD=FALSE".
+          } ELSE {
+            SET VTOL_TARGET_LAT TO SHIP:LATITUDE.
+            SET VTOL_TARGET_LNG TO SHIP:LONGITUDE.
+            SET VTOL_TARGET_ALT TO GET_AGL().
+            SET VTOL_POS_HOLD_ACTIVE TO TRUE.
+            SET VTOL_KHV_ACTIVE TO FALSE.
+            SET VTOL_VEL_HOLD_ACTIVE TO TRUE.
+            SET VTOL_POS_INT_N TO 0.0.
+            SET VTOL_POS_INT_E TO 0.0.
+            SET control_event_msg TO "POS_HOLD=TRUE".
+          }
+        } ELSE IF key_char = "t" OR key_char = "T" {
+          SET VTOL_TRANS_ACTIVE TO NOT VTOL_TRANS_ACTIVE.
+          SET control_event_msg TO "TRANS_ACTIVE=" + VTOL_TRANS_ACTIVE.
+        }
+      }
+
+      LOCAL pos_err_dist_m IS 0.0.
+      LOCAL pos_err_bearing_deg IS 0.0.
+      LOCAL pos_err_north_m IS 0.0.
+      LOCAL pos_err_east_m IS 0.0.
+      LOCAL target_geo_now IS LATLNG(VTOL_TARGET_LAT, VTOL_TARGET_LNG).
+      LOCAL current_geo_now IS SHIP:GEOPOSITION.
+      SET pos_err_dist_m TO GEO_DISTANCE(current_geo_now, target_geo_now).
+      SET pos_err_bearing_deg TO GEO_BEARING(current_geo_now, target_geo_now).
+      SET pos_err_north_m TO pos_err_dist_m * COS(pos_err_bearing_deg).
+      SET pos_err_east_m TO pos_err_dist_m * SIN(pos_err_bearing_deg).
+
       // Update engine model from last-cycle throttle command first, so
       // VTOL_TICK_PREARM can use fresh feed-forward telemetry this cycle.
       EM_TICK().
@@ -583,6 +667,21 @@ IF NOT VTOL_DIFF_AVAILABLE {
       PRINT ("VS_I:" + vsi_s + "   Thr(pilot):" + _FMT_PCT(thr_disp) + "          ") AT(0, disp_row). SET disp_row TO disp_row + 1.
       PRINT ("Thr(used):" + _FMT_PCT(VTOL_THR_INPUT_USED) + "  Guard:" + VTOL_THR_GUARD_ACTIVE +
              "  Upset:" + VTOL_UPSET_ACTIVE + "    ") AT(0, disp_row). SET disp_row TO disp_row + 1.
+      PRINT ("Modes VH:" + VTOL_VEL_HOLD_ACTIVE + " KHV:" + VTOL_KHV_ACTIVE +
+             " POS:" + VTOL_POS_HOLD_ACTIVE + " TR:" + VTOL_TRANS_ACTIVE + "    ") AT(0, disp_row).
+      SET disp_row TO disp_row + 1.
+      PRINT ("VN/VE act:" + _FMT(VTOL_VN_ACTUAL,6,2) + "/" + _FMT(VTOL_VE_ACTUAL,6,2) +
+             " cmd:" + _FMT(VTOL_VN_CMD,6,2) + "/" + _FMT(VTOL_VE_CMD,6,2) + " ") AT(0, disp_row).
+      SET disp_row TO disp_row + 1.
+      PRINT ("Pos err N/E:" + _FMT(pos_err_north_m,6,2) + "/" + _FMT(pos_err_east_m,6,2) +
+             " D:" + _FMT(pos_err_dist_m,6,2) + "m ") AT(0, disp_row).
+      SET disp_row TO disp_row + 1.
+      PRINT ("Phi/Theta cmd:" + _FMT(VTOL_PHI_CMD,6,2) + "/" + _FMT(VTOL_THETA_CMD,6,2) +
+             "  CosAtt:" + _FMT(VTOL_DIAG_COS_ATT_FILT,5,3) + "   ") AT(0, disp_row).
+      SET disp_row TO disp_row + 1.
+      PRINT ("Nac cmd/est:" + _FMT(VTOL_NACELLE_ALPHA_CMD,6,2) + "/" + _FMT(VTOL_NACELLE_ALPHA_EST,6,2) +
+             "  HB:" + _FMT(VTOL_HOVER_BLEND,5,3) + "   ") AT(0, disp_row).
+      SET disp_row TO disp_row + 1.
       PRINT ("Alloc: a=" + _FMT(disp_alloc_alpha, 5, 3) + "  s=" + _FMT(disp_alloc_shift, 6, 3) + "          ") AT(0, disp_row). SET disp_row TO disp_row + 1.
       LOCAL t_air_disp IS 0.
       IF airborne_ut >= 0 { SET t_air_disp TO now - airborne_ut. }
@@ -610,10 +709,6 @@ IF NOT VTOL_DIFF_AVAILABLE {
 
       PRINT "---------------------------------------" AT(0, disp_row). SET disp_row TO disp_row + 1.
 
-      LOCAL hover_ang IS 90.
-      IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("vtol_hover_angle") {
-        SET hover_ang TO ACTIVE_AIRCRAFT["vtol_hover_angle"].
-      }
       LOCAL yaw_gain_d IS VTOL_YAW_SRV_GAIN.
       IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY("vtol_yaw_gain") {
         SET yaw_gain_d TO ACTIVE_AIRCRAFT["vtol_yaw_gain"].
@@ -627,7 +722,7 @@ IF NOT VTOL_DIFF_AVAILABLE {
         LOCAL ang_s IS "  ---   ".
         IF srv <> 0 {
           SET pos_s TO _FMT(srv_pos_list[svi], 7, 1) + " ".
-          LOCAL commanded IS hover_ang + yaw_disp * yaw_gain_d * VTOL_YAW_SRV_MIX[svi].
+          LOCAL commanded IS VTOL_NACELLE_ALPHA_CMD + yaw_disp * yaw_gain_d * VTOL_YAW_SRV_MIX[svi].
           SET ang_s TO _FMT(commanded, 7, 1) + " ".
         }
         LOCAL ym_s IS _FMT(VTOL_YAW_SRV_MIX[svi], 7, 0).
@@ -638,7 +733,8 @@ IF NOT VTOL_DIFF_AVAILABLE {
 
       LOCAL log_file_short IS log_file:SUBSTRING(log_file:LENGTH - 22, 22).
       PRINT ("  Log: " + log_file_short + "         ") AT(0, disp_row). SET disp_row TO disp_row + 1.
-      PRINT "  [ABORT to exit]                      " AT(0, disp_row). SET disp_row TO disp_row + 1.
+      PRINT ("  Last key: " + control_event_msg + "                    ") AT(0, disp_row). SET disp_row TO disp_row + 1.
+      PRINT "  [H VHold] [K KHV] [P Pos] [T Trans] [ABORT] " AT(0, disp_row). SET disp_row TO disp_row + 1.
 
       // ── Log write (rate-limited to log_rate seconds) ───────
       IF now - log_last_ut >= log_rate {
@@ -723,6 +819,32 @@ IF NOT VTOL_DIFF_AVAILABLE {
           ROUND(VTOL_DIAG_ROLL_MOMENT_PROXY, 6),
           ROUND(VTOL_DIAG_PITCH_MOMENT_PROXY,6),
           ROUND(VTOL_DIAG_LIMIT_SPAN,        6),
+          VTOL_VEL_HOLD_ACTIVE,
+          VTOL_KHV_ACTIVE,
+          VTOL_POS_HOLD_ACTIVE,
+          VTOL_TRANS_ACTIVE,
+          ROUND(VTOL_PHI_CMD,                4),
+          ROUND(VTOL_THETA_CMD,              4),
+          ROUND(VTOL_VN_ACTUAL,              4),
+          ROUND(VTOL_VE_ACTUAL,              4),
+          ROUND(VTOL_VN_CMD,                 4),
+          ROUND(VTOL_VE_CMD,                 4),
+          ROUND(pos_err_north_m,             4),
+          ROUND(pos_err_east_m,              4),
+          ROUND(pos_err_dist_m,              4),
+          ROUND(VTOL_TARGET_LAT,             7),
+          ROUND(VTOL_TARGET_LNG,             7),
+          ROUND(VTOL_NACELLE_ALPHA_CMD,      4),
+          ROUND(VTOL_NACELLE_ALPHA_EST,      4),
+          ROUND(VTOL_HOVER_BLEND,            4),
+          ROUND(VTOL_DIAG_P_DOT_FILT,        4),
+          ROUND(VTOL_DIAG_Q_DOT_FILT,        4),
+          ROUND(VTOL_DIAG_ROLL_D_ACCEL,      4),
+          ROUND(VTOL_DIAG_PITCH_D_ACCEL,     4),
+          ROUND(VTOL_DIAG_COS_ATT_FILT,      5),
+          ROUND(VTOL_DIAG_COLL_BEFORE_CORR,  5),
+          ROUND(VTOL_DIAG_COLL_AFTER_CORR,   5),
+          VTOL_DIAG_PHYSICAL_ALLOC_USED,
           ROUND(TELEM_EM_MACH,               4),
           ROUND(TELEM_EM_Q_DEMAND,           6),
           ROUND(TELEM_EM_Q_SUPPLY,           6),

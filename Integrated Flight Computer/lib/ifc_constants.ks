@@ -570,6 +570,35 @@ GLOBAL VTOL_UPSET_DIFF_ATTEN_MIN IS 0.55. // minimum differential authority scal
 GLOBAL VTOL_UPSET_ENGINE_LIMIT_FLOOR IS 0.02. // per-engine limiter floor while upset is active
 GLOBAL VTOL_UPSET_GUARD_AGL_M IS 20.0. // below this AGL, upset + low pilot throttle is clamped to preserve lift
 GLOBAL VTOL_UPSET_GUARD_THR_MIN IS 0.55. // minimum pilot throttle surrogate when low-alt upset guard is active
+GLOBAL VTOL_RATE_KD_ROLL_ACCEL IS 0.02. // roll D-term gain on filtered roll acceleration
+GLOBAL VTOL_RATE_KD_PITCH_ACCEL IS 0.02. // pitch D-term gain on filtered pitch acceleration
+GLOBAL VTOL_RATE_P_ALPHA IS 0.70. // EMA alpha for roll-rate filtering
+GLOBAL VTOL_RATE_Q_ALPHA IS 0.70. // EMA alpha for pitch-rate filtering
+GLOBAL VTOL_RATE_PDOT_ALPHA IS 0.35. // EMA alpha for roll-acceleration filtering
+GLOBAL VTOL_RATE_QDOT_ALPHA IS 0.35. // EMA alpha for pitch-acceleration filtering
+GLOBAL VTOL_RATE_ACCEL_CLAMP_DEGS2 IS 300.0. // max absolute filtered acceleration for D-term stability
+GLOBAL VTOL_COS_ATT_ALPHA IS 0.10. // EMA alpha for attitude cosine correction in collective loop
+GLOBAL VTOL_COS_ATT_FLOOR IS 0.25. // lower bound on cos(attitude) correction factor
+GLOBAL VTOL_VEL_KP IS 0.15. // horiz accel cmd per horizontal velocity error (m/s^2 per m/s)
+GLOBAL VTOL_VEL_KI IS 0.005. // horiz accel cmd per integral velocity error
+GLOBAL VTOL_VEL_INT_LIM IS 2.0. // clamp for velocity integrators
+GLOBAL VTOL_VEL_INT_DEADBAND IS 0.5. // do not integrate horizontal velocity error inside this deadband
+GLOBAL VTOL_MAX_HORIZ_ACCEL IS 1.5. // max commanded horizontal acceleration
+GLOBAL VTOL_MAX_HORIZ_SPEED IS 8.0. // max commanded horizontal speed
+GLOBAL VTOL_MAX_FWD_PITCH IS 15.0. // max forward pitch command magnitude from velocity loop
+GLOBAL VTOL_MAX_BANK IS 15.0. // max bank command magnitude from velocity loop
+GLOBAL VTOL_POS_KP IS 0.08. // position error to velocity command proportional gain
+GLOBAL VTOL_POS_KI IS 0.002. // position integrator gain
+GLOBAL VTOL_POS_INT_LIM IS 3.0. // clamp for position integrators
+GLOBAL VTOL_POS_INT_RADIUS IS 50.0. // only integrate position error inside this radius (m)
+GLOBAL VTOL_POS_CAPTURE_RADIUS IS 10.0. // decel schedule radius for position hold (m)
+GLOBAL VTOL_KHV_CAPTURE_MPS IS 0.5. // kill-horizontal-velocity completion threshold
+GLOBAL VTOL_PHYSICAL_ALLOC_ENABLED_DEFAULT IS FALSE. // TRUE enables arm-based physical allocation path
+GLOBAL VTOL_TRANS_START_IAS IS 30.0. // IAS where nacelle transition begins (m/s)
+GLOBAL VTOL_TRANS_END_IAS IS 80.0. // IAS where nacelle transition reaches cruise angle (m/s)
+GLOBAL VTOL_NACELLE_SLEW_DPS IS 5.0. // max collective nacelle-angle slew rate (deg/s)
+GLOBAL VTOL_NACELLE_ALPHA_MIN IS 10.0. // lower bound for nacelle angle during transition
+GLOBAL VTOL_NACELLE_SIN_FLOOR IS 0.10. // min sin(alpha) used for vertical-thrust compensation
 
 // ----------------------------
 // UI event queue

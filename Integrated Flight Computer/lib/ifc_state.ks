@@ -313,6 +313,10 @@ GLOBAL VTOL_PITCH_MIX        IS LIST(). // per-engine pitch mixing coefficient [
 GLOBAL VTOL_YAW_SRV_MIX      IS LIST(). // per-engine yaw servo sign: -1, 0, or +1
 GLOBAL VTOL_TRIM_OFFSET      IS LIST(). // per-engine base-limit trim offset; auto-computed to balance torque
 GLOBAL VTOL_MAX_THRUST       IS LIST(). // per-engine max thrust (kN) measured at discovery
+GLOBAL VTOL_ENG_ARM_X_M      IS LIST(). // per-engine longitudinal arm from CoM (m, +forward)
+GLOBAL VTOL_ENG_ARM_Y_M      IS LIST(). // per-engine lateral arm from CoM (m, +starboard)
+GLOBAL VTOL_ARM_ROLL_M       IS 0.0.    // representative roll moment arm magnitude (m)
+GLOBAL VTOL_ARM_PITCH_M      IS 0.0.    // representative pitch moment arm magnitude (m)
 GLOBAL VTOL_HOVER_COLLECTIVE        IS 0.50.  // collective that sustains hover; self-learned (autopilot use)
 GLOBAL VTOL_HOVER_COLLECTIVE_SEEDED IS FALSE. // TRUE once config vtol_hover_collective has been applied
 GLOBAL VTOL_COLLECTIVE       IS 0.     // current commanded collective (0..1) (autopilot use)
@@ -331,6 +335,35 @@ GLOBAL VTOL_ENG_LIM_ACTUAL   IS LIST(). // per-engine limiter values actually wr
 GLOBAL VTOL_UPSET_ACTIVE     IS FALSE. // TRUE while VTOL upset damping mode is active
 GLOBAL VTOL_THR_GUARD_ACTIVE IS FALSE. // TRUE when low-alt upset throttle floor guard is active
 GLOBAL VTOL_THR_INPUT_USED   IS 0.5.   // pilot throttle input after guard processing, used by VS-hold
+GLOBAL VTOL_RATE_P_FILT      IS 0.0.   // filtered roll rate (deg/s)
+GLOBAL VTOL_RATE_Q_FILT      IS 0.0.   // filtered pitch rate (deg/s)
+GLOBAL VTOL_RATE_P_FILT_PREV IS 0.0.   // previous filtered roll rate (deg/s)
+GLOBAL VTOL_RATE_Q_FILT_PREV IS 0.0.   // previous filtered pitch rate (deg/s)
+GLOBAL VTOL_RATE_P_DOT_FILT  IS 0.0.   // filtered roll angular acceleration (deg/s^2)
+GLOBAL VTOL_RATE_Q_DOT_FILT  IS 0.0.   // filtered pitch angular acceleration (deg/s^2)
+GLOBAL VTOL_COS_ATT_FILT     IS 1.0.   // filtered cos(attitude tilt) for collective correction
+GLOBAL VTOL_L_CMD_PREV       IS 0.0.   // previous roll command state (for future slew/scheduling)
+GLOBAL VTOL_M_CMD_PREV       IS 0.0.   // previous pitch command state (for future slew/scheduling)
+GLOBAL VTOL_VEL_INT_N        IS 0.0.   // north velocity integral state
+GLOBAL VTOL_VEL_INT_E        IS 0.0.   // east velocity integral state
+GLOBAL VTOL_VN_ACTUAL        IS 0.0.   // measured north surface velocity (m/s)
+GLOBAL VTOL_VE_ACTUAL        IS 0.0.   // measured east surface velocity (m/s)
+GLOBAL VTOL_VN_CMD           IS 0.0.   // commanded north velocity (m/s)
+GLOBAL VTOL_VE_CMD           IS 0.0.   // commanded east velocity (m/s)
+GLOBAL VTOL_VEL_HOLD_ACTIVE  IS FALSE. // TRUE while velocity hold loop is active
+GLOBAL VTOL_KHV_ACTIVE       IS FALSE. // TRUE while kill-horizontal-velocity mode is active
+GLOBAL VTOL_PHI_CMD          IS 0.0.   // commanded bank target from velocity loop (deg)
+GLOBAL VTOL_THETA_CMD        IS 0.0.   // commanded pitch target from velocity loop (deg)
+GLOBAL VTOL_POS_INT_N        IS 0.0.   // north position integral state
+GLOBAL VTOL_POS_INT_E        IS 0.0.   // east position integral state
+GLOBAL VTOL_TARGET_LAT       IS 0.0.   // target hold latitude (deg)
+GLOBAL VTOL_TARGET_LNG       IS 0.0.   // target hold longitude (deg)
+GLOBAL VTOL_TARGET_ALT       IS 0.0.   // target hold altitude AGL (m)
+GLOBAL VTOL_POS_HOLD_ACTIVE  IS FALSE. // TRUE while hover-at-point position loop is active
+GLOBAL VTOL_NACELLE_ALPHA_CMD IS 90.0. // commanded nacelle collective angle (deg)
+GLOBAL VTOL_NACELLE_ALPHA_EST IS 90.0. // estimated nacelle collective angle (deg)
+GLOBAL VTOL_HOVER_BLEND      IS 1.0.   // 1=hover authority, 0=cruise authority
+GLOBAL VTOL_TRANS_ACTIVE     IS FALSE. // TRUE while transition scheduler drives nacelles
 GLOBAL VTOL_DIAG_LEVEL_ACTIVE       IS FALSE. // level-hold gate active this tick
 GLOBAL VTOL_DIAG_TRULY_AIRBORNE     IS FALSE. // TRUE when SHIP:STATUS is not LANDED/PRELAUNCH
 GLOBAL VTOL_DIAG_IS_GROUNDED        IS FALSE. // effective grounded status used by VTOL controller
@@ -364,6 +397,14 @@ GLOBAL VTOL_DIAG_CLAMP_HIGH_COUNT   IS 0.0.   // number of engines clamped to up
 GLOBAL VTOL_DIAG_ROLL_MOMENT_PROXY  IS 0.0.   // sum(lim_i * roll_mix_i), authority proxy
 GLOBAL VTOL_DIAG_PITCH_MOMENT_PROXY IS 0.0.   // sum(lim_i * pitch_mix_i), authority proxy
 GLOBAL VTOL_DIAG_LIMIT_SPAN         IS 0.0.   // max(lim_i)-min(lim_i), authority spread proxy
+GLOBAL VTOL_DIAG_P_DOT_FILT         IS 0.0.   // filtered roll acceleration diagnostic (deg/s^2)
+GLOBAL VTOL_DIAG_Q_DOT_FILT         IS 0.0.   // filtered pitch acceleration diagnostic (deg/s^2)
+GLOBAL VTOL_DIAG_ROLL_D_ACCEL       IS 0.0.   // roll D-accel contribution to command
+GLOBAL VTOL_DIAG_PITCH_D_ACCEL      IS 0.0.   // pitch D-accel contribution to command
+GLOBAL VTOL_DIAG_COS_ATT_FILT       IS 1.0.   // filtered attitude cosine used in collective correction
+GLOBAL VTOL_DIAG_COLL_BEFORE_CORR   IS 0.0.   // collective before attitude/tilt correction
+GLOBAL VTOL_DIAG_COLL_AFTER_CORR    IS 0.0.   // collective after attitude/tilt correction
+GLOBAL VTOL_DIAG_PHYSICAL_ALLOC_USED IS FALSE. // TRUE when physical allocator path is selected
 
 // ----------------------------
 // Auto-brake (per-side wheel brake control via tagged main gear)
@@ -884,6 +925,10 @@ FUNCTION IFC_INIT_STATE {
   VTOL_YAW_SRV_MIX:CLEAR().
   VTOL_TRIM_OFFSET:CLEAR().
   VTOL_MAX_THRUST:CLEAR().
+  VTOL_ENG_ARM_X_M:CLEAR().
+  VTOL_ENG_ARM_Y_M:CLEAR().
+  SET VTOL_ARM_ROLL_M TO 0.0.
+  SET VTOL_ARM_PITCH_M TO 0.0.
   SET VTOL_HOVER_COLLECTIVE        TO 0.50.
   SET VTOL_HOVER_COLLECTIVE_SEEDED TO FALSE.
   SET VTOL_COLLECTIVE              TO 0.
@@ -902,6 +947,35 @@ FUNCTION IFC_INIT_STATE {
   SET VTOL_UPSET_ACTIVE     TO FALSE.
   SET VTOL_THR_GUARD_ACTIVE TO FALSE.
   SET VTOL_THR_INPUT_USED   TO 0.5.
+  SET VTOL_RATE_P_FILT      TO 0.0.
+  SET VTOL_RATE_Q_FILT      TO 0.0.
+  SET VTOL_RATE_P_FILT_PREV TO 0.0.
+  SET VTOL_RATE_Q_FILT_PREV TO 0.0.
+  SET VTOL_RATE_P_DOT_FILT  TO 0.0.
+  SET VTOL_RATE_Q_DOT_FILT  TO 0.0.
+  SET VTOL_COS_ATT_FILT     TO 1.0.
+  SET VTOL_L_CMD_PREV       TO 0.0.
+  SET VTOL_M_CMD_PREV       TO 0.0.
+  SET VTOL_VEL_INT_N        TO 0.0.
+  SET VTOL_VEL_INT_E        TO 0.0.
+  SET VTOL_VN_ACTUAL        TO 0.0.
+  SET VTOL_VE_ACTUAL        TO 0.0.
+  SET VTOL_VN_CMD           TO 0.0.
+  SET VTOL_VE_CMD           TO 0.0.
+  SET VTOL_VEL_HOLD_ACTIVE  TO FALSE.
+  SET VTOL_KHV_ACTIVE       TO FALSE.
+  SET VTOL_PHI_CMD          TO 0.0.
+  SET VTOL_THETA_CMD        TO 0.0.
+  SET VTOL_POS_INT_N        TO 0.0.
+  SET VTOL_POS_INT_E        TO 0.0.
+  SET VTOL_TARGET_LAT       TO SHIP:LATITUDE.
+  SET VTOL_TARGET_LNG       TO SHIP:LONGITUDE.
+  SET VTOL_TARGET_ALT       TO 0.0.
+  SET VTOL_POS_HOLD_ACTIVE  TO FALSE.
+  SET VTOL_NACELLE_ALPHA_CMD TO 90.0.
+  SET VTOL_NACELLE_ALPHA_EST TO 90.0.
+  SET VTOL_HOVER_BLEND       TO 1.0.
+  SET VTOL_TRANS_ACTIVE      TO FALSE.
   SET VTOL_DIAG_LEVEL_ACTIVE       TO FALSE.
   SET VTOL_DIAG_TRULY_AIRBORNE     TO FALSE.
   SET VTOL_DIAG_IS_GROUNDED        TO FALSE.
@@ -935,6 +1009,14 @@ FUNCTION IFC_INIT_STATE {
   SET VTOL_DIAG_ROLL_MOMENT_PROXY  TO 0.0.
   SET VTOL_DIAG_PITCH_MOMENT_PROXY TO 0.0.
   SET VTOL_DIAG_LIMIT_SPAN         TO 0.0.
+  SET VTOL_DIAG_P_DOT_FILT         TO 0.0.
+  SET VTOL_DIAG_Q_DOT_FILT         TO 0.0.
+  SET VTOL_DIAG_ROLL_D_ACCEL       TO 0.0.
+  SET VTOL_DIAG_PITCH_D_ACCEL      TO 0.0.
+  SET VTOL_DIAG_COS_ATT_FILT       TO 1.0.
+  SET VTOL_DIAG_COLL_BEFORE_CORR   TO 0.0.
+  SET VTOL_DIAG_COLL_AFTER_CORR    TO 0.0.
+  SET VTOL_DIAG_PHYSICAL_ALLOC_USED TO FALSE.
 
   SET DRAFT_PLAN        TO LIST().
   SET FMS_LEG_CURSOR    TO 0.
