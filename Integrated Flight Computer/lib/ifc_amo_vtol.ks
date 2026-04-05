@@ -1959,14 +1959,13 @@ FUNCTION VTOL_TICK_PREARM {
       -pitch_rate_cmd_max_degs,
        pitch_rate_cmd_max_degs
     ).
-    LOCAL pitch_p_term IS pitch_rate_cmd_p * pitch_rate_kp.
-    LOCAL pitch_i_term IS pitch_rate_cmd_i * pitch_rate_kp.
-    LOCAL pitch_d_term IS -pitch_rate_degs * pitch_rate_kp.
-    // Pitch loop sign convention matches roll loop:
-    // positive (nose-down) rate command should increase positive pitch_cmd.
-    LOCAL pitch_unsat IS (pitch_rate_cmd - pitch_rate_degs) * pitch_rate_kp.
-    LOCAL pitch_at_hi IS pitch_unsat >= pitch_cap AND pitch_err < 0.
-    LOCAL pitch_at_lo IS pitch_unsat <= -pitch_cap AND pitch_err > 0.
+    LOCAL pitch_p_term IS -pitch_rate_cmd_p * pitch_rate_kp.
+    LOCAL pitch_i_term IS -pitch_rate_cmd_i * pitch_rate_kp.
+    LOCAL pitch_d_term IS pitch_rate_degs * pitch_rate_kp.
+    // Pitch command convention: positive pitch_cmd requests nose-up torque.
+    LOCAL pitch_unsat IS -(pitch_rate_cmd - pitch_rate_degs) * pitch_rate_kp.
+    LOCAL pitch_at_hi IS pitch_unsat >= pitch_cap AND pitch_err > 0.
+    LOCAL pitch_at_lo IS pitch_unsat <= -pitch_cap AND pitch_err < 0.
     IF NOT truly_airborne {
       SET VTOL_LEVEL_PITCH_INT TO 0.
     } ELSE IF alloc_limited_prev OR lag_limited_prev OR pitch_at_hi OR pitch_at_lo {
@@ -1985,13 +1984,13 @@ FUNCTION VTOL_TICK_PREARM {
          pitch_rate_cmd_max_degs
       ).
     }
-    SET pitch_p_term TO pitch_rate_cmd_p * pitch_rate_kp.
-    SET pitch_i_term TO pitch_rate_cmd_i * pitch_rate_kp.
-    SET pitch_d_term TO -pitch_rate_degs * pitch_rate_kp.
-    SET pitch_unsat TO (pitch_rate_cmd - pitch_rate_degs) * pitch_rate_kp.
-    // Positive pitch-rate acceleration (nose-up accelerating) must drive a
-    // negative correction with pitch_mix_sign=+1, so use -q_dot*Kd.
-    LOCAL pitch_d_accel_cmd IS -VTOL_RATE_Q_DOT_FILT * kd_pitch_accel_use.
+    SET pitch_p_term TO -pitch_rate_cmd_p * pitch_rate_kp.
+    SET pitch_i_term TO -pitch_rate_cmd_i * pitch_rate_kp.
+    SET pitch_d_term TO pitch_rate_degs * pitch_rate_kp.
+    SET pitch_unsat TO -(pitch_rate_cmd - pitch_rate_degs) * pitch_rate_kp.
+    // Positive q_dot means nose-down acceleration; oppose it with nose-up
+    // command, which is positive pitch_cmd in this convention.
+    LOCAL pitch_d_accel_cmd IS VTOL_RATE_Q_DOT_FILT * kd_pitch_accel_use.
     SET pitch_unsat TO pitch_unsat + pitch_d_accel_cmd.
     SET pitch_cmd TO CLAMP(pitch_unsat, -1, 1).
     SET VTOL_DIAG_PITCH_ERR TO pitch_err.
@@ -2113,7 +2112,7 @@ FUNCTION VTOL_TICK_PREARM {
       -roll_rate_u_degs * upset_roll_rate_kp,
       -upset_cmd_roll_max, upset_cmd_roll_max).
     SET pitch_cmd TO CLAMP(
-      -pitch_rate_u_degs * upset_pitch_rate_kp,
+      pitch_rate_u_degs * upset_pitch_rate_kp,
       -upset_cmd_pitch_max, upset_cmd_pitch_max).
   }
   SET VTOL_DIAG_CMD_ROLL_POSTUPSET TO roll_cmd.
@@ -2121,6 +2120,12 @@ FUNCTION VTOL_TICK_PREARM {
 
   LOCAL cmd_slew IS _AMO_CFG_NUM("vtol_cmd_slew_per_s", VTOL_CMD_SLEW_PER_S, 0).
   LOCAL level_cmd_slew IS _AMO_CFG_NUM("vtol_level_cmd_slew_per_s", VTOL_LEVEL_CMD_SLEW_PER_S, 0).
+  LOCAL cmd_phys_slew_min IS _AMO_CFG_NUM("vtol_cmd_phys_slew_min", VTOL_CMD_PHYS_SLEW_MIN, 0).
+  LOCAL upset_pitch_phys_slew_scale IS _AMO_CFG_NUM(
+    "vtol_upset_pitch_phys_slew_scale",
+    VTOL_UPSET_PITCH_PHYS_SLEW_SCALE,
+    0
+  ).
   LOCAL upset_pitch_slew_bypass IS _AMO_CFG_BOOL(
     "vtol_upset_pitch_slew_bypass",
     VTOL_UPSET_PITCH_SLEW_BYPASS
@@ -2137,6 +2142,8 @@ FUNCTION VTOL_TICK_PREARM {
     0
   ).
   IF level_cmd_slew <= 0 { SET level_cmd_slew TO cmd_slew. }
+  IF cmd_phys_slew_min < 0 { SET cmd_phys_slew_min TO 0. }
+  IF upset_pitch_phys_slew_scale < 1.0 { SET upset_pitch_phys_slew_scale TO 1.0. }
   IF level_cmd_slew_min_scale < 0 { SET level_cmd_slew_min_scale TO 0. }
   IF level_cmd_slew_min_scale > 1 { SET level_cmd_slew_min_scale TO 1. }
   LOCAL roll_slew_lag_s IS em_lag_s.
@@ -2172,13 +2179,19 @@ FUNCTION VTOL_TICK_PREARM {
   // Section 11.2: command pre-filtering must respect actuator lag bandwidth.
   // For first-order lag tau, useful command slew is bounded by ~1/tau.
   IF roll_slew_lag_s > 0.05 {
-    LOCAL roll_phys_slew_max IS 1.0 / roll_slew_lag_s.
+    LOCAL roll_phys_slew_max IS MAX(cmd_phys_slew_min, 1.0 / roll_slew_lag_s).
     IF roll_cmd_slew_use <= 0 OR roll_cmd_slew_use > roll_phys_slew_max {
       SET roll_cmd_slew_use TO roll_phys_slew_max.
     }
   }
   IF pitch_slew_lag_s > 0.05 {
     LOCAL pitch_phys_slew_max IS 1.0 / pitch_slew_lag_s.
+    IF upset_active {
+      SET pitch_phys_slew_max TO pitch_phys_slew_max * upset_pitch_phys_slew_scale.
+    }
+    IF pitch_phys_slew_max < cmd_phys_slew_min {
+      SET pitch_phys_slew_max TO cmd_phys_slew_min.
+    }
     IF pitch_cmd_slew_use <= 0 OR pitch_cmd_slew_use > pitch_phys_slew_max {
       SET pitch_cmd_slew_use TO pitch_phys_slew_max.
     }
@@ -2201,7 +2214,18 @@ FUNCTION VTOL_TICK_PREARM {
   SET VTOL_CMD_ROLL_ACTUAL TO roll_cmd.
   SET VTOL_CMD_PITCH_ACTUAL TO pitch_cmd.
 
-  _VTOL_APPLY_ENGINES(VTOL_COLLECTIVE, roll_cmd, pitch_cmd, _starvec, _forevec, _upvec, _angvel).
+  LOCAL collective_apply IS VTOL_COLLECTIVE.
+  LOCAL upset_collective_cap IS _AMO_CFG_NUM(
+    "vtol_upset_collective_cap",
+    VTOL_UPSET_COLLECTIVE_CAP,
+    -1
+  ).
+  IF upset_active AND upset_collective_cap >= 0 {
+    IF upset_collective_cap > 1 { SET upset_collective_cap TO 1.0. }
+    SET collective_apply TO MIN(collective_apply, upset_collective_cap).
+  }
+  SET VTOL_COLLECTIVE TO collective_apply.
+  _VTOL_APPLY_ENGINES(collective_apply, roll_cmd, pitch_cmd, _starvec, _forevec, _upvec, _angvel).
   _VTOL_APPLY_SERVOS(p_yaw).
   SET VTOL_ACTIVE TO TRUE.
 }

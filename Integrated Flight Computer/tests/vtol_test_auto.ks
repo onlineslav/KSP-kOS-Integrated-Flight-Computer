@@ -120,6 +120,8 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_yaw_gain",          8,
   "vtol_roll_gain",         0.25,
   "vtol_pitch_gain",        0.30,
+  // Positive pitch_cmd means nose-up correction in controller space.
+  // Keep mixer polarity so forward engines get the positive command side.
   "vtol_pitch_mix_sign",    1,
   "vtol_level_roll_kp",     0.10,
   "vtol_level_roll_kd",     0.03,
@@ -154,6 +156,7 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_diff_collective_min",   0.12,
   "vtol_engine_limit_floor",    0.14,
   "vtol_cmd_slew_per_s",        3.0,
+  "vtol_cmd_phys_slew_min",     0.45,
   "vtol_cmd_roll_max",          0.55,
   "vtol_cmd_pitch_max",         0.60,
   "vtol_diff_atten_min",        0.25,
@@ -168,12 +171,14 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_upset_hold_s",          2.0,
   "vtol_upset_cmd_max",         0.30,
   "vtol_upset_cmd_roll_max",    0.60,
-  "vtol_upset_cmd_pitch_max",   0.60,
+  "vtol_upset_cmd_pitch_max",   0.85,
   "vtol_upset_roll_rate_kp",    0.030,
-  "vtol_upset_pitch_rate_kp",   0.035,
+  "vtol_upset_pitch_rate_kp",   0.055,
+  "vtol_upset_pitch_phys_slew_scale", 3.0,
   "vtol_upset_pitch_slew_bypass", TRUE,
   "vtol_upset_diff_atten_min",  0.55,
   "vtol_upset_engine_limit_floor", 0.02,
+  "vtol_upset_collective_cap",  0.76,
   "vtol_upset_guard_agl_m",     20.0,
   "vtol_upset_guard_thr_min",   0.55,
   "vtol_rate_kd_roll_accel",    0.012,
@@ -282,7 +287,7 @@ SET AUTO_LAST_DISPLAY_UT TO AUTO_MISSION_START_UT.
 SET AUTO_LOG_FILE TO _AUTO_NEW_LOG_FILE().
 
 LOG ("# vtol_test_auto craft=" + SHIP:NAME + " UT=" + ROUND(TIME:SECONDS, 1)) TO AUTO_LOG_FILE.
-LOG "t_s,phase,dt_s,alt_agl_m,vs_ms,gndspd_ms,pitch_deg,bank_deg,pitch_rate_dps,roll_rate_dps,desired_pitch_deg,desired_bank_deg,roll_cmd,pitch_cmd,thr_input_used,collective,hover_coll,alt_hold,alt_cmd,vel_hold,khv,pos_hold,trans_active,vn_actual_ms,ve_actual_ms,vn_cmd_ms,ve_cmd_ms,pos_err_dist_m,nacelle_cmd_deg,nacelle_est_deg,hover_blend,p_dot_filt,q_dot_filt,roll_d_accel,pitch_d_accel,cos_att_filt,coll_before_corr,coll_after_corr,physical_alloc,upset,alloc_alpha,alloc_shift,limit_span,em_spool_lag_s,em_starving" TO AUTO_LOG_FILE.
+LOG "t_s,phase,dt_s,alt_agl_m,vs_ms,gndspd_ms,pitch_deg,bank_deg,pitch_rate_dps,roll_rate_dps,desired_pitch_deg,desired_bank_deg,roll_cmd,pitch_cmd,thr_input_used,collective,hover_coll,alt_hold,alt_cmd,vel_hold,khv,pos_hold,trans_active,vn_actual_ms,ve_actual_ms,vn_cmd_ms,ve_cmd_ms,pos_err_dist_m,nacelle_cmd_deg,nacelle_est_deg,hover_blend,p_dot_filt,q_dot_filt,roll_d_accel,pitch_d_accel,cos_att_filt,coll_before_corr,coll_after_corr,physical_alloc,upset,alloc_alpha,alloc_shift,limit_span,em_spool_lag_s,eff_spool_lag_s,em_starving" TO AUTO_LOG_FILE.
 
 ON ABORT {
   SET AUTO_RUNNING TO FALSE.
@@ -617,6 +622,7 @@ UNTIL NOT AUTO_RUNNING {
       ROUND(VTOL_ALLOC_SHIFT, 4),
       ROUND(VTOL_DIAG_LIMIT_SPAN, 5),
       ROUND(TELEM_EM_WORST_SPOOL_LAG, 4),
+      ROUND(VTOL_EFF_LAG_WORST_S, 4),
       TELEM_EM_STARVING
     ).
     LOG csv_row:JOIN(",") TO AUTO_LOG_FILE.

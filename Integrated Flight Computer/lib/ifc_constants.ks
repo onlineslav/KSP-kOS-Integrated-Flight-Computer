@@ -542,6 +542,7 @@ GLOBAL VTOL_TRIM_ACTIVE_BANK_MAX IS 8.0. // adaptive trim only while |bank| is b
 GLOBAL VTOL_TRIM_ACTIVE_ROLL_RATE_MAX IS 12.0. // adaptive trim only while |roll_rate| is below this
 GLOBAL VTOL_ENGINE_LIMIT_FLOOR IS 0.10. // minimum per-engine limiter fraction while differential is active
 GLOBAL VTOL_CMD_SLEW_PER_S IS 5.0. // max change per second for roll/pitch command before engine allocation
+GLOBAL VTOL_CMD_PHYS_SLEW_MIN IS 0.35. // /s lower bound for lag-derived physical command slew limit (prevents over-throttling control bandwidth)
 GLOBAL VTOL_DIFF_STATE_ATTEN_ENABLED_DEFAULT IS FALSE. // FALSE = do not reduce differential authority from attitude/rate excursions
 GLOBAL VTOL_DIFF_ATTEN_MIN IS 0.10. // lower bound on differential authority attenuation factor
 GLOBAL VTOL_DIFF_SOFT_BANK_DEG IS 8.0. // begin reducing differential authority above this bank angle
@@ -568,9 +569,11 @@ GLOBAL VTOL_UPSET_CMD_MAX_ROLL IS 0.70. // upset-mode roll command cap (higher t
 GLOBAL VTOL_UPSET_CMD_MAX_PITCH IS 0.35. // upset-mode pitch command cap
 GLOBAL VTOL_UPSET_ROLL_RATE_KP IS 0.04. // upset-mode roll-rate damping gain (command per deg/s)
 GLOBAL VTOL_UPSET_PITCH_RATE_KP IS 0.05. // upset-mode pitch-rate damping gain (command per deg/s)
+GLOBAL VTOL_UPSET_PITCH_PHYS_SLEW_SCALE IS 2.0. // multiplier on lag-derived pitch slew cap while upset is active
 GLOBAL VTOL_UPSET_PITCH_SLEW_BYPASS IS TRUE. // TRUE = bypass pitch command slew while upset recovery is active
 GLOBAL VTOL_UPSET_DIFF_ATTEN_MIN IS 0.55. // minimum differential authority scale while upset is active
 GLOBAL VTOL_UPSET_ENGINE_LIMIT_FLOOR IS 0.02. // per-engine limiter floor while upset is active
+GLOBAL VTOL_UPSET_COLLECTIVE_CAP IS -1.0. // <0 disables; otherwise caps applied collective during upset to prioritize attitude recovery over altitude
 GLOBAL VTOL_UPSET_GUARD_AGL_M IS 20.0. // below this AGL, upset + low pilot throttle is clamped to preserve lift
 GLOBAL VTOL_UPSET_GUARD_THR_MIN IS 0.55. // minimum pilot throttle surrogate when low-alt upset guard is active
 GLOBAL VTOL_RATE_KD_ROLL_ACCEL IS 0.02. // roll D-term gain on filtered roll acceleration
