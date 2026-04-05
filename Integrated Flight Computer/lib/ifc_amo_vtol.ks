@@ -88,6 +88,13 @@ FUNCTION _VTOL_CLEAR_DIAG {
   SET VTOL_DIAG_COLL_BEFORE_CORR    TO 0.0.
   SET VTOL_DIAG_COLL_AFTER_CORR     TO 0.0.
   SET VTOL_DIAG_PHYSICAL_ALLOC_USED TO FALSE.
+  SET VTOL_DIAG_INERTIA_EST_ACTIVE  TO FALSE.
+  SET VTOL_DIAG_I_ROLL_EST          TO 0.0.
+  SET VTOL_DIAG_I_PITCH_EST         TO 0.0.
+  SET VTOL_DIAG_I_ROLL_TAU          TO 0.0.
+  SET VTOL_DIAG_I_PITCH_TAU         TO 0.0.
+  SET VTOL_DIAG_I_ROLL_ALPHA        TO 0.0.
+  SET VTOL_DIAG_I_PITCH_ALPHA       TO 0.0.
 }
 
 GLOBAL _vtol_prev_roll_cmd IS 0.
@@ -145,6 +152,7 @@ FUNCTION VTOL_DISCOVER {
   SET VTOL_ARM_PITCH_M TO 0.0.
   SET VTOL_DIFF_AVAILABLE TO FALSE.
   SET VTOL_SRV_AVAIL      TO FALSE.
+  _VTOL_RESET_INERTIA_ESTIMATOR().
 
   LOCAL eng_tag IS _AMO_CFG_STR("vtol_eng_tag_prefix", "vtol_eng").
   LOCAL srv_tag IS _AMO_CFG_STR("vtol_srv_tag_prefix", "vtol_srv").
@@ -576,6 +584,9 @@ FUNCTION _VTOL_APPLY_ENGINES {
   LOCAL lim_max_seen IS -999.
   LOCAL roll_moment_proxy IS 0.
   LOCAL pitch_moment_proxy IS 0.
+  LOCAL roll_tau_cmd_kNm IS 0.0.
+  LOCAL pitch_tau_cmd_kNm IS 0.0.
+  LOCAL throttle_frac IS CLAMP(THROTTLE, 0, 1).
   SET i TO 0.
   UNTIL i >= VTOL_ENG_LIST:LENGTH {
     LOCAL lim_unclamped IS base_vec[i] + shift + alpha * diff_vec[i].
@@ -586,6 +597,32 @@ FUNCTION _VTOL_APPLY_ENGINES {
     IF lim_cmd > lim_max_seen { SET lim_max_seen TO lim_cmd. }
     SET roll_moment_proxy TO roll_moment_proxy + lim_cmd * VTOL_ROLL_MIX[i].
     SET pitch_moment_proxy TO pitch_moment_proxy + lim_cmd * VTOL_PITCH_MIX[i].
+    LOCAL lim_base_i IS base_vec[i] + shift.
+    LOCAL diff_eff_i IS lim_cmd - lim_base_i.
+    LOCAL thrust_cap_kN IS 0.0.
+    IF VTOL_MAX_THRUST:LENGTH = VTOL_ENG_LIST:LENGTH {
+      SET thrust_cap_kN TO VTOL_MAX_THRUST[i].
+    }
+    IF thrust_cap_kN < 0.01 {
+      LOCAL entry_i IS VTOL_ENG_LIST[i].
+      IF entry_i <> 0 AND entry_i:HASKEY("eng") {
+        LOCAL eng_i IS entry_i["eng"].
+        IF eng_i <> 0 {
+          IF eng_i:HASSUFFIX("MAXTHRUST") { SET thrust_cap_kN TO eng_i:MAXTHRUST. }
+          IF thrust_cap_kN < 0.01 AND eng_i:HASSUFFIX("THRUST") {
+            SET thrust_cap_kN TO eng_i:THRUST.
+          }
+        }
+      }
+    }
+    IF thrust_cap_kN < 0 { SET thrust_cap_kN TO 0. }
+    LOCAL thrust_cmd_kN IS thrust_cap_kN * throttle_frac.
+    IF VTOL_ENG_ARM_Y_M:LENGTH = VTOL_ENG_LIST:LENGTH {
+      SET roll_tau_cmd_kNm TO roll_tau_cmd_kNm + diff_eff_i * thrust_cmd_kN * (-VTOL_ENG_ARM_Y_M[i]).
+    }
+    IF VTOL_ENG_ARM_X_M:LENGTH = VTOL_ENG_LIST:LENGTH {
+      SET pitch_tau_cmd_kNm TO pitch_tau_cmd_kNm + diff_eff_i * thrust_cmd_kN * (pitch_mix_sign_cfg * VTOL_ENG_ARM_X_M[i]).
+    }
     _AMO_SET_ENTRY_LIMIT_FRAC(VTOL_ENG_LIST[i], lim_cmd).
     VTOL_ENG_LIM_ACTUAL:ADD(lim_cmd).
     SET i TO i + 1.
@@ -599,6 +636,7 @@ FUNCTION _VTOL_APPLY_ENGINES {
   } ELSE {
     SET VTOL_DIAG_LIMIT_SPAN TO lim_max_seen - lim_min_seen.
   }
+  _VTOL_UPDATE_INERTIA_ESTIMATOR(roll_tau_cmd_kNm, pitch_tau_cmd_kNm).
 }
 
 // ?????? Servo control via ModuleIRServo_v3 ???????????????????????????????????????????????????????????????
@@ -804,6 +842,175 @@ FUNCTION _VTOL_UPDATE_RATE_FILTERS {
 
   SET VTOL_DIAG_P_DOT_FILT TO VTOL_RATE_P_DOT_FILT.
   SET VTOL_DIAG_Q_DOT_FILT TO VTOL_RATE_Q_DOT_FILT.
+}
+
+FUNCTION _VTOL_RESET_INERTIA_ESTIMATOR {
+  LOCAL i_init IS _AMO_CFG_NUM("vtol_inertia_rls_i_init", VTOL_INERTIA_RLS_I_INIT, 0.0001).
+  LOCAL p0 IS _AMO_CFG_NUM("vtol_inertia_rls_p0", VTOL_INERTIA_RLS_P0, 0.0001).
+  IF i_init < 0.0001 { SET i_init TO 0.0001. }
+  IF p0 < 0.0001 { SET p0 TO 0.0001. }
+  SET VTOL_I_ROLL_EST TO i_init.
+  SET VTOL_I_PITCH_EST TO i_init.
+  SET VTOL_I_ROLL_COV TO p0.
+  SET VTOL_I_PITCH_COV TO p0.
+  SET VTOL_I_ROLL_VALID TO FALSE.
+  SET VTOL_I_PITCH_VALID TO FALSE.
+}
+
+FUNCTION _VTOL_RLS_AXIS_UPDATE {
+  PARAMETER i_est_in, p_cov_in, valid_in, tau_cmd_kNm, alpha_meas_rads2.
+  PARAMETER lambda, process_q, alpha_min_rads2, tau_min_kNm, i_min, i_max.
+
+  LOCAL i_out IS CLAMP(i_est_in, i_min, i_max).
+  LOCAL p_out IS MAX(0.0001, p_cov_in).
+  LOCAL valid_out IS valid_in.
+  LOCAL updated_out IS FALSE.
+
+  IF ABS(alpha_meas_rads2) >= alpha_min_rads2 {
+    IF ABS(tau_cmd_kNm) >= tau_min_kNm {
+      IF NOT valid_out {
+        LOCAL i_seed IS ABS(tau_cmd_kNm / alpha_meas_rads2).
+        SET i_out TO CLAMP(i_seed, i_min, i_max).
+        SET valid_out TO TRUE.
+      }
+      LOCAL p_work IS p_out / lambda + process_q.
+      IF p_work < 0.0001 { SET p_work TO 0.0001. }
+      LOCAL denom IS 1.0 + p_work * alpha_meas_rads2 * alpha_meas_rads2.
+      IF ABS(denom) < 0.000001 { SET denom TO 0.000001. }
+      LOCAL gain IS p_work * alpha_meas_rads2 / denom.
+      SET i_out TO CLAMP(
+        i_out + gain * (tau_cmd_kNm - i_out * alpha_meas_rads2),
+        i_min,
+        i_max
+      ).
+      SET p_out TO (1.0 - gain * alpha_meas_rads2) * p_work.
+      IF p_out < 0.0001 { SET p_out TO 0.0001. }
+      SET updated_out TO TRUE.
+    }
+  }
+
+  RETURN LEXICON(
+    "i", i_out,
+    "p", p_out,
+    "valid", valid_out,
+    "updated", updated_out
+  ).
+}
+
+FUNCTION _VTOL_UPDATE_INERTIA_ESTIMATOR {
+  PARAMETER roll_tau_cmd_kNm, pitch_tau_cmd_kNm.
+
+  SET VTOL_DIAG_INERTIA_EST_ACTIVE TO FALSE.
+  SET VTOL_DIAG_I_ROLL_TAU TO roll_tau_cmd_kNm.
+  SET VTOL_DIAG_I_PITCH_TAU TO pitch_tau_cmd_kNm.
+
+  LOCAL rad_per_deg IS CONSTANT:PI / 180.
+  LOCAL roll_alpha_rads2 IS VTOL_RATE_P_DOT_FILT * rad_per_deg.
+  LOCAL pitch_alpha_rads2 IS VTOL_RATE_Q_DOT_FILT * rad_per_deg.
+  SET VTOL_DIAG_I_ROLL_ALPHA TO roll_alpha_rads2.
+  SET VTOL_DIAG_I_PITCH_ALPHA TO pitch_alpha_rads2.
+  SET VTOL_DIAG_I_ROLL_EST TO VTOL_I_ROLL_EST.
+  SET VTOL_DIAG_I_PITCH_EST TO VTOL_I_PITCH_EST.
+
+  LOCAL inertia_enabled IS _AMO_CFG_BOOL(
+    "vtol_inertia_rls_enabled",
+    VTOL_INERTIA_RLS_ENABLED_DEFAULT
+  ).
+  IF NOT inertia_enabled { RETURN. }
+  IF IFC_ACTUAL_DT <= 0.001 { RETURN. }
+
+  LOCAL max_ias_ms IS _AMO_CFG_NUM(
+    "vtol_inertia_rls_max_ias",
+    VTOL_INERTIA_RLS_MAX_IAS,
+    0
+  ).
+  IF max_ias_ms > 0 {
+    IF GET_IAS() > max_ias_ms { RETURN. }
+  }
+
+  LOCAL allow_ground IS _AMO_CFG_BOOL(
+    "vtol_inertia_rls_allow_ground",
+    VTOL_INERTIA_RLS_ALLOW_GROUND_DEFAULT
+  ).
+  IF NOT allow_ground {
+    IF SHIP:STATUS = "LANDED" OR SHIP:STATUS = "PRELAUNCH" { RETURN. }
+  }
+
+  LOCAL lambda IS _AMO_CFG_NUM(
+    "vtol_inertia_rls_forget_lambda",
+    VTOL_INERTIA_RLS_FORGET_LAMBDA,
+    0
+  ).
+  LOCAL process_q IS _AMO_CFG_NUM(
+    "vtol_inertia_rls_process_q",
+    VTOL_INERTIA_RLS_PROCESS_Q,
+    0
+  ).
+  LOCAL alpha_min_rads2 IS _AMO_CFG_NUM(
+    "vtol_inertia_rls_alpha_min_rads2",
+    VTOL_INERTIA_RLS_ALPHA_MIN_RADS2,
+    0
+  ).
+  LOCAL tau_min_kNm IS _AMO_CFG_NUM(
+    "vtol_inertia_rls_tau_min_knm",
+    VTOL_INERTIA_RLS_TAU_MIN_KNM,
+    0
+  ).
+  LOCAL i_min IS _AMO_CFG_NUM(
+    "vtol_inertia_rls_i_min",
+    VTOL_INERTIA_RLS_I_MIN,
+    0.0001
+  ).
+  LOCAL i_max IS _AMO_CFG_NUM(
+    "vtol_inertia_rls_i_max",
+    VTOL_INERTIA_RLS_I_MAX,
+    0.01
+  ).
+  IF lambda < 0.90 { SET lambda TO 0.90. }
+  IF lambda >= 1.0 { SET lambda TO 0.999999. }
+  IF process_q < 0 { SET process_q TO 0. }
+  IF alpha_min_rads2 < 0.001 { SET alpha_min_rads2 TO 0.001. }
+  IF tau_min_kNm < 0.01 { SET tau_min_kNm TO 0.01. }
+  IF i_min < 0.0001 { SET i_min TO 0.0001. }
+  IF i_max < i_min + 0.001 { SET i_max TO i_min + 0.001. }
+
+  LOCAL roll_out IS _VTOL_RLS_AXIS_UPDATE(
+    VTOL_I_ROLL_EST,
+    VTOL_I_ROLL_COV,
+    VTOL_I_ROLL_VALID,
+    roll_tau_cmd_kNm,
+    roll_alpha_rads2,
+    lambda,
+    process_q,
+    alpha_min_rads2,
+    tau_min_kNm,
+    i_min,
+    i_max
+  ).
+  LOCAL pitch_out IS _VTOL_RLS_AXIS_UPDATE(
+    VTOL_I_PITCH_EST,
+    VTOL_I_PITCH_COV,
+    VTOL_I_PITCH_VALID,
+    pitch_tau_cmd_kNm,
+    pitch_alpha_rads2,
+    lambda,
+    process_q,
+    alpha_min_rads2,
+    tau_min_kNm,
+    i_min,
+    i_max
+  ).
+
+  SET VTOL_I_ROLL_EST TO roll_out["i"].
+  SET VTOL_I_ROLL_COV TO roll_out["p"].
+  SET VTOL_I_ROLL_VALID TO roll_out["valid"].
+  SET VTOL_I_PITCH_EST TO pitch_out["i"].
+  SET VTOL_I_PITCH_COV TO pitch_out["p"].
+  SET VTOL_I_PITCH_VALID TO pitch_out["valid"].
+
+  SET VTOL_DIAG_I_ROLL_EST TO VTOL_I_ROLL_EST.
+  SET VTOL_DIAG_I_PITCH_EST TO VTOL_I_PITCH_EST.
+  SET VTOL_DIAG_INERTIA_EST_ACTIVE TO roll_out["updated"] OR pitch_out["updated"].
 }
 
 FUNCTION _VTOL_GET_SURFACE_VEL {
@@ -2006,6 +2213,13 @@ FUNCTION VTOL_RELEASE {
   SET VTOL_POS_HOLD_ACTIVE TO FALSE.
   SET VTOL_HOVER_BLEND TO 1.0.
   SET VTOL_TRANS_ACTIVE TO FALSE.
+  SET VTOL_DIAG_INERTIA_EST_ACTIVE TO FALSE.
+  SET VTOL_DIAG_I_ROLL_EST TO VTOL_I_ROLL_EST.
+  SET VTOL_DIAG_I_PITCH_EST TO VTOL_I_PITCH_EST.
+  SET VTOL_DIAG_I_ROLL_TAU TO 0.0.
+  SET VTOL_DIAG_I_PITCH_TAU TO 0.0.
+  SET VTOL_DIAG_I_ROLL_ALPHA TO 0.0.
+  SET VTOL_DIAG_I_PITCH_ALPHA TO 0.0.
   LOCAL hover_angle_rel IS _AMO_CFG_NUM("vtol_hover_angle", 90, 0).
   SET VTOL_NACELLE_ALPHA_CMD TO hover_angle_rel.
   SET VTOL_NACELLE_ALPHA_EST TO hover_angle_rel.
@@ -2072,6 +2286,7 @@ FUNCTION VTOL_RESET {
   SET VTOL_TARGET_LNG       TO SHIP:LONGITUDE.
   SET VTOL_TARGET_ALT       TO 0.0.
   SET VTOL_POS_HOLD_ACTIVE  TO FALSE.
+  _VTOL_RESET_INERTIA_ESTIMATOR().
   LOCAL hover_angle_res IS _AMO_CFG_NUM("vtol_hover_angle", 90, 0).
   SET VTOL_NACELLE_ALPHA_CMD TO hover_angle_res.
   SET VTOL_NACELLE_ALPHA_EST TO hover_angle_res.

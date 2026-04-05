@@ -594,6 +594,17 @@ GLOBAL VTOL_POS_INT_RADIUS IS 50.0. // only integrate position error inside this
 GLOBAL VTOL_POS_CAPTURE_RADIUS IS 10.0. // decel schedule radius for position hold (m)
 GLOBAL VTOL_KHV_CAPTURE_MPS IS 0.5. // kill-horizontal-velocity completion threshold
 GLOBAL VTOL_PHYSICAL_ALLOC_ENABLED_DEFAULT IS FALSE. // TRUE enables arm-based physical allocation path
+GLOBAL VTOL_INERTIA_RLS_ENABLED_DEFAULT IS TRUE. // TRUE enables online roll/pitch inertia estimation
+GLOBAL VTOL_INERTIA_RLS_ALLOW_GROUND_DEFAULT IS FALSE. // TRUE allows updates while LANDED/PRELAUNCH
+GLOBAL VTOL_INERTIA_RLS_FORGET_LAMBDA IS 0.998. // forgetting factor for slow mass-property tracking
+GLOBAL VTOL_INERTIA_RLS_PROCESS_Q IS 0.01. // covariance floor/process noise term
+GLOBAL VTOL_INERTIA_RLS_P0 IS 1000.0. // initial covariance (high = fast initial convergence)
+GLOBAL VTOL_INERTIA_RLS_ALPHA_MIN_RADS2 IS 0.05. // minimum |alpha| required for informative updates
+GLOBAL VTOL_INERTIA_RLS_TAU_MIN_KNM IS 0.20. // minimum |tau| required for informative updates
+GLOBAL VTOL_INERTIA_RLS_MAX_IAS IS 35.0. // inhibit updates above this IAS to reduce aero bias
+GLOBAL VTOL_INERTIA_RLS_I_INIT IS 15.0. // initial inertia estimate for both roll and pitch
+GLOBAL VTOL_INERTIA_RLS_I_MIN IS 0.05. // lower clamp for inertia estimate
+GLOBAL VTOL_INERTIA_RLS_I_MAX IS 5000.0. // upper clamp for inertia estimate
 GLOBAL VTOL_TRANS_START_IAS IS 30.0. // IAS where nacelle transition begins (m/s)
 GLOBAL VTOL_TRANS_END_IAS IS 80.0. // IAS where nacelle transition reaches cruise angle (m/s)
 GLOBAL VTOL_NACELLE_SLEW_DPS IS 5.0. // max collective nacelle-angle slew rate (deg/s)

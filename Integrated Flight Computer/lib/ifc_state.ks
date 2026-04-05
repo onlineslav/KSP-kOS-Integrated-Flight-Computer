@@ -317,6 +317,12 @@ GLOBAL VTOL_ENG_ARM_X_M      IS LIST(). // per-engine longitudinal arm from CoM 
 GLOBAL VTOL_ENG_ARM_Y_M      IS LIST(). // per-engine lateral arm from CoM (m, +starboard)
 GLOBAL VTOL_ARM_ROLL_M       IS 0.0.    // representative roll moment arm magnitude (m)
 GLOBAL VTOL_ARM_PITCH_M      IS 0.0.    // representative pitch moment arm magnitude (m)
+GLOBAL VTOL_I_ROLL_EST       IS 15.0.   // online RLS roll inertia estimate (kN*m / rad/s^2)
+GLOBAL VTOL_I_PITCH_EST      IS 15.0.   // online RLS pitch inertia estimate (kN*m / rad/s^2)
+GLOBAL VTOL_I_ROLL_COV       IS 1000.0. // roll estimator covariance
+GLOBAL VTOL_I_PITCH_COV      IS 1000.0. // pitch estimator covariance
+GLOBAL VTOL_I_ROLL_VALID     IS FALSE.  // TRUE once roll estimator receives informative data
+GLOBAL VTOL_I_PITCH_VALID    IS FALSE.  // TRUE once pitch estimator receives informative data
 GLOBAL VTOL_HOVER_COLLECTIVE        IS 0.50.  // collective that sustains hover; self-learned (autopilot use)
 GLOBAL VTOL_HOVER_COLLECTIVE_SEEDED IS FALSE. // TRUE once config vtol_hover_collective has been applied
 GLOBAL VTOL_COLLECTIVE       IS 0.     // current commanded collective (0..1) (autopilot use)
@@ -405,6 +411,13 @@ GLOBAL VTOL_DIAG_COS_ATT_FILT       IS 1.0.   // filtered attitude cosine used i
 GLOBAL VTOL_DIAG_COLL_BEFORE_CORR   IS 0.0.   // collective before attitude/tilt correction
 GLOBAL VTOL_DIAG_COLL_AFTER_CORR    IS 0.0.   // collective after attitude/tilt correction
 GLOBAL VTOL_DIAG_PHYSICAL_ALLOC_USED IS FALSE. // TRUE when physical allocator path is selected
+GLOBAL VTOL_DIAG_INERTIA_EST_ACTIVE IS FALSE. // TRUE when RLS inertia estimator updated this tick
+GLOBAL VTOL_DIAG_I_ROLL_EST         IS 0.0.   // roll inertia estimate diagnostic
+GLOBAL VTOL_DIAG_I_PITCH_EST        IS 0.0.   // pitch inertia estimate diagnostic
+GLOBAL VTOL_DIAG_I_ROLL_TAU         IS 0.0.   // commanded roll torque proxy used by estimator (kN*m)
+GLOBAL VTOL_DIAG_I_PITCH_TAU        IS 0.0.   // commanded pitch torque proxy used by estimator (kN*m)
+GLOBAL VTOL_DIAG_I_ROLL_ALPHA       IS 0.0.   // measured roll angular acceleration (rad/s^2)
+GLOBAL VTOL_DIAG_I_PITCH_ALPHA      IS 0.0.   // measured pitch angular acceleration (rad/s^2)
 
 // ----------------------------
 // Auto-brake (per-side wheel brake control via tagged main gear)
@@ -929,6 +942,12 @@ FUNCTION IFC_INIT_STATE {
   VTOL_ENG_ARM_Y_M:CLEAR().
   SET VTOL_ARM_ROLL_M TO 0.0.
   SET VTOL_ARM_PITCH_M TO 0.0.
+  SET VTOL_I_ROLL_EST TO VTOL_INERTIA_RLS_I_INIT.
+  SET VTOL_I_PITCH_EST TO VTOL_INERTIA_RLS_I_INIT.
+  SET VTOL_I_ROLL_COV TO VTOL_INERTIA_RLS_P0.
+  SET VTOL_I_PITCH_COV TO VTOL_INERTIA_RLS_P0.
+  SET VTOL_I_ROLL_VALID TO FALSE.
+  SET VTOL_I_PITCH_VALID TO FALSE.
   SET VTOL_HOVER_COLLECTIVE        TO 0.50.
   SET VTOL_HOVER_COLLECTIVE_SEEDED TO FALSE.
   SET VTOL_COLLECTIVE              TO 0.
@@ -1017,6 +1036,13 @@ FUNCTION IFC_INIT_STATE {
   SET VTOL_DIAG_COLL_BEFORE_CORR   TO 0.0.
   SET VTOL_DIAG_COLL_AFTER_CORR    TO 0.0.
   SET VTOL_DIAG_PHYSICAL_ALLOC_USED TO FALSE.
+  SET VTOL_DIAG_INERTIA_EST_ACTIVE TO FALSE.
+  SET VTOL_DIAG_I_ROLL_EST         TO 0.0.
+  SET VTOL_DIAG_I_PITCH_EST        TO 0.0.
+  SET VTOL_DIAG_I_ROLL_TAU         TO 0.0.
+  SET VTOL_DIAG_I_PITCH_TAU        TO 0.0.
+  SET VTOL_DIAG_I_ROLL_ALPHA       TO 0.0.
+  SET VTOL_DIAG_I_PITCH_ALPHA      TO 0.0.
 
   SET DRAFT_PLAN        TO LIST().
   SET FMS_LEG_CURSOR    TO 0.
