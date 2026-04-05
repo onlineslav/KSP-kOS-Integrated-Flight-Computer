@@ -10,6 +10,18 @@
 WAIT UNTIL SHIP:UNPACKED.
 WAIT UNTIL HOMECONNECTION:ISCONNECTED.
 
+// Open terminal automatically for this test boot.
+LOCAL proc_module IS CORE:PART:GETMODULE("kOSProcessor").
+IF proc_module <> 0 {
+  IF proc_module:HASEVENT("Open Terminal") {
+    proc_module:DOEVENT("Open Terminal").
+  }
+}
+
+// Use larger terminal text for test visibility.
+SET TERMINAL:VISUALBEEP TO FALSE.
+SET TERMINAL:CHARHEIGHT TO 20.
+
 CLEARSCREEN.
 PRINT "=================================".
 PRINT " VTOL AUTO TEST - BOOT          ".

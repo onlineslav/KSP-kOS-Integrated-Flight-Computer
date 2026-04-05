@@ -1111,7 +1111,13 @@ FUNCTION _VTOL_GET_SURFACE_VEL {
   LOCAL surface_vel_vec IS SHIP:VELOCITY:SURFACE.
   LOCAL vel_north_ms IS VDOT(surface_vel_vec, north_vec_use).
   LOCAL vel_east_ms IS VDOT(surface_vel_vec, east_vec_use).
-  RETURN LEXICON("vn", vel_north_ms, "ve", vel_east_ms).
+  RETURN LEXICON(
+    "vn", vel_north_ms,
+    "ve", vel_east_ms,
+    "north", north_vec_use,
+    "east", east_vec_use,
+    "up", up_vec_use
+  ).
 }
 
 FUNCTION _VTOL_POS_HOLD {
@@ -1207,9 +1213,38 @@ FUNCTION _VTOL_VEL_HOLD {
     vel_err_east_ms * vel_kp + VTOL_VEL_INT_E * vel_ki,
     -max_horiz_accel_ms2, max_horiz_accel_ms2
   ).
+  // Accel command is in world N/E; project it onto body-forward/starboard so
+  // velocity hold remains correct when heading drifts away from North.
+  LOCAL north_vec_use IS vel_meas["north"].
+  LOCAL east_vec_use IS vel_meas["east"].
+  LOCAL up_vec_use IS vel_meas["up"].
+  LOCAL fore_vec_use IS SHIP:FACING:FOREVECTOR.
+  LOCAL star_vec_use IS SHIP:FACING:STARVECTOR.
+  LOCAL fore_h_vec IS fore_vec_use - up_vec_use * VDOT(fore_vec_use, up_vec_use).
+  IF VDOT(fore_h_vec, fore_h_vec) < 0.0001 {
+    SET fore_h_vec TO fore_vec_use.
+  }
+  IF VDOT(fore_h_vec, fore_h_vec) < 0.0001 {
+    SET fore_h_vec TO east_vec_use.
+  }
+  SET fore_h_vec TO fore_h_vec:NORMALIZED.
+  LOCAL star_h_vec IS star_vec_use - up_vec_use * VDOT(star_vec_use, up_vec_use).
+  IF VDOT(star_h_vec, star_h_vec) < 0.0001 {
+    SET star_h_vec TO star_vec_use.
+  }
+  IF VDOT(star_h_vec, star_h_vec) < 0.0001 {
+    SET star_h_vec TO north_vec_use.
+  }
+  SET star_h_vec TO star_h_vec:NORMALIZED.
+  LOCAL accel_cmd_fwd_ms2 IS
+    accel_cmd_north_ms2 * VDOT(north_vec_use, fore_h_vec) +
+    accel_cmd_east_ms2 * VDOT(east_vec_use, fore_h_vec).
+  LOCAL accel_cmd_star_ms2 IS
+    accel_cmd_north_ms2 * VDOT(north_vec_use, star_h_vec) +
+    accel_cmd_east_ms2 * VDOT(east_vec_use, star_h_vec).
   LOCAL vertical_denom_ms2 IS 9.80665.
-  LOCAL pitch_target_deg IS -ARCTAN(accel_cmd_north_ms2 / vertical_denom_ms2).
-  LOCAL bank_target_deg IS ARCTAN(accel_cmd_east_ms2 / vertical_denom_ms2).
+  LOCAL pitch_target_deg IS -ARCTAN(accel_cmd_fwd_ms2 / vertical_denom_ms2).
+  LOCAL bank_target_deg IS ARCTAN(accel_cmd_star_ms2 / vertical_denom_ms2).
 
   SET VTOL_THETA_CMD TO CLAMP(pitch_target_deg, -max_fwd_pitch_deg, max_fwd_pitch_deg).
   SET VTOL_PHI_CMD TO CLAMP(bank_target_deg, -max_bank_deg, max_bank_deg).

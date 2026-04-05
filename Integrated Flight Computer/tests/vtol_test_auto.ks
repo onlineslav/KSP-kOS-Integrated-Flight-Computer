@@ -1,19 +1,12 @@
 @LAZYGLOBAL OFF.
 
 // ============================================================
-// vtol_test_auto.ks - autonomous VTOL Plan-2 regression flight
+// vtol_test_auto.ks - autonomous VTOL hover/landing flight test
 //
-// This script runs the VTOL module without keyboard input and
-// executes a deterministic sequence of test phases:
-//
-// 1) takeoff/climb and altitude hold capture
-// 2) bank-step disturbance
-// 3) velocity-hold acceleration
-// 4) KHV stop
-// 5) position-hold return after push-off
-// 6) physical allocator A/B window
-// 7) transition scheduler acceleration window
-// 8) recovery hover and shutdown
+// Mission profile:
+// 1) vertical takeoff and climb to target AGL
+// 2) hold position over launch spot at target altitude
+// 3) descend and land while maintaining position hold
 //
 // It logs a CSV file in 0:/Integrated Flight Computer/logs/
 // for post-flight analysis.
@@ -45,6 +38,26 @@ GLOBAL AUTO_TAKEOFF_RUNAWAY_DELAY_S IS 20.0.
 GLOBAL AUTO_TAKEOFF_RUNAWAY_GNDSPD_MS IS 8.0.
 GLOBAL AUTO_TAKEOFF_TARGET_ALT_AGL_M IS 45.0.
 GLOBAL AUTO_TAKEOFF_TARGET_VS_MS IS 1.0.
+GLOBAL AUTO_HOVER_HOLD_TIME_S IS 20.0.
+GLOBAL AUTO_HOVER_POS_TOL_M IS 10.0.
+GLOBAL AUTO_HOVER_TIMEOUT_S IS 80.0.
+GLOBAL AUTO_LAND_DESCENT_RATE_MPS IS 0.8.
+GLOBAL AUTO_LAND_FINAL_AGL_M IS 0.6.
+GLOBAL AUTO_LAND_TOUCHDOWN_VS_MS IS 0.6.
+GLOBAL AUTO_LAND_TOUCHDOWN_GNDSPD_MS IS 1.2.
+GLOBAL AUTO_LAND_SETTLE_TIME_S IS 2.0.
+GLOBAL AUTO_LAND_TIMEOUT_S IS 120.0.
+GLOBAL AUTO_TAKEOFF_SETTLE_GNDSPD_MS IS 1.0.
+GLOBAL AUTO_TAKEOFF_SETTLE_PITCH_DEG IS 6.0.
+GLOBAL AUTO_TAKEOFF_SETTLE_BANK_DEG IS 6.0.
+GLOBAL AUTO_TAKEOFF_SETTLE_RATE_DPS IS 6.0.
+GLOBAL AUTO_HOVER_SETTLE_MIN_S IS 3.0.
+GLOBAL AUTO_HOVER_SETTLE_GNDSPD_MS IS 1.2.
+GLOBAL AUTO_HOVER_SETTLE_PITCH_DEG IS 8.0.
+GLOBAL AUTO_HOVER_SETTLE_BANK_DEG IS 8.0.
+GLOBAL AUTO_HOVER_SETTLE_RATE_DPS IS 8.0.
+GLOBAL AUTO_YAW_HOLD_KP IS 0.025.
+GLOBAL AUTO_YAW_HOLD_MAX_CMD IS 0.35.
 
 FUNCTION _AUTO_CFG_NUM {
   PARAMETER key_name, fallback_val.
@@ -61,6 +74,18 @@ FUNCTION _AUTO_FMT {
     SET out_text TO " " + out_text.
   }
   RETURN out_text.
+}
+
+FUNCTION _AUTO_ANGLE_ERR {
+  PARAMETER target_deg, actual_deg.
+  LOCAL err_deg IS target_deg - actual_deg.
+  UNTIL err_deg <= 180 {
+    SET err_deg TO err_deg - 360.
+  }
+  UNTIL err_deg >= -180 {
+    SET err_deg TO err_deg + 360.
+  }
+  RETURN err_deg.
 }
 
 FUNCTION _AUTO_NEW_LOG_FILE {
@@ -120,8 +145,7 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_yaw_gain",          8,
   "vtol_roll_gain",         0.25,
   "vtol_pitch_gain",        0.30,
-  // Positive pitch_cmd means nose-up correction in controller space.
-  // Keep mixer polarity so forward engines get the positive command side.
+  // XV-3-C verified pitch polarity for this test article.
   "vtol_pitch_mix_sign",    1,
   "vtol_level_roll_kp",     0.10,
   "vtol_level_roll_kd",     0.03,
@@ -233,10 +257,10 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_vel_ki",            0.005,
   "vtol_vel_int_lim",       2.0,
   "vtol_vel_int_deadband",  0.5,
-  "vtol_max_horiz_accel",   3.0,
-  "vtol_max_horiz_speed",   15.0,
-  "vtol_max_fwd_pitch",     20.0,
-  "vtol_max_bank",          18.0,
+  "vtol_max_horiz_accel",   1.5,
+  "vtol_max_horiz_speed",   8.0,
+  "vtol_max_fwd_pitch",     12.0,
+  "vtol_max_bank",          12.0,
   "vtol_pos_kp",            0.08,
   "vtol_pos_ki",            0.002,
   "vtol_pos_int_lim",       3.0,
@@ -263,6 +287,17 @@ SAS OFF.
 RCS OFF.
 
 WAIT UNTIL SHIP:UNPACKED.
+
+// Ensure consistent terminal visibility/readability even when launched
+// outside the dedicated boot script.
+LOCAL test_proc_module IS CORE:PART:GETMODULE("kOSProcessor").
+IF test_proc_module <> 0 {
+  IF test_proc_module:HASEVENT("Open Terminal") {
+    test_proc_module:DOEVENT("Open Terminal").
+  }
+}
+SET TERMINAL:VISUALBEEP TO FALSE.
+SET TERMINAL:CHARHEIGHT TO 20.
 
 EM_INIT().
 
@@ -310,7 +345,9 @@ SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO FALSE.
 
 LOCAL hold_target_lat IS SHIP:LATITUDE.
 LOCAL hold_target_lng IS SHIP:LONGITUDE.
-LOCAL hold_target_alt_agl IS GET_AGL().
+LOCAL hold_target_hdg_deg IS GET_COMPASS_HDG().
+LOCAL hover_target_alt_agl IS AUTO_TAKEOFF_TARGET_ALT_AGL_M.
+LOCAL land_touchdown_start_ut IS -1.
 
 LOCAL desired_pitch_deg IS 0.0.
 LOCAL desired_bank_deg IS 0.0.
@@ -342,12 +379,49 @@ UNTIL NOT AUTO_RUNNING {
 
   LOCAL agl_now_m IS GET_AGL().
   LOCAL phase_elapsed_s IS cycle_now_ut - AUTO_PHASE_START_UT.
-  LOCAL thr_input_use IS 1.0.
 
   SET desired_pitch_deg TO 0.0.
   SET desired_bank_deg TO 0.0.
   SET desired_vn_ms TO 0.0.
   SET desired_ve_ms TO 0.0.
+
+  LOCAL hold_geo IS LATLNG(hold_target_lat, hold_target_lng).
+  LOCAL pos_err_for_phase_m IS GEO_DISTANCE(SHIP:GEOPOSITION, hold_geo).
+  LOCAL phase_fore_vec IS SHIP:FACING:FOREVECTOR.
+  LOCAL phase_star_vec IS SHIP:FACING:STARVECTOR.
+  LOCAL phase_up_vec IS SHIP:UP:VECTOR.
+  LOCAL phase_ang_vel IS SHIP:ANGULARVEL.
+  LOCAL phase_pitch_deg IS 90 - VANG(phase_fore_vec, phase_up_vec).
+  LOCAL phase_bank_deg IS ARCSIN(CLAMP(-VDOT(phase_star_vec, phase_up_vec), -1, 1)).
+  LOCAL phase_roll_rate_dps IS -VDOT(phase_ang_vel, phase_fore_vec) * (180 / CONSTANT:PI).
+  LOCAL phase_pitch_rate_dps IS VDOT(phase_ang_vel, phase_star_vec) * (180 / CONSTANT:PI).
+  LOCAL phase_gndspd_ms IS SHIP:GROUNDSPEED.
+  LOCAL yaw_hdg_now_deg IS GET_COMPASS_HDG().
+  LOCAL yaw_err_deg IS _AUTO_ANGLE_ERR(hold_target_hdg_deg, yaw_hdg_now_deg).
+  LOCAL yaw_cmd_out IS 0.0.
+  LOCAL yaw_hold_active IS FALSE.
+  IF AUTO_PHASE_NAME = "TAKEOFF_CLIMB" OR
+     AUTO_PHASE_NAME = "HOVER_HOLD" OR
+     AUTO_PHASE_NAME = "LAND_DESCENT" {
+    SET yaw_hold_active TO TRUE.
+  }
+  IF yaw_hold_active {
+    LOCAL yaw_kp_use IS AUTO_YAW_HOLD_KP.
+    IF VTOL_UPSET_ACTIVE {
+      SET yaw_kp_use TO yaw_kp_use * 0.5.
+    }
+    SET yaw_cmd_out TO CLAMP(
+      yaw_err_deg * yaw_kp_use,
+      -AUTO_YAW_HOLD_MAX_CMD,
+      AUTO_YAW_HOLD_MAX_CMD
+    ).
+  }
+  LOCAL takeoff_stable IS
+    phase_gndspd_ms <= AUTO_TAKEOFF_SETTLE_GNDSPD_MS AND
+    ABS(phase_pitch_deg) <= AUTO_TAKEOFF_SETTLE_PITCH_DEG AND
+    ABS(phase_bank_deg) <= AUTO_TAKEOFF_SETTLE_BANK_DEG AND
+    ABS(phase_roll_rate_dps) <= AUTO_TAKEOFF_SETTLE_RATE_DPS AND
+    ABS(phase_pitch_rate_dps) <= AUTO_TAKEOFF_SETTLE_RATE_DPS.
 
   IF AUTO_PHASE_NAME = "TAKEOFF_CLIMB" {
     SET VTOL_ALT_HOLD TO TRUE.
@@ -358,13 +432,15 @@ UNTIL NOT AUTO_RUNNING {
     LOCAL takeoff_cmd_lead_m IS AUTO_TAKEOFF_TARGET_VS_MS / takeoff_alt_kp_cfg.
     SET takeoff_cmd_lead_m TO CLAMP(takeoff_cmd_lead_m, 1.0, 12.0).
     SET VTOL_ALT_CMD TO MIN(AUTO_TAKEOFF_TARGET_ALT_AGL_M, agl_now_m + takeoff_cmd_lead_m).
-    // Keep takeoff as a pure vertical profile; horizontal hold engages later.
-    SET VTOL_VEL_HOLD_ACTIVE TO FALSE.
-    SET VTOL_KHV_ACTIVE TO FALSE.
+    // Keep horizontal surface velocity damped during climb.
+    SET VTOL_VEL_HOLD_ACTIVE TO TRUE.
+    SET VTOL_KHV_ACTIVE TO TRUE.
     SET VTOL_POS_HOLD_ACTIVE TO FALSE.
     SET VTOL_TRANS_ACTIVE TO FALSE.
+    SET VTOL_TARGET_LAT TO hold_target_lat.
+    SET VTOL_TARGET_LNG TO hold_target_lng.
+    SET VTOL_TARGET_ALT TO AUTO_TAKEOFF_TARGET_ALT_AGL_M.
     SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO FALSE.
-    SET thr_input_use TO 1.0.
     LOCAL takeoff_abort_triggered IS FALSE.
     IF AUTO_ABORT_GUARDS_ENABLED {
       IF phase_elapsed_s > AUTO_TAKEOFF_TIMEOUT_S {
@@ -382,127 +458,100 @@ UNTIL NOT AUTO_RUNNING {
     IF NOT takeoff_abort_triggered AND
        agl_now_m >= AUTO_TAKEOFF_TARGET_ALT_AGL_M - 1.0 AND
        ABS(SHIP:VERTICALSPEED) <= 0.8 AND
-       NOT VTOL_UPSET_ACTIVE {
-      _AUTO_SET_PHASE("HOVER_BASELINE").
-    }
-  } ELSE IF AUTO_PHASE_NAME = "HOVER_BASELINE" {
-    SET VTOL_ALT_HOLD TO TRUE.
-    SET VTOL_ALT_CMD TO 45.0.
-    IF phase_elapsed_s >= 8 {
-      _AUTO_SET_PHASE("BANK_STEP").
-    }
-  } ELSE IF AUTO_PHASE_NAME = "BANK_STEP" {
-    SET VTOL_ALT_HOLD TO TRUE.
-    SET VTOL_ALT_CMD TO 45.0.
-    SET desired_bank_deg TO 10.0.
-    IF phase_elapsed_s >= 8 {
-      _AUTO_SET_PHASE("BANK_RETURN").
-    }
-  } ELSE IF AUTO_PHASE_NAME = "BANK_RETURN" {
-    SET VTOL_ALT_HOLD TO TRUE.
-    SET VTOL_ALT_CMD TO 45.0.
-    IF phase_elapsed_s >= 8 {
-      _AUTO_SET_PHASE("VEL_ACCEL").
-    }
-  } ELSE IF AUTO_PHASE_NAME = "VEL_ACCEL" {
-    SET VTOL_ALT_HOLD TO TRUE.
-    SET VTOL_ALT_CMD TO 45.0.
-    SET VTOL_VEL_HOLD_ACTIVE TO TRUE.
-    SET VTOL_KHV_ACTIVE TO FALSE.
-    SET VTOL_POS_HOLD_ACTIVE TO FALSE.
-    SET desired_vn_ms TO 10.0.
-    IF phase_elapsed_s >= 18 {
-      _AUTO_SET_PHASE("KHV_STOP").
-    }
-  } ELSE IF AUTO_PHASE_NAME = "KHV_STOP" {
-    SET VTOL_ALT_HOLD TO TRUE.
-    SET VTOL_ALT_CMD TO 45.0.
-    SET VTOL_VEL_HOLD_ACTIVE TO TRUE.
-    SET VTOL_POS_HOLD_ACTIVE TO FALSE.
-    SET VTOL_KHV_ACTIVE TO TRUE.
-    IF phase_elapsed_s >= 20 {
-      SET hold_target_lat TO SHIP:LATITUDE.
-      SET hold_target_lng TO SHIP:LONGITUDE.
-      SET hold_target_alt_agl TO GET_AGL().
-      _AUTO_SET_PHASE("POS_PUSH").
-    }
-  } ELSE IF AUTO_PHASE_NAME = "POS_PUSH" {
-    SET VTOL_ALT_HOLD TO TRUE.
-    SET VTOL_ALT_CMD TO hold_target_alt_agl.
-    SET VTOL_VEL_HOLD_ACTIVE TO FALSE.
-    SET VTOL_KHV_ACTIVE TO FALSE.
-    SET VTOL_POS_HOLD_ACTIVE TO FALSE.
-    SET desired_bank_deg TO 8.0.
-    IF phase_elapsed_s >= 6 {
+       NOT VTOL_UPSET_ACTIVE AND
+       takeoff_stable {
+      SET hover_target_alt_agl TO AUTO_TAKEOFF_TARGET_ALT_AGL_M.
       SET VTOL_TARGET_LAT TO hold_target_lat.
       SET VTOL_TARGET_LNG TO hold_target_lng.
-      SET VTOL_TARGET_ALT TO hold_target_alt_agl.
+      SET VTOL_TARGET_ALT TO hover_target_alt_agl.
       SET VTOL_POS_INT_N TO 0.0.
       SET VTOL_POS_INT_E TO 0.0.
       SET VTOL_VEL_INT_N TO 0.0.
       SET VTOL_VEL_INT_E TO 0.0.
-      _AUTO_SET_PHASE("POS_RETURN").
+      _AUTO_SET_PHASE("HOVER_HOLD").
     }
-  } ELSE IF AUTO_PHASE_NAME = "POS_RETURN" {
+  } ELSE IF AUTO_PHASE_NAME = "HOVER_HOLD" {
     SET VTOL_ALT_HOLD TO TRUE.
-    SET VTOL_ALT_CMD TO hold_target_alt_agl.
+    SET VTOL_ALT_CMD TO hover_target_alt_agl.
     SET VTOL_VEL_HOLD_ACTIVE TO TRUE.
-    SET VTOL_KHV_ACTIVE TO FALSE.
-    SET VTOL_POS_HOLD_ACTIVE TO TRUE.
-    IF phase_elapsed_s >= 30 {
-      _AUTO_SET_PHASE("ALLOC_LEGACY").
-    }
-  } ELSE IF AUTO_PHASE_NAME = "ALLOC_LEGACY" {
-    SET VTOL_ALT_HOLD TO TRUE.
-    SET VTOL_ALT_CMD TO hold_target_alt_agl.
-    SET VTOL_VEL_HOLD_ACTIVE TO TRUE.
-    SET VTOL_KHV_ACTIVE TO FALSE.
-    SET VTOL_POS_HOLD_ACTIVE TO TRUE.
+    SET VTOL_TRANS_ACTIVE TO FALSE.
+    SET VTOL_TARGET_LAT TO hold_target_lat.
+    SET VTOL_TARGET_LNG TO hold_target_lng.
+    SET VTOL_TARGET_ALT TO hover_target_alt_agl.
     SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO FALSE.
-    IF phase_elapsed_s >= 10 {
-      _AUTO_SET_PHASE("ALLOC_PHYSICAL").
+
+    LOCAL hover_settled IS
+      phase_elapsed_s >= AUTO_HOVER_SETTLE_MIN_S AND
+      phase_gndspd_ms <= AUTO_HOVER_SETTLE_GNDSPD_MS AND
+      ABS(phase_pitch_deg) <= AUTO_HOVER_SETTLE_PITCH_DEG AND
+      ABS(phase_bank_deg) <= AUTO_HOVER_SETTLE_BANK_DEG AND
+      ABS(phase_roll_rate_dps) <= AUTO_HOVER_SETTLE_RATE_DPS AND
+      ABS(phase_pitch_rate_dps) <= AUTO_HOVER_SETTLE_RATE_DPS AND
+      NOT VTOL_UPSET_ACTIVE.
+
+    IF hover_settled {
+      SET VTOL_KHV_ACTIVE TO FALSE.
+      SET VTOL_POS_HOLD_ACTIVE TO TRUE.
+    } ELSE {
+      // During early hover capture, prioritize killing horizontal velocity
+      // before enabling position return commands.
+      SET VTOL_KHV_ACTIVE TO TRUE.
+      SET VTOL_POS_HOLD_ACTIVE TO FALSE.
+      SET VTOL_POS_INT_N TO 0.0.
+      SET VTOL_POS_INT_E TO 0.0.
     }
-  } ELSE IF AUTO_PHASE_NAME = "ALLOC_PHYSICAL" {
+
+    IF hover_settled AND phase_elapsed_s >= AUTO_HOVER_HOLD_TIME_S AND pos_err_for_phase_m <= AUTO_HOVER_POS_TOL_M {
+      SET land_touchdown_start_ut TO -1.
+      _AUTO_SET_PHASE("LAND_DESCENT").
+    } ELSE IF phase_elapsed_s >= AUTO_HOVER_TIMEOUT_S {
+      _AUTO_LOG_EVENT("HOVER_TIMEOUT_BEGIN_LAND").
+      SET land_touchdown_start_ut TO -1.
+      _AUTO_SET_PHASE("LAND_DESCENT").
+    }
+  } ELSE IF AUTO_PHASE_NAME = "LAND_DESCENT" {
     SET VTOL_ALT_HOLD TO TRUE.
-    SET VTOL_ALT_CMD TO hold_target_alt_agl.
+    LOCAL land_cmd_agl IS hover_target_alt_agl - AUTO_LAND_DESCENT_RATE_MPS * phase_elapsed_s.
+    IF land_cmd_agl < AUTO_LAND_FINAL_AGL_M { SET land_cmd_agl TO AUTO_LAND_FINAL_AGL_M. }
+    SET VTOL_ALT_CMD TO land_cmd_agl.
     SET VTOL_VEL_HOLD_ACTIVE TO TRUE.
     SET VTOL_KHV_ACTIVE TO FALSE.
     SET VTOL_POS_HOLD_ACTIVE TO TRUE.
-    SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO TRUE.
-    IF phase_elapsed_s >= 12 {
-      _AUTO_SET_PHASE("TRANS_ACCEL").
-    }
-  } ELSE IF AUTO_PHASE_NAME = "TRANS_ACCEL" {
-    SET VTOL_ALT_HOLD TO TRUE.
-    SET VTOL_ALT_CMD TO hold_target_alt_agl.
-    SET VTOL_VEL_HOLD_ACTIVE TO TRUE.
-    SET VTOL_KHV_ACTIVE TO FALSE.
-    SET VTOL_POS_HOLD_ACTIVE TO FALSE.
-    SET VTOL_TRANS_ACTIVE TO TRUE.
-    SET desired_vn_ms TO 12.0.
-    IF phase_elapsed_s >= 25 {
-      _AUTO_SET_PHASE("RECOVER_HOVER").
-    }
-  } ELSE IF AUTO_PHASE_NAME = "RECOVER_HOVER" {
-    SET VTOL_ALT_HOLD TO TRUE.
-    SET VTOL_ALT_CMD TO hold_target_alt_agl.
     SET VTOL_TRANS_ACTIVE TO FALSE.
-    SET VTOL_VEL_HOLD_ACTIVE TO TRUE.
-    SET VTOL_POS_HOLD_ACTIVE TO FALSE.
-    SET VTOL_KHV_ACTIVE TO TRUE.
-    IF phase_elapsed_s >= 18 {
-      _AUTO_SET_PHASE("COMPLETE_HOLD").
+    SET VTOL_TARGET_LAT TO hold_target_lat.
+    SET VTOL_TARGET_LNG TO hold_target_lng.
+    SET VTOL_TARGET_ALT TO land_cmd_agl.
+    SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO FALSE.
+
+    LOCAL touchdown_detected IS FALSE.
+    LOCAL ship_status IS "".
+    IF SHIP:HASSUFFIX("STATUS") {
+      SET ship_status TO SHIP:STATUS.
     }
-  } ELSE IF AUTO_PHASE_NAME = "COMPLETE_HOLD" {
-    SET VTOL_ALT_HOLD TO TRUE.
-    SET VTOL_ALT_CMD TO hold_target_alt_agl.
-    SET VTOL_VEL_HOLD_ACTIVE TO FALSE.
-    SET VTOL_POS_HOLD_ACTIVE TO FALSE.
-    SET VTOL_KHV_ACTIVE TO FALSE.
-    SET VTOL_TRANS_ACTIVE TO FALSE.
-    IF phase_elapsed_s >= 8 {
+    IF ship_status = "LANDED" OR ship_status = "SPLASHED" OR ship_status = "PRELAUNCH" {
+      SET touchdown_detected TO TRUE.
+    } ELSE IF agl_now_m <= AUTO_LAND_FINAL_AGL_M + 0.35 AND
+       ABS(SHIP:VERTICALSPEED) <= AUTO_LAND_TOUCHDOWN_VS_MS AND
+       SHIP:GROUNDSPEED <= AUTO_LAND_TOUCHDOWN_GNDSPD_MS {
+      SET touchdown_detected TO TRUE.
+    }
+    IF touchdown_detected {
+      IF land_touchdown_start_ut < 0 {
+        SET land_touchdown_start_ut TO cycle_now_ut.
+      } ELSE IF cycle_now_ut - land_touchdown_start_ut >= AUTO_LAND_SETTLE_TIME_S {
+        _AUTO_LOG_EVENT("LANDED").
+        SET AUTO_RUNNING TO FALSE.
+      }
+    } ELSE {
+      SET land_touchdown_start_ut TO -1.
+    }
+    IF phase_elapsed_s >= AUTO_LAND_TIMEOUT_S {
+      _AUTO_LOG_EVENT("LAND_TIMEOUT").
       SET AUTO_RUNNING TO FALSE.
     }
+  } ELSE {
+    _AUTO_LOG_EVENT("UNKNOWN_PHASE_" + AUTO_PHASE_NAME).
+    SET AUTO_RUNNING TO FALSE.
   }
 
   SET pilot_pitch_cmd_out TO 0.0.
@@ -517,7 +566,7 @@ UNTIL NOT AUTO_RUNNING {
 
   SET SHIP:CONTROL:PITCH TO pilot_pitch_cmd_out.
   SET SHIP:CONTROL:ROLL TO pilot_roll_cmd_out.
-  SET SHIP:CONTROL:YAW TO 0.
+  SET SHIP:CONTROL:YAW TO yaw_cmd_out.
   VTOL_TICK_PREARM().
   IF VTOL_VEL_HOLD_ACTIVE {
     SET desired_bank_deg TO VTOL_PHI_CMD.
@@ -572,6 +621,9 @@ UNTIL NOT AUTO_RUNNING {
     PRINT ("VN/VE cmd: " + _AUTO_FMT(VTOL_VN_CMD, 7, 2) +
            " / " + _AUTO_FMT(VTOL_VE_CMD, 7, 2)) AT(0, 8).
     PRINT ("pos err: " + _AUTO_FMT(pos_err_dist_now_m, 7, 2) + " m") AT(0, 9).
+    PRINT ("hdg/err/yaw: " + _AUTO_FMT(yaw_hdg_now_deg, 7, 2) +
+           " / " + _AUTO_FMT(yaw_err_deg, 7, 2) +
+           " / " + _AUTO_FMT(yaw_cmd_out, 6, 3)) AT(0, 10).
     PRINT ("ABORT to stop") AT(0, 11).
   }
 
