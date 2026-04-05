@@ -148,6 +148,9 @@ FUNCTION VTOL_DISCOVER {
   VTOL_MAX_THRUST:CLEAR().
   VTOL_ENG_ARM_X_M:CLEAR().
   VTOL_ENG_ARM_Y_M:CLEAR().
+  VTOL_ENG_EFF_ACT_EST:CLEAR().
+  VTOL_ENG_LAG_EST_S:CLEAR().
+  SET VTOL_EFF_LAG_WORST_S TO 0.0.
   SET VTOL_ARM_ROLL_M TO 0.0.
   SET VTOL_ARM_PITCH_M TO 0.0.
   SET VTOL_DIFF_AVAILABLE TO FALSE.
@@ -636,6 +639,7 @@ FUNCTION _VTOL_APPLY_ENGINES {
   } ELSE {
     SET VTOL_DIAG_LIMIT_SPAN TO lim_max_seen - lim_min_seen.
   }
+  _VTOL_UPDATE_EFFECTIVE_SPOOL_MODEL(throttle_frac, VTOL_ENG_LIM_ACTUAL).
   _VTOL_UPDATE_INERTIA_ESTIMATOR(roll_tau_cmd_kNm, pitch_tau_cmd_kNm).
 }
 
@@ -761,15 +765,82 @@ FUNCTION _VTOL_FILTERED_EM_LAG_S {
     RETURN _vtol_em_lag_filt_s.
   }
   LOCAL lag_tau_s IS _AMO_CFG_NUM("vtol_lag_filter_tau_s", VTOL_LAG_FILTER_TAU_S, 0).
-  LOCAL raw_lag_s IS TELEM_EM_WORST_SPOOL_LAG.
+  // Use the larger of global engine-model lag and limiter*throttle effective lag.
+  // This matches the 4.3 model where differential limiter changes also spool.
+  LOCAL raw_lag_s IS MAX(TELEM_EM_WORST_SPOOL_LAG, VTOL_EFF_LAG_WORST_S).
   SET _vtol_em_lag_filt_s TO _VTOL_FILTER_LAG(_vtol_em_lag_filt_s, raw_lag_s, lag_tau_s).
   SET _vtol_em_lag_filt_cycle_ut TO IFC_CYCLE_UT.
   RETURN _vtol_em_lag_filt_s.
 }
 
+FUNCTION _VTOL_UPDATE_EFFECTIVE_SPOOL_MODEL {
+  PARAMETER throttle_frac, lim_vec.
+  IF VTOL_ENG_LIST:LENGTH = 0 { RETURN. }
+  IF lim_vec:LENGTH <> VTOL_ENG_LIST:LENGTH { RETURN. }
+  IF IFC_ACTUAL_DT <= 0.0001 { RETURN. }
+
+  LOCAL k_up IS _AMO_CFG_NUM("vtol_spool_k_up", VTOL_SPOOL_K_UP, 0.001).
+  LOCAL k_dn IS _AMO_CFG_NUM("vtol_spool_k_dn", VTOL_SPOOL_K_DN, 0.001).
+  LOCAL delta_min IS _AMO_CFG_NUM("vtol_spool_lag_delta_min", VTOL_SPOOL_LAG_DELTA_MIN, 0.0001).
+  IF k_up < 0.001 { SET k_up TO 0.001. }
+  IF k_dn < 0.001 { SET k_dn TO 0.001. }
+  IF delta_min < 0.0001 { SET delta_min TO 0.0001. }
+
+  IF VTOL_ENG_EFF_ACT_EST:LENGTH <> VTOL_ENG_LIST:LENGTH {
+    VTOL_ENG_EFF_ACT_EST:CLEAR().
+    LOCAL init_i IS 0.
+    UNTIL init_i >= VTOL_ENG_LIST:LENGTH {
+      VTOL_ENG_EFF_ACT_EST:ADD(CLAMP(throttle_frac * lim_vec[init_i], 0, 1)).
+      SET init_i TO init_i + 1.
+    }
+  }
+  IF VTOL_ENG_LAG_EST_S:LENGTH <> VTOL_ENG_LIST:LENGTH {
+    VTOL_ENG_LAG_EST_S:CLEAR().
+    LOCAL lag_i_init IS 0.
+    UNTIL lag_i_init >= VTOL_ENG_LIST:LENGTH {
+      VTOL_ENG_LAG_EST_S:ADD(0.0).
+      SET lag_i_init TO lag_i_init + 1.
+    }
+  }
+
+  LOCAL worst_lag IS MAX(0, TELEM_EM_WORST_SPOOL_LAG).
+  LOCAL i IS 0.
+  UNTIL i >= VTOL_ENG_LIST:LENGTH {
+    LOCAL cmd_eff IS CLAMP(throttle_frac * lim_vec[i], 0, 1).
+    LOCAL act_eff IS CLAMP(VTOL_ENG_EFF_ACT_EST[i], 0, 1).
+    LOCAL err_eff IS cmd_eff - act_eff.
+
+    LOCAL k_eff IS k_dn.
+    IF err_eff > 0 { SET k_eff TO k_up. }
+
+    SET act_eff TO CLAMP(act_eff + err_eff * k_eff * IFC_ACTUAL_DT, 0, 1).
+    SET VTOL_ENG_EFF_ACT_EST[i] TO act_eff.
+
+    LOCAL delta_eff IS ABS(cmd_eff - act_eff).
+    LOCAL lag_eff_s IS 0.0.
+    IF delta_eff > delta_min {
+      LOCAL ratio IS 0.01 / delta_eff.
+      IF ratio < 0.999999 {
+        SET lag_eff_s TO -LN(ratio) / k_eff.
+      }
+    }
+    IF lag_eff_s < 0 { SET lag_eff_s TO 0.0. }
+    // Keep global engine-model lag as a lower bound when larger.
+    IF TELEM_EM_WORST_SPOOL_LAG > lag_eff_s {
+      SET lag_eff_s TO TELEM_EM_WORST_SPOOL_LAG.
+    }
+    SET VTOL_ENG_LAG_EST_S[i] TO lag_eff_s.
+    IF lag_eff_s > worst_lag { SET worst_lag TO lag_eff_s. }
+    SET i TO i + 1.
+  }
+  SET VTOL_EFF_LAG_WORST_S TO worst_lag.
+}
+
 FUNCTION _VTOL_AXIS_EFFECTIVE_SPOOL_LAG_S {
   PARAMETER axis_name.
-  IF VTOL_ENG_LIST:LENGTH = 0 { RETURN MAX(0, TELEM_EM_WORST_SPOOL_LAG). }
+  IF VTOL_ENG_LIST:LENGTH = 0 {
+    RETURN MAX(MAX(0, TELEM_EM_WORST_SPOOL_LAG), VTOL_EFF_LAG_WORST_S).
+  }
   LOCAL sum_w IS 0.
   LOCAL sum_lag_w IS 0.
   LOCAL i IS 0.
@@ -779,13 +850,17 @@ FUNCTION _VTOL_AXIS_EFFECTIVE_SPOOL_LAG_S {
       SET mix_abs TO ABS(VTOL_PITCH_MIX[i]).
     }
     IF mix_abs > 0.001 {
-      LOCAL eng_obj IS VTOL_ENG_LIST[i]["eng"].
       LOCAL lag_i IS -1.
-      IF (DEFINED EM_GET_SPOOL_LAG_FOR_ENGINE) {
-        SET lag_i TO EM_GET_SPOOL_LAG_FOR_ENGINE(eng_obj).
-      }
-      IF lag_i < 0 {
-        SET lag_i TO TELEM_EM_WORST_SPOOL_LAG.
+      IF VTOL_ENG_LAG_EST_S:LENGTH = VTOL_ENG_LIST:LENGTH {
+        SET lag_i TO VTOL_ENG_LAG_EST_S[i].
+      } ELSE {
+        LOCAL eng_obj IS VTOL_ENG_LIST[i]["eng"].
+        IF (DEFINED EM_GET_SPOOL_LAG_FOR_ENGINE) {
+          SET lag_i TO EM_GET_SPOOL_LAG_FOR_ENGINE(eng_obj).
+        }
+        IF lag_i < 0 {
+          SET lag_i TO TELEM_EM_WORST_SPOOL_LAG.
+        }
       }
       IF lag_i < 0 { SET lag_i TO 0. }
       LOCAL lim_i IS VTOL_COLLECTIVE.
@@ -799,7 +874,9 @@ FUNCTION _VTOL_AXIS_EFFECTIVE_SPOOL_LAG_S {
     }
     SET i TO i + 1.
   }
-  IF sum_w <= 0 { RETURN MAX(0, TELEM_EM_WORST_SPOOL_LAG). }
+  IF sum_w <= 0 {
+    RETURN MAX(MAX(0, TELEM_EM_WORST_SPOOL_LAG), VTOL_EFF_LAG_WORST_S).
+  }
   RETURN sum_lag_w / sum_w.
 }
 
@@ -2092,6 +2169,20 @@ FUNCTION VTOL_TICK_PREARM {
   LOCAL pitch_cmd_slew_use IS cmd_slew.
   IF roll_auto_feedback { SET roll_cmd_slew_use TO roll_level_cmd_slew_use. }
   IF pitch_auto_feedback { SET pitch_cmd_slew_use TO pitch_level_cmd_slew_use. }
+  // Section 11.2: command pre-filtering must respect actuator lag bandwidth.
+  // For first-order lag tau, useful command slew is bounded by ~1/tau.
+  IF roll_slew_lag_s > 0.05 {
+    LOCAL roll_phys_slew_max IS 1.0 / roll_slew_lag_s.
+    IF roll_cmd_slew_use <= 0 OR roll_cmd_slew_use > roll_phys_slew_max {
+      SET roll_cmd_slew_use TO roll_phys_slew_max.
+    }
+  }
+  IF pitch_slew_lag_s > 0.05 {
+    LOCAL pitch_phys_slew_max IS 1.0 / pitch_slew_lag_s.
+    IF pitch_cmd_slew_use <= 0 OR pitch_cmd_slew_use > pitch_phys_slew_max {
+      SET pitch_cmd_slew_use TO pitch_phys_slew_max.
+    }
+  }
   IF upset_active AND upset_pitch_slew_bypass {
     SET pitch_cmd_slew_use TO 0.
   }
@@ -2198,6 +2289,9 @@ FUNCTION VTOL_RELEASE {
   SET VTOL_RATE_P_DOT_FILT TO 0.0.
   SET VTOL_RATE_Q_DOT_FILT TO 0.0.
   SET VTOL_COS_ATT_FILT TO 1.0.
+  VTOL_ENG_EFF_ACT_EST:CLEAR().
+  VTOL_ENG_LAG_EST_S:CLEAR().
+  SET VTOL_EFF_LAG_WORST_S TO 0.0.
   SET VTOL_VEL_INT_N TO 0.0.
   SET VTOL_VEL_INT_E TO 0.0.
   SET VTOL_VN_ACTUAL TO 0.0.
@@ -2244,11 +2338,14 @@ FUNCTION VTOL_RESET {
   VTOL_MAX_THRUST:CLEAR().
   VTOL_ENG_ARM_X_M:CLEAR().
   VTOL_ENG_ARM_Y_M:CLEAR().
+  VTOL_ENG_EFF_ACT_EST:CLEAR().
+  VTOL_ENG_LAG_EST_S:CLEAR().
   SET VTOL_DISCOVERED     TO FALSE.
   SET VTOL_DIFF_AVAILABLE TO FALSE.
   SET VTOL_SRV_AVAIL      TO FALSE.
   SET VTOL_ARM_ROLL_M     TO 0.0.
   SET VTOL_ARM_PITCH_M    TO 0.0.
+  SET VTOL_EFF_LAG_WORST_S TO 0.0.
   SET VTOL_HOVER_COLLECTIVE        TO 0.50.
   SET VTOL_HOVER_COLLECTIVE_SEEDED TO FALSE.
   SET VTOL_COLLECTIVE              TO 0.

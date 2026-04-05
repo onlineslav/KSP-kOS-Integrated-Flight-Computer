@@ -348,6 +348,9 @@ GLOBAL VTOL_RATE_Q_FILT_PREV IS 0.0.   // previous filtered pitch rate (deg/s)
 GLOBAL VTOL_RATE_P_DOT_FILT  IS 0.0.   // filtered roll angular acceleration (deg/s^2)
 GLOBAL VTOL_RATE_Q_DOT_FILT  IS 0.0.   // filtered pitch angular acceleration (deg/s^2)
 GLOBAL VTOL_COS_ATT_FILT     IS 1.0.   // filtered cos(attitude tilt) for collective correction
+GLOBAL VTOL_ENG_EFF_ACT_EST  IS LIST(). // per-engine estimated actual effective command (THROTTLE*lim, 0..1)
+GLOBAL VTOL_ENG_LAG_EST_S    IS LIST(). // per-engine effective spool lag estimate from limiter*throttle model (s)
+GLOBAL VTOL_EFF_LAG_WORST_S  IS 0.0.    // worst per-engine effective spool lag estimate (s)
 GLOBAL VTOL_L_CMD_PREV       IS 0.0.   // previous roll command state (for future slew/scheduling)
 GLOBAL VTOL_M_CMD_PREV       IS 0.0.   // previous pitch command state (for future slew/scheduling)
 GLOBAL VTOL_VEL_INT_N        IS 0.0.   // north velocity integral state
@@ -973,6 +976,9 @@ FUNCTION IFC_INIT_STATE {
   SET VTOL_RATE_P_DOT_FILT  TO 0.0.
   SET VTOL_RATE_Q_DOT_FILT  TO 0.0.
   SET VTOL_COS_ATT_FILT     TO 1.0.
+  VTOL_ENG_EFF_ACT_EST:CLEAR().
+  VTOL_ENG_LAG_EST_S:CLEAR().
+  SET VTOL_EFF_LAG_WORST_S  TO 0.0.
   SET VTOL_L_CMD_PREV       TO 0.0.
   SET VTOL_M_CMD_PREV       TO 0.0.
   SET VTOL_VEL_INT_N        TO 0.0.

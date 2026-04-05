@@ -511,6 +511,9 @@ GLOBAL VTOL_LEVEL_PITCH_RATE_CMD_MAX_DEGS IS 24.0. // max target pitch-rate magn
 GLOBAL VTOL_LEVEL_I_LIM     IS 40.0.  // deg*s clamp for level-hold integrators
 GLOBAL VTOL_LEVEL_GAIN_LAG_REF_S IS 0.8. // s spool-lag reference for attitude gain scheduling
 GLOBAL VTOL_LAG_FILTER_TAU_S IS 0.45. // s low-pass filter time constant for spool-lag scheduling signals
+GLOBAL VTOL_SPOOL_K_UP IS 0.30. // 1/s first-order up-spool gain for limiter*throttle effective command model
+GLOBAL VTOL_SPOOL_K_DN IS 0.25. // 1/s first-order down-spool gain for limiter*throttle effective command model
+GLOBAL VTOL_SPOOL_LAG_DELTA_MIN IS 0.01. // minimum |cmd-actual| effective throttle delta used for lag_s computation
 GLOBAL VTOL_LEVEL_KP_MIN_SCALE IS 0.45. // lower bound on attitude proportional gain scale under high lag
 GLOBAL VTOL_LEVEL_KD_MIN_SCALE IS 0.45. // lower bound on attitude damping gain scale under high lag
 GLOBAL VTOL_LEVEL_KI_MIN_SCALE IS 0.20. // lower bound on attitude integral gain scale under high lag
