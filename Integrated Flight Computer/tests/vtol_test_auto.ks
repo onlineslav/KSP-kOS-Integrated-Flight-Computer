@@ -56,8 +56,9 @@ GLOBAL AUTO_HOVER_SETTLE_GNDSPD_MS IS 1.2.
 GLOBAL AUTO_HOVER_SETTLE_PITCH_DEG IS 8.0.
 GLOBAL AUTO_HOVER_SETTLE_BANK_DEG IS 8.0.
 GLOBAL AUTO_HOVER_SETTLE_RATE_DPS IS 8.0.
-GLOBAL AUTO_YAW_HOLD_KP IS 0.025.
-GLOBAL AUTO_YAW_HOLD_MAX_CMD IS 0.35.
+GLOBAL AUTO_YAW_HOLD_KP IS 0.045.
+GLOBAL AUTO_YAW_HOLD_KD IS 0.020.
+GLOBAL AUTO_YAW_HOLD_MAX_CMD IS 0.60.
 
 FUNCTION _AUTO_CFG_NUM {
   PARAMETER key_name, fallback_val.
@@ -86,6 +87,39 @@ FUNCTION _AUTO_ANGLE_ERR {
     SET err_deg TO err_deg + 360.
   }
   RETURN err_deg.
+}
+
+FUNCTION _AUTO_COMPASS_HDG_NOW {
+  // Compute heading from live ship vectors.
+  // Do not use GET_COMPASS_HDG() here because it reads IFC cached vectors
+  // that are not updated by this standalone test loop.
+  LOCAL fwd_v IS SHIP:FACING:FOREVECTOR.
+  LOCAL up_v IS SHIP:UP:VECTOR.
+  LOCAL north_v IS SHIP:NORTH:VECTOR.
+  LOCAL fwd_h IS fwd_v - up_v * VDOT(fwd_v, up_v).
+  IF VDOT(fwd_h, fwd_h) < 0.0001 {
+    RETURN 0.0.
+  }
+  SET fwd_h TO fwd_h:NORMALIZED.
+  LOCAL north_u IS north_v.
+  IF VDOT(north_u, north_u) < 0.0001 {
+    SET north_u TO V(0, 0, 1).
+  }
+  SET north_u TO north_u:NORMALIZED.
+  LOCAL east_v IS VCRS(up_v, north_u).
+  IF VDOT(east_v, east_v) < 0.0001 {
+    SET east_v TO VCRS(up_v, fwd_h).
+  }
+  IF VDOT(east_v, east_v) < 0.0001 {
+    SET east_v TO V(1, 0, 0).
+  }
+  SET east_v TO east_v:NORMALIZED.
+  LOCAL hdg_raw IS VANG(fwd_h, north_u).
+  LOCAL hdg_out IS hdg_raw.
+  IF VDOT(fwd_h, east_v) < 0 {
+    SET hdg_out TO 360 - hdg_raw.
+  }
+  RETURN MOD(hdg_out + 360, 360).
 }
 
 FUNCTION _AUTO_NEW_LOG_FILE {
@@ -142,7 +176,12 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_srv_tag_prefix",    "vtol_srv",
   "vtol_hover_angle",       90,
   "vtol_cruise_angle",      0,
-  "vtol_yaw_gain",          8,
+  "vtol_yaw_gain",          14,
+  "vtol_yaw_sign",          -1,
+  "vtol_yaw_cmd_deadband",  0.015,
+  "vtol_yaw_min_deflection_deg", 1.2,
+  "vtol_srv_speed",         2.0,
+  "vtol_srv_yaw_speed",     10.0,
   "vtol_roll_gain",         0.25,
   "vtol_pitch_gain",        0.30,
   // XV-3-C verified pitch polarity for this test article.
@@ -154,11 +193,11 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_level_pitch_kd",    0.08,
   "vtol_level_pitch_ki",    0.015,
   "vtol_level_roll_att2rate_kp",  0.8,
-  "vtol_level_pitch_att2rate_kp", 0.40,
+  "vtol_level_pitch_att2rate_kp", 0.48,
   "vtol_level_roll_att2rate_ki",  0.00,
   "vtol_level_pitch_att2rate_ki", 0.00,
   "vtol_level_roll_rate_kp",      0.030,
-  "vtol_level_pitch_rate_kp",     0.032,
+  "vtol_level_pitch_rate_kp",     0.040,
   "vtol_level_roll_rate_cmd_max_degs",  6.0,
   "vtol_level_pitch_rate_cmd_max_degs", 6.5,
   "vtol_level_i_lim",       40.0,
@@ -215,7 +254,7 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_cos_att_alpha",         0.10,
   "vtol_cos_att_floor",         0.25,
   "vtol_trim_min_agl_m",        0.0,
-  "vtol_trim_rate",             0.003,
+  "vtol_trim_rate",             0.004,
   "vtol_trim_roll_rate",        0.001,
   "vtol_trim_rate_lead_s",      0.0,
   "vtol_trim_activity_min",     0.0,
@@ -322,12 +361,26 @@ SET AUTO_LAST_DISPLAY_UT TO AUTO_MISSION_START_UT.
 SET AUTO_LOG_FILE TO _AUTO_NEW_LOG_FILE().
 
 LOG ("# vtol_test_auto craft=" + SHIP:NAME + " UT=" + ROUND(TIME:SECONDS, 1)) TO AUTO_LOG_FILE.
-LOG "t_s,phase,dt_s,alt_agl_m,vs_ms,gndspd_ms,pitch_deg,bank_deg,pitch_rate_dps,roll_rate_dps,desired_pitch_deg,desired_bank_deg,roll_cmd,pitch_cmd,thr_input_used,collective,hover_coll,alt_hold,alt_cmd,vel_hold,khv,pos_hold,trans_active,vn_actual_ms,ve_actual_ms,vn_cmd_ms,ve_cmd_ms,pos_err_dist_m,nacelle_cmd_deg,nacelle_est_deg,hover_blend,p_dot_filt,q_dot_filt,roll_d_accel,pitch_d_accel,cos_att_filt,coll_before_corr,coll_after_corr,physical_alloc,upset,alloc_alpha,alloc_shift,limit_span,em_spool_lag_s,eff_spool_lag_s,em_starving" TO AUTO_LOG_FILE.
+LOG "t_s,phase,dt_s,alt_agl_m,vs_ms,gndspd_ms,pitch_deg,bank_deg,pitch_rate_dps,roll_rate_dps,yaw_hdg_deg,yaw_err_deg,yaw_rate_dps,yaw_cmd_out,yaw_cmd_apply,srv_pos_span_deg,srv_cmd_span_deg,srv_mix_sum,desired_pitch_deg,desired_bank_deg,roll_cmd,pitch_cmd,thr_input_used,collective,hover_coll,alt_hold,alt_cmd,vel_hold,khv,pos_hold,trans_active,vn_actual_ms,ve_actual_ms,vn_cmd_ms,ve_cmd_ms,pos_err_dist_m,nacelle_cmd_deg,nacelle_est_deg,hover_blend,p_dot_filt,q_dot_filt,roll_d_accel,pitch_d_accel,cos_att_filt,coll_before_corr,coll_after_corr,physical_alloc,upset,alloc_alpha,alloc_shift,limit_span,em_spool_lag_s,eff_spool_lag_s,em_starving" TO AUTO_LOG_FILE.
+LOCAL srv_mix_sum_init IS 0.0.
+LOCAL init_i IS 0.
+UNTIL init_i >= VTOL_YAW_SRV_MIX:LENGTH {
+  SET srv_mix_sum_init TO srv_mix_sum_init + ABS(VTOL_YAW_SRV_MIX[init_i]).
+  SET init_i TO init_i + 1.
+}
+_AUTO_LOG_EVENT(
+  "vtol_init srv_avail=" + VTOL_SRV_AVAIL +
+  " srv_n=" + VTOL_SRV_LIST:LENGTH +
+  " yaw_mix_sum=" + ROUND(srv_mix_sum_init, 2) +
+  " yaw_gain=" + ROUND(_AUTO_CFG_NUM("vtol_yaw_gain", VTOL_YAW_SRV_GAIN), 2) +
+  " yaw_sign=" + ROUND(_AUTO_CFG_NUM("vtol_yaw_sign", 1), 0)
+).
 
 ON ABORT {
   SET AUTO_RUNNING TO FALSE.
   _AUTO_LOG_EVENT("ABORT").
   UNLOCK THROTTLE.
+  VTOL_CLEAR_YAW_INPUT_OVERRIDE().
   SET SHIP:CONTROL:YAW TO 0.
   SET SHIP:CONTROL:ROLL TO 0.
   SET SHIP:CONTROL:PITCH TO 0.
@@ -342,10 +395,12 @@ SET VTOL_KHV_ACTIVE TO FALSE.
 SET VTOL_POS_HOLD_ACTIVE TO FALSE.
 SET VTOL_TRANS_ACTIVE TO FALSE.
 SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO FALSE.
+VTOL_CLEAR_YAW_INPUT_OVERRIDE().
+VTOL_SET_YAW_INPUT_OVERRIDE(0).
 
 LOCAL hold_target_lat IS SHIP:LATITUDE.
 LOCAL hold_target_lng IS SHIP:LONGITUDE.
-LOCAL hold_target_hdg_deg IS GET_COMPASS_HDG().
+LOCAL hold_target_hdg_deg IS _AUTO_COMPASS_HDG_NOW().
 LOCAL hover_target_alt_agl IS AUTO_TAKEOFF_TARGET_ALT_AGL_M.
 LOCAL land_touchdown_start_ut IS -1.
 
@@ -389,6 +444,7 @@ UNTIL NOT AUTO_RUNNING {
   LOCAL pos_err_for_phase_m IS GEO_DISTANCE(SHIP:GEOPOSITION, hold_geo).
   LOCAL phase_fore_vec IS SHIP:FACING:FOREVECTOR.
   LOCAL phase_star_vec IS SHIP:FACING:STARVECTOR.
+  LOCAL phase_top_vec IS SHIP:FACING:TOPVECTOR.
   LOCAL phase_up_vec IS SHIP:UP:VECTOR.
   LOCAL phase_ang_vel IS SHIP:ANGULARVEL.
   LOCAL phase_pitch_deg IS 90 - VANG(phase_fore_vec, phase_up_vec).
@@ -396,8 +452,9 @@ UNTIL NOT AUTO_RUNNING {
   LOCAL phase_roll_rate_dps IS -VDOT(phase_ang_vel, phase_fore_vec) * (180 / CONSTANT:PI).
   LOCAL phase_pitch_rate_dps IS VDOT(phase_ang_vel, phase_star_vec) * (180 / CONSTANT:PI).
   LOCAL phase_gndspd_ms IS SHIP:GROUNDSPEED.
-  LOCAL yaw_hdg_now_deg IS GET_COMPASS_HDG().
+  LOCAL yaw_hdg_now_deg IS _AUTO_COMPASS_HDG_NOW().
   LOCAL yaw_err_deg IS _AUTO_ANGLE_ERR(hold_target_hdg_deg, yaw_hdg_now_deg).
+  LOCAL yaw_rate_dps IS -VDOT(phase_ang_vel, phase_top_vec) * (180 / CONSTANT:PI).
   LOCAL yaw_cmd_out IS 0.0.
   LOCAL yaw_hold_active IS FALSE.
   IF AUTO_PHASE_NAME = "TAKEOFF_CLIMB" OR
@@ -406,16 +463,26 @@ UNTIL NOT AUTO_RUNNING {
     SET yaw_hold_active TO TRUE.
   }
   IF yaw_hold_active {
-    LOCAL yaw_kp_use IS AUTO_YAW_HOLD_KP.
     IF VTOL_UPSET_ACTIVE {
-      SET yaw_kp_use TO yaw_kp_use * 0.5.
+      // Keep upset recovery focused on pitch/roll stabilization.
+      SET yaw_cmd_out TO 0.0.
+    } ELSE {
+      LOCAL yaw_kp_use IS AUTO_YAW_HOLD_KP.
+      LOCAL yaw_kd_use IS AUTO_YAW_HOLD_KD.
+      LOCAL yaw_err_use_deg IS yaw_err_deg.
+      IF ABS(yaw_err_use_deg) < 0.25 {
+        SET yaw_err_use_deg TO 0.0.
+      }
+      SET yaw_cmd_out TO CLAMP(
+        yaw_err_use_deg * yaw_kp_use - yaw_rate_dps * yaw_kd_use,
+        -AUTO_YAW_HOLD_MAX_CMD,
+        AUTO_YAW_HOLD_MAX_CMD
+      ).
     }
-    SET yaw_cmd_out TO CLAMP(
-      yaw_err_deg * yaw_kp_use,
-      -AUTO_YAW_HOLD_MAX_CMD,
-      AUTO_YAW_HOLD_MAX_CMD
-    ).
   }
+  LOCAL yaw_sign_use IS _AUTO_CFG_NUM("vtol_yaw_sign", 1).
+  IF yaw_sign_use < 0 { SET yaw_sign_use TO -1. } ELSE { SET yaw_sign_use TO 1. }
+  LOCAL yaw_cmd_apply IS CLAMP(yaw_cmd_out * yaw_sign_use, -1, 1).
   LOCAL takeoff_stable IS
     phase_gndspd_ms <= AUTO_TAKEOFF_SETTLE_GNDSPD_MS AND
     ABS(phase_pitch_deg) <= AUTO_TAKEOFF_SETTLE_PITCH_DEG AND
@@ -566,8 +633,42 @@ UNTIL NOT AUTO_RUNNING {
 
   SET SHIP:CONTROL:PITCH TO pilot_pitch_cmd_out.
   SET SHIP:CONTROL:ROLL TO pilot_roll_cmd_out.
-  SET SHIP:CONTROL:YAW TO yaw_cmd_out.
+  // Keep stock yaw axis neutral so this test uses nacelle yaw only.
+  SET SHIP:CONTROL:YAW TO 0.
+  VTOL_SET_YAW_INPUT_OVERRIDE(yaw_cmd_apply).
   VTOL_TICK_PREARM().
+  LOCAL srv_pos_span_deg IS 0.0.
+  LOCAL srv_cmd_span_deg IS 0.0.
+  LOCAL srv_mix_sum IS 0.0.
+  LOCAL yaw_gain_diag IS _AUTO_CFG_NUM("vtol_yaw_gain", VTOL_YAW_SRV_GAIN).
+  LOCAL cmd_min_deg IS 999.0.
+  LOCAL cmd_max_deg IS -999.0.
+  LOCAL pos_min_deg IS 999.0.
+  LOCAL pos_max_deg IS -999.0.
+  LOCAL srv_i IS 0.
+  UNTIL srv_i >= VTOL_SRV_LIST:LENGTH {
+    LOCAL yaw_mix_i IS 0.0.
+    IF srv_i < VTOL_YAW_SRV_MIX:LENGTH {
+      SET yaw_mix_i TO VTOL_YAW_SRV_MIX[srv_i].
+    }
+    SET srv_mix_sum TO srv_mix_sum + ABS(yaw_mix_i).
+    LOCAL cmd_i_deg IS CLAMP(VTOL_NACELLE_ALPHA_CMD + yaw_cmd_apply * yaw_gain_diag * yaw_mix_i, 0, 180).
+    IF cmd_i_deg < cmd_min_deg { SET cmd_min_deg TO cmd_i_deg. }
+    IF cmd_i_deg > cmd_max_deg { SET cmd_max_deg TO cmd_i_deg. }
+    LOCAL srv_mod_i IS VTOL_SRV_LIST[srv_i].
+    IF srv_mod_i <> 0 {
+      LOCAL pos_i_deg IS CLAMP(srv_mod_i:GETFIELD("current position"), 0, 180).
+      IF pos_i_deg < pos_min_deg { SET pos_min_deg TO pos_i_deg. }
+      IF pos_i_deg > pos_max_deg { SET pos_max_deg TO pos_i_deg. }
+    }
+    SET srv_i TO srv_i + 1.
+  }
+  IF cmd_max_deg >= cmd_min_deg {
+    SET srv_cmd_span_deg TO cmd_max_deg - cmd_min_deg.
+  }
+  IF pos_max_deg >= pos_min_deg {
+    SET srv_pos_span_deg TO pos_max_deg - pos_min_deg.
+  }
   IF VTOL_VEL_HOLD_ACTIVE {
     SET desired_bank_deg TO VTOL_PHI_CMD.
     SET desired_pitch_deg TO VTOL_THETA_CMD.
@@ -623,8 +724,13 @@ UNTIL NOT AUTO_RUNNING {
     PRINT ("pos err: " + _AUTO_FMT(pos_err_dist_now_m, 7, 2) + " m") AT(0, 9).
     PRINT ("hdg/err/yaw: " + _AUTO_FMT(yaw_hdg_now_deg, 7, 2) +
            " / " + _AUTO_FMT(yaw_err_deg, 7, 2) +
-           " / " + _AUTO_FMT(yaw_cmd_out, 6, 3)) AT(0, 10).
-    PRINT ("ABORT to stop") AT(0, 11).
+           " / " + _AUTO_FMT(yaw_cmd_out, 6, 3) +
+           " a:" + _AUTO_FMT(yaw_cmd_apply, 6, 3) +
+           " r:" + _AUTO_FMT(yaw_rate_dps, 6, 2)) AT(0, 10).
+    PRINT ("srv span pos/cmd: " + _AUTO_FMT(srv_pos_span_deg, 6, 2) +
+           " / " + _AUTO_FMT(srv_cmd_span_deg, 6, 2) +
+           " mix:" + _AUTO_FMT(srv_mix_sum, 5, 1)) AT(0, 11).
+    PRINT ("ABORT to stop") AT(0, 12).
   }
 
   IF log_due {
@@ -640,6 +746,14 @@ UNTIL NOT AUTO_RUNNING {
       ROUND(bank_now_deg, 3),
       ROUND(pitch_rate_now_dps, 3),
       ROUND(roll_rate_now_dps, 3),
+      ROUND(yaw_hdg_now_deg, 3),
+      ROUND(yaw_err_deg, 3),
+      ROUND(yaw_rate_dps, 3),
+      ROUND(yaw_cmd_out, 4),
+      ROUND(yaw_cmd_apply, 4),
+      ROUND(srv_pos_span_deg, 4),
+      ROUND(srv_cmd_span_deg, 4),
+      ROUND(srv_mix_sum, 3),
       ROUND(desired_pitch_deg, 3),
       ROUND(desired_bank_deg, 3),
       ROUND(roll_cmd_out, 4),
@@ -686,6 +800,7 @@ UNTIL NOT AUTO_RUNNING {
 _AUTO_LOG_EVENT("COMPLETE").
 LOG ("# end t=" + ROUND(TIME:SECONDS - AUTO_MISSION_START_UT, 2)) TO AUTO_LOG_FILE.
 UNLOCK THROTTLE.
+VTOL_CLEAR_YAW_INPUT_OVERRIDE().
 SET SHIP:CONTROL:YAW TO 0.
 SET SHIP:CONTROL:ROLL TO 0.
 SET SHIP:CONTROL:PITCH TO 0.

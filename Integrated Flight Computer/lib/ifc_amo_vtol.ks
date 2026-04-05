@@ -105,6 +105,8 @@ GLOBAL _vtol_roll_lag_filt_s IS -1.
 GLOBAL _vtol_pitch_lag_filt_s IS -1.
 GLOBAL _vtol_upset_latched IS FALSE.
 GLOBAL _vtol_upset_entry_ut IS -1.
+GLOBAL VTOL_YAW_INPUT_OVERRIDE_ACTIVE IS FALSE.
+GLOBAL VTOL_YAW_INPUT_OVERRIDE_VAL IS 0.0.
 
 // ?????? Servo discovery via part tag ??????????????????????????????????????????????????????????????????????????????
 FUNCTION _VTOL_FIND_SERVO_MODULE {
@@ -526,6 +528,39 @@ FUNCTION _VTOL_APPLY_ENGINES {
   LOCAL pitch_gain_cfg IS _AMO_CFG_NUM("vtol_pitch_gain", VTOL_PITCH_GAIN, 0).
   LOCAL pitch_mix_sign_cfg IS _AMO_CFG_NUM("vtol_pitch_mix_sign", VTOL_PITCH_MIX_SIGN, -1).
   IF pitch_mix_sign_cfg < 0 { SET pitch_mix_sign_cfg TO -1. } ELSE { SET pitch_mix_sign_cfg TO 1. }
+  LOCAL vector_comp_enabled IS _AMO_CFG_BOOL("vtol_nacelle_vector_comp", TRUE).
+  LOCAL sin_alpha_floor IS _AMO_CFG_NUM("vtol_nacelle_sin_floor", VTOL_NACELLE_SIN_FLOOR, 0.01).
+  LOCAL diff_gain_max IS _AMO_CFG_NUM("vtol_nacelle_diff_gain_max", 2.0, 1.0).
+  IF sin_alpha_floor < 0.01 { SET sin_alpha_floor TO 0.01. }
+  IF sin_alpha_floor > 0.5 { SET sin_alpha_floor TO 0.5. }
+  IF diff_gain_max < 1.0 { SET diff_gain_max TO 1.0. }
+  LOCAL lift_frac_vec IS LIST().
+  LOCAL diff_gain_vec IS LIST().
+  LOCAL vg_i IS 0.
+  UNTIL vg_i >= VTOL_ENG_LIST:LENGTH {
+    LOCAL lift_frac_i IS 1.0.
+    IF vector_comp_enabled {
+      LOCAL alpha_i_deg IS VTOL_NACELLE_ALPHA_EST.
+      IF vg_i < VTOL_SRV_LIST:LENGTH {
+        LOCAL srv_i IS VTOL_SRV_LIST[vg_i].
+        IF srv_i <> 0 {
+          SET alpha_i_deg TO srv_i:GETFIELD("current position").
+        }
+      }
+      SET alpha_i_deg TO CLAMP(alpha_i_deg, 0, 180).
+      SET lift_frac_i TO SIN(alpha_i_deg).
+      IF lift_frac_i < sin_alpha_floor { SET lift_frac_i TO sin_alpha_floor. }
+      IF lift_frac_i > 1.0 { SET lift_frac_i TO 1.0. }
+    }
+    LOCAL diff_gain_i IS 1.0.
+    IF vector_comp_enabled {
+      SET diff_gain_i TO 1.0 / lift_frac_i.
+      IF diff_gain_i > diff_gain_max { SET diff_gain_i TO diff_gain_max. }
+    }
+    lift_frac_vec:ADD(lift_frac_i).
+    diff_gain_vec:ADD(diff_gain_i).
+    SET vg_i TO vg_i + 1.
+  }
   LOCAL roll_arm_use_m IS VTOL_ARM_ROLL_M.
   LOCAL pitch_arm_use_m IS VTOL_ARM_PITCH_M.
   IF roll_arm_use_m < 0.01 { SET roll_arm_use_m TO 0.01. }
@@ -534,14 +569,15 @@ FUNCTION _VTOL_APPLY_ENGINES {
   UNTIL i >= VTOL_ENG_LIST:LENGTH {
     LOCAL base_i IS collective_in * (1.0 + VTOL_TRIM_OFFSET[i]).
     LOCAL diff_i IS 0.0.
+    LOCAL diff_gain_i IS diff_gain_vec[i].
     IF physical_alloc_enabled AND VTOL_ENG_ARM_X_M:LENGTH = VTOL_ENG_LIST:LENGTH AND VTOL_ENG_ARM_Y_M:LENGTH = VTOL_ENG_LIST:LENGTH {
       LOCAL arm_x_m IS VTOL_ENG_ARM_X_M[i].
       LOCAL arm_y_m IS VTOL_ENG_ARM_Y_M[i].
       LOCAL roll_frac IS CLAMP(-arm_y_m / roll_arm_use_m, -1, 1).
       LOCAL pitch_frac IS CLAMP(pitch_mix_sign_cfg * arm_x_m / pitch_arm_use_m, -1, 1).
-      SET diff_i TO diff_scale * (roll_cmd * roll_frac * roll_gain_cfg + pitch_cmd * pitch_frac * pitch_gain_cfg).
+      SET diff_i TO diff_scale * diff_gain_i * (roll_cmd * roll_frac * roll_gain_cfg + pitch_cmd * pitch_frac * pitch_gain_cfg).
     } ELSE {
-      SET diff_i TO diff_scale * (roll_cmd * VTOL_ROLL_MIX[i] + pitch_cmd * VTOL_PITCH_MIX[i]).
+      SET diff_i TO diff_scale * diff_gain_i * (roll_cmd * VTOL_ROLL_MIX[i] + pitch_cmd * VTOL_PITCH_MIX[i]).
     }
     base_vec:ADD(base_i).
     diff_vec:ADD(diff_i).
@@ -592,14 +628,15 @@ FUNCTION _VTOL_APPLY_ENGINES {
   LOCAL throttle_frac IS CLAMP(THROTTLE, 0, 1).
   SET i TO 0.
   UNTIL i >= VTOL_ENG_LIST:LENGTH {
+    LOCAL lift_frac_i IS lift_frac_vec[i].
     LOCAL lim_unclamped IS base_vec[i] + shift + alpha * diff_vec[i].
     LOCAL lim_cmd IS CLAMP(lim_unclamped, lim_floor_use, 1).
     IF lim_unclamped <= lim_floor_use { SET clamp_low_n TO clamp_low_n + 1. }
     IF lim_unclamped >= 1 { SET clamp_high_n TO clamp_high_n + 1. }
     IF lim_cmd < lim_min_seen { SET lim_min_seen TO lim_cmd. }
     IF lim_cmd > lim_max_seen { SET lim_max_seen TO lim_cmd. }
-    SET roll_moment_proxy TO roll_moment_proxy + lim_cmd * VTOL_ROLL_MIX[i].
-    SET pitch_moment_proxy TO pitch_moment_proxy + lim_cmd * VTOL_PITCH_MIX[i].
+    SET roll_moment_proxy TO roll_moment_proxy + lim_cmd * VTOL_ROLL_MIX[i] * lift_frac_i.
+    SET pitch_moment_proxy TO pitch_moment_proxy + lim_cmd * VTOL_PITCH_MIX[i] * lift_frac_i.
     LOCAL lim_base_i IS base_vec[i] + shift.
     LOCAL diff_eff_i IS lim_cmd - lim_base_i.
     LOCAL thrust_cap_kN IS 0.0.
@@ -619,7 +656,7 @@ FUNCTION _VTOL_APPLY_ENGINES {
       }
     }
     IF thrust_cap_kN < 0 { SET thrust_cap_kN TO 0. }
-    LOCAL thrust_cmd_kN IS thrust_cap_kN * throttle_frac.
+    LOCAL thrust_cmd_kN IS thrust_cap_kN * throttle_frac * lift_frac_i.
     IF VTOL_ENG_ARM_Y_M:LENGTH = VTOL_ENG_LIST:LENGTH {
       SET roll_tau_cmd_kNm TO roll_tau_cmd_kNm + diff_eff_i * thrust_cmd_kN * (-VTOL_ENG_ARM_Y_M[i]).
     }
@@ -649,6 +686,22 @@ FUNCTION _VTOL_APPLY_SERVOS {
   IF NOT VTOL_SRV_AVAIL { RETURN. }
   LOCAL hover_angle IS _AMO_CFG_NUM("vtol_hover_angle", 90, 0).
   LOCAL yaw_gain    IS _AMO_CFG_NUM("vtol_yaw_gain", VTOL_YAW_SRV_GAIN, 0).
+  LOCAL yaw_sign_cfg IS _AMO_CFG_NUM("vtol_yaw_sign", 1, -1).
+  LOCAL yaw_deadband_cmd IS _AMO_CFG_NUM("vtol_yaw_cmd_deadband", 0.0, 0).
+  LOCAL yaw_min_deflection_deg IS _AMO_CFG_NUM("vtol_yaw_min_deflection_deg", 0.0, 0).
+  LOCAL srv_speed_base IS _AMO_CFG_NUM("vtol_srv_speed", VTOL_SRV_SPEED, 0.1).
+  LOCAL srv_speed_yaw IS _AMO_CFG_NUM("vtol_srv_yaw_speed", VTOL_SRV_YAW_SPEED, 0.1).
+  IF yaw_sign_cfg < 0 { SET yaw_sign_cfg TO -1. } ELSE { SET yaw_sign_cfg TO 1. }
+  IF yaw_deadband_cmd < 0 { SET yaw_deadband_cmd TO 0. }
+  IF yaw_deadband_cmd > 0.30 { SET yaw_deadband_cmd TO 0.30. }
+  IF yaw_min_deflection_deg < 0 { SET yaw_min_deflection_deg TO 0.0. }
+  IF yaw_min_deflection_deg > 20 { SET yaw_min_deflection_deg TO 20. }
+  IF srv_speed_base < 0.1 { SET srv_speed_base TO 0.1. }
+  IF srv_speed_yaw < 0.1 { SET srv_speed_yaw TO 0.1. }
+  LOCAL yaw_cmd_use IS CLAMP(yaw_cmd, -1, 1) * yaw_sign_cfg.
+  IF ABS(yaw_cmd_use) < yaw_deadband_cmd {
+    SET yaw_cmd_use TO 0.
+  }
   LOCAL base_alpha_cmd IS VTOL_NACELLE_ALPHA_CMD.
   IF base_alpha_cmd < 0.1 OR base_alpha_cmd > 179.9 {
     SET base_alpha_cmd TO hover_angle.
@@ -659,9 +712,17 @@ FUNCTION _VTOL_APPLY_SERVOS {
     LOCAL srv_mod IS VTOL_SRV_LIST[i].
     IF srv_mod <> 0 {
       LOCAL yaw_mix   IS VTOL_YAW_SRV_MIX[i].
-      LOCAL tgt_angle IS base_alpha_cmd + yaw_cmd * yaw_gain * yaw_mix.
-      LOCAL spd IS VTOL_SRV_SPEED.
-      IF yaw_mix <> 0 { SET spd TO VTOL_SRV_YAW_SPEED. }
+      LOCAL yaw_delta_deg IS yaw_cmd_use * yaw_gain * yaw_mix.
+      IF ABS(yaw_delta_deg) > 0 AND ABS(yaw_delta_deg) < yaw_min_deflection_deg {
+        IF yaw_delta_deg < 0 {
+          SET yaw_delta_deg TO -yaw_min_deflection_deg.
+        } ELSE {
+          SET yaw_delta_deg TO yaw_min_deflection_deg.
+        }
+      }
+      LOCAL tgt_angle IS CLAMP(base_alpha_cmd + yaw_delta_deg, 0, 180).
+      LOCAL spd IS srv_speed_base.
+      IF yaw_mix <> 0 { SET spd TO srv_speed_yaw. }
       srv_mod:SETFIELD("max speed", spd).
       srv_mod:SETFIELD("target position", tgt_angle).
     }
@@ -682,6 +743,19 @@ FUNCTION _VTOL_STOP_SERVOS {
   }
 }
 
+// External yaw input override for test/autopilot harnesses.
+// When enabled, pre-arm tick uses this yaw command instead of SHIP:CONTROL:PILOTYAW.
+FUNCTION VTOL_SET_YAW_INPUT_OVERRIDE {
+  PARAMETER yaw_cmd.
+  SET VTOL_YAW_INPUT_OVERRIDE_VAL TO CLAMP(yaw_cmd, -1, 1).
+  SET VTOL_YAW_INPUT_OVERRIDE_ACTIVE TO TRUE.
+}
+
+FUNCTION VTOL_CLEAR_YAW_INPUT_OVERRIDE {
+  SET VTOL_YAW_INPUT_OVERRIDE_ACTIVE TO FALSE.
+  SET VTOL_YAW_INPUT_OVERRIDE_VAL TO 0.0.
+}
+
 // ?????? Pilot inputs ?????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
 FUNCTION _VTOL_PILOT_INPUTS {
   LOCAL roll_in  IS 0.
@@ -692,6 +766,9 @@ FUNCTION _VTOL_PILOT_INPUTS {
     IF ctrl:HASSUFFIX("PILOTROLL")  { SET roll_in  TO ctrl:PILOTROLL. }
     IF ctrl:HASSUFFIX("PILOTPITCH") { SET pitch_in TO ctrl:PILOTPITCH. }
     IF ctrl:HASSUFFIX("PILOTYAW")   { SET yaw_in   TO ctrl:PILOTYAW. }
+  }
+  IF VTOL_YAW_INPUT_OVERRIDE_ACTIVE {
+    SET yaw_in TO VTOL_YAW_INPUT_OVERRIDE_VAL.
   }
   RETURN LEXICON("roll", roll_in, "pitch", pitch_in, "yaw", yaw_in).
 }
@@ -1293,24 +1370,29 @@ FUNCTION _VTOL_UPDATE_NACELLE_SCHEDULE {
   ).
 
   LOCAL estimate_alpha_deg IS VTOL_NACELLE_ALPHA_CMD.
+  LOCAL estimate_lift_frac IS CLAMP(SIN(CLAMP(estimate_alpha_deg, 0, 180)), 0, 1).
   IF VTOL_SRV_AVAIL {
     LOCAL sum_alpha_deg IS 0.0.
+    LOCAL sum_lift_frac IS 0.0.
     LOCAL sum_count IS 0.0.
     LOCAL idx IS 0.
     UNTIL idx >= VTOL_SRV_LIST:LENGTH {
       LOCAL srv_entry IS VTOL_SRV_LIST[idx].
       IF srv_entry <> 0 {
-        SET sum_alpha_deg TO sum_alpha_deg + srv_entry:GETFIELD("current position").
+        LOCAL alpha_i_deg IS CLAMP(srv_entry:GETFIELD("current position"), 0, 180).
+        SET sum_alpha_deg TO sum_alpha_deg + alpha_i_deg.
+        SET sum_lift_frac TO sum_lift_frac + CLAMP(SIN(alpha_i_deg), 0, 1).
         SET sum_count TO sum_count + 1.0.
       }
       SET idx TO idx + 1.
     }
     IF sum_count > 0 {
       SET estimate_alpha_deg TO sum_alpha_deg / sum_count.
+      SET estimate_lift_frac TO sum_lift_frac / sum_count.
     }
   }
   SET VTOL_NACELLE_ALPHA_EST TO estimate_alpha_deg.
-  SET VTOL_HOVER_BLEND TO CLAMP(SIN(CLAMP(VTOL_NACELLE_ALPHA_EST, 0, 180)), 0, 1).
+  SET VTOL_HOVER_BLEND TO CLAMP(estimate_lift_frac, 0, 1).
 }
 
 FUNCTION _VTOL_VS_HOLD {
@@ -1511,8 +1593,9 @@ FUNCTION _VTOL_VS_HOLD {
 
   LOCAL sin_alpha_floor IS _AMO_CFG_NUM("vtol_nacelle_sin_floor", VTOL_NACELLE_SIN_FLOOR, 0.01).
   SET sin_alpha_floor TO CLAMP(sin_alpha_floor, 0.01, 0.5).
-  LOCAL nacelle_alpha_for_lift_deg IS CLAMP(VTOL_NACELLE_ALPHA_EST, 0, 180).
-  LOCAL sin_alpha_lift IS SIN(nacelle_alpha_for_lift_deg).
+  // Use mean per-engine lift fraction (from current servo positions) so yaw
+  // differential nacelle tilt is reflected in collective geometry correction.
+  LOCAL sin_alpha_lift IS CLAMP(VTOL_HOVER_BLEND, 0, 1).
   IF sin_alpha_lift > sin_alpha_floor {
     SET ff_collective TO CLAMP(ff_collective / sin_alpha_lift, 0, coll_max).
   }
@@ -2348,6 +2431,7 @@ FUNCTION VTOL_RELEASE {
   SET VTOL_RATE_P_DOT_FILT TO 0.0.
   SET VTOL_RATE_Q_DOT_FILT TO 0.0.
   SET VTOL_COS_ATT_FILT TO 1.0.
+  VTOL_CLEAR_YAW_INPUT_OVERRIDE().
   VTOL_ENG_EFF_ACT_EST:CLEAR().
   VTOL_ENG_LAG_EST_S:CLEAR().
   SET VTOL_EFF_LAG_WORST_S TO 0.0.
@@ -2388,6 +2472,7 @@ FUNCTION VTOL_RELEASE {
 // Full state clear ??? use when re-arming or switching aircraft.
 FUNCTION VTOL_RESET {
   VTOL_RELEASE().
+  VTOL_CLEAR_YAW_INPUT_OVERRIDE().
   VTOL_ENG_LIST:CLEAR().
   VTOL_SRV_LIST:CLEAR().
   VTOL_ROLL_MIX:CLEAR().
