@@ -56,9 +56,16 @@ GLOBAL AUTO_HOVER_SETTLE_GNDSPD_MS IS 1.2.
 GLOBAL AUTO_HOVER_SETTLE_PITCH_DEG IS 8.0.
 GLOBAL AUTO_HOVER_SETTLE_BANK_DEG IS 8.0.
 GLOBAL AUTO_HOVER_SETTLE_RATE_DPS IS 8.0.
-GLOBAL AUTO_YAW_HOLD_KP IS 0.045.
-GLOBAL AUTO_YAW_HOLD_KD IS 0.020.
-GLOBAL AUTO_YAW_HOLD_MAX_CMD IS 0.60.
+GLOBAL AUTO_YAW_CAS_HDG_KP IS 0.35.          // (deg/s) per deg heading error
+GLOBAL AUTO_YAW_CAS_HDG_KI IS 0.002.         // (deg/s) per deg*s heading error
+GLOBAL AUTO_YAW_CAS_RATE_KP IS 0.025.        // command per (deg/s) yaw-rate error
+GLOBAL AUTO_YAW_CAS_RATE_KI IS 0.004.        // command per (deg/s)*s yaw-rate error
+GLOBAL AUTO_YAW_CAS_RATE_CMD_MAX_DPS IS 4.0.
+GLOBAL AUTO_YAW_CAS_CMD_MAX IS 0.22.
+GLOBAL AUTO_YAW_CAS_HDG_DB_DEG IS 0.40.
+GLOBAL AUTO_YAW_CAS_RATE_DB_DPS IS 0.20.
+GLOBAL AUTO_YAW_CAS_HDG_INT_LIM IS 40.0.
+GLOBAL AUTO_YAW_CAS_RATE_INT_LIM IS 8.0.
 
 FUNCTION _AUTO_CFG_NUM {
   PARAMETER key_name, fallback_val.
@@ -176,12 +183,22 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_srv_tag_prefix",    "vtol_srv",
   "vtol_hover_angle",       90,
   "vtol_cruise_angle",      0,
-  "vtol_yaw_gain",          14,
-  "vtol_yaw_sign",          -1,
-  "vtol_yaw_cmd_deadband",  0.015,
-  "vtol_yaw_min_deflection_deg", 1.2,
+  "vtol_yaw_gain",          5.0,
+  "vtol_yaw_sign",          1,
+  "vtol_yaw_cmd_deadband",  0.03,
+  "vtol_yaw_min_deflection_deg", 0.0,
+  "vtol_yaw_cas_hdg_kp",    AUTO_YAW_CAS_HDG_KP,
+  "vtol_yaw_cas_hdg_ki",    AUTO_YAW_CAS_HDG_KI,
+  "vtol_yaw_cas_rate_kp",   AUTO_YAW_CAS_RATE_KP,
+  "vtol_yaw_cas_rate_ki",   AUTO_YAW_CAS_RATE_KI,
+  "vtol_yaw_cas_rate_cmd_max_dps", AUTO_YAW_CAS_RATE_CMD_MAX_DPS,
+  "vtol_yaw_cas_cmd_max",   AUTO_YAW_CAS_CMD_MAX,
+  "vtol_yaw_cas_hdg_db_deg", AUTO_YAW_CAS_HDG_DB_DEG,
+  "vtol_yaw_cas_rate_db_dps", AUTO_YAW_CAS_RATE_DB_DPS,
+  "vtol_yaw_cas_hdg_int_lim", AUTO_YAW_CAS_HDG_INT_LIM,
+  "vtol_yaw_cas_rate_int_lim", AUTO_YAW_CAS_RATE_INT_LIM,
   "vtol_srv_speed",         2.0,
-  "vtol_srv_yaw_speed",     10.0,
+  "vtol_srv_yaw_speed",     6.0,
   "vtol_roll_gain",         0.25,
   "vtol_pitch_gain",        0.30,
   // XV-3-C verified pitch polarity for this test article.
@@ -361,7 +378,7 @@ SET AUTO_LAST_DISPLAY_UT TO AUTO_MISSION_START_UT.
 SET AUTO_LOG_FILE TO _AUTO_NEW_LOG_FILE().
 
 LOG ("# vtol_test_auto craft=" + SHIP:NAME + " UT=" + ROUND(TIME:SECONDS, 1)) TO AUTO_LOG_FILE.
-LOG "t_s,phase,dt_s,alt_agl_m,vs_ms,gndspd_ms,pitch_deg,bank_deg,pitch_rate_dps,roll_rate_dps,yaw_hdg_deg,yaw_err_deg,yaw_rate_dps,yaw_cmd_out,yaw_cmd_apply,srv_pos_span_deg,srv_cmd_span_deg,srv_mix_sum,desired_pitch_deg,desired_bank_deg,roll_cmd,pitch_cmd,thr_input_used,collective,hover_coll,alt_hold,alt_cmd,vel_hold,khv,pos_hold,trans_active,vn_actual_ms,ve_actual_ms,vn_cmd_ms,ve_cmd_ms,pos_err_dist_m,nacelle_cmd_deg,nacelle_est_deg,hover_blend,p_dot_filt,q_dot_filt,roll_d_accel,pitch_d_accel,cos_att_filt,coll_before_corr,coll_after_corr,physical_alloc,upset,alloc_alpha,alloc_shift,limit_span,em_spool_lag_s,eff_spool_lag_s,em_starving" TO AUTO_LOG_FILE.
+LOG "t_s,phase,dt_s,alt_agl_m,vs_ms,gndspd_ms,pitch_deg,bank_deg,pitch_rate_dps,roll_rate_dps,yaw_hdg_deg,yaw_err_deg,yaw_rate_dps,yaw_rate_cmd_dps,yaw_rate_err_dps,yaw_cmd_out,yaw_cmd_apply,srv_pos_span_deg,srv_cmd_span_deg,srv_mix_sum,desired_pitch_deg,desired_bank_deg,roll_cmd,pitch_cmd,thr_input_used,collective,hover_coll,alt_hold,alt_cmd,vel_hold,khv,pos_hold,trans_active,vn_actual_ms,ve_actual_ms,vn_cmd_ms,ve_cmd_ms,pos_err_dist_m,nacelle_cmd_deg,nacelle_est_deg,hover_blend,p_dot_filt,q_dot_filt,roll_d_accel,pitch_d_accel,cos_att_filt,coll_before_corr,coll_after_corr,physical_alloc,upset,alloc_alpha,alloc_shift,limit_span,em_spool_lag_s,eff_spool_lag_s,em_starving" TO AUTO_LOG_FILE.
 LOCAL srv_mix_sum_init IS 0.0.
 LOCAL init_i IS 0.
 UNTIL init_i >= VTOL_YAW_SRV_MIX:LENGTH {
@@ -375,6 +392,23 @@ _AUTO_LOG_EVENT(
   " yaw_gain=" + ROUND(_AUTO_CFG_NUM("vtol_yaw_gain", VTOL_YAW_SRV_GAIN), 2) +
   " yaw_sign=" + ROUND(_AUTO_CFG_NUM("vtol_yaw_sign", 1), 0)
 ).
+LOCAL srv_tag_hits IS 0.
+LOCAL srv_tag_idx IS 1.
+LOCAL srv_tag_prefix_dbg IS "vtol_srv".
+IF ACTIVE_AIRCRAFT:HASKEY("vtol_srv_tag_prefix") {
+  SET srv_tag_prefix_dbg TO ACTIVE_AIRCRAFT["vtol_srv_tag_prefix"].
+}
+UNTIL srv_tag_idx > VTOL_ENG_LIST:LENGTH {
+  IF SHIP:PARTSTAGGED(srv_tag_prefix_dbg + "_" + srv_tag_idx):LENGTH > 0 {
+    SET srv_tag_hits TO srv_tag_hits + 1.
+  }
+  SET srv_tag_idx TO srv_tag_idx + 1.
+}
+_AUTO_LOG_EVENT(
+  "vtol_tags prefix=" + srv_tag_prefix_dbg +
+  " hits=" + srv_tag_hits + "/" + VTOL_ENG_LIST:LENGTH
+).
+_AUTO_LOG_EVENT(VTOL_IR_DIAG()).
 
 ON ABORT {
   SET AUTO_RUNNING TO FALSE.
@@ -410,6 +444,10 @@ LOCAL desired_vn_ms IS 0.0.
 LOCAL desired_ve_ms IS 0.0.
 LOCAL pilot_roll_cmd_out IS 0.0.
 LOCAL pilot_pitch_cmd_out IS 0.0.
+LOCAL yaw_hdg_int_deg_s IS 0.0.
+LOCAL yaw_rate_int_dps_s IS 0.0.
+LOCAL yaw_rate_cmd_dps_diag IS 0.0.
+LOCAL yaw_rate_err_dps_diag IS 0.0.
 LOCAL max_horiz_speed_cfg IS _AUTO_CFG_NUM("vtol_max_horiz_speed", 10.0).
 LOCAL max_fwd_pitch_cfg IS _AUTO_CFG_NUM("vtol_max_fwd_pitch", 12.0).
 LOCAL max_bank_cfg IS _AUTO_CFG_NUM("vtol_max_bank", 12.0).
@@ -454,7 +492,10 @@ UNTIL NOT AUTO_RUNNING {
   LOCAL phase_gndspd_ms IS SHIP:GROUNDSPEED.
   LOCAL yaw_hdg_now_deg IS _AUTO_COMPASS_HDG_NOW().
   LOCAL yaw_err_deg IS _AUTO_ANGLE_ERR(hold_target_hdg_deg, yaw_hdg_now_deg).
-  LOCAL yaw_rate_dps IS -VDOT(phase_ang_vel, phase_top_vec) * (180 / CONSTANT:PI).
+  // Sign convention: positive yaw_rate_dps must correspond to increasing compass heading.
+  LOCAL yaw_rate_dps IS VDOT(phase_ang_vel, phase_top_vec) * (180 / CONSTANT:PI).
+  LOCAL yaw_rate_cmd_dps IS 0.0.
+  LOCAL yaw_rate_err_dps IS 0.0.
   LOCAL yaw_cmd_out IS 0.0.
   LOCAL yaw_hold_active IS FALSE.
   IF AUTO_PHASE_NAME = "TAKEOFF_CLIMB" OR
@@ -465,24 +506,88 @@ UNTIL NOT AUTO_RUNNING {
   IF yaw_hold_active {
     IF VTOL_UPSET_ACTIVE {
       // Keep upset recovery focused on pitch/roll stabilization.
+      SET yaw_hdg_int_deg_s TO 0.0.
+      SET yaw_rate_int_dps_s TO 0.0.
       SET yaw_cmd_out TO 0.0.
     } ELSE {
-      LOCAL yaw_kp_use IS AUTO_YAW_HOLD_KP.
-      LOCAL yaw_kd_use IS AUTO_YAW_HOLD_KD.
+      LOCAL hdg_kp_use IS _AUTO_CFG_NUM("vtol_yaw_cas_hdg_kp", AUTO_YAW_CAS_HDG_KP).
+      LOCAL hdg_ki_use IS _AUTO_CFG_NUM("vtol_yaw_cas_hdg_ki", AUTO_YAW_CAS_HDG_KI).
+      LOCAL rate_kp_use IS _AUTO_CFG_NUM("vtol_yaw_cas_rate_kp", AUTO_YAW_CAS_RATE_KP).
+      LOCAL rate_ki_use IS _AUTO_CFG_NUM("vtol_yaw_cas_rate_ki", AUTO_YAW_CAS_RATE_KI).
+      LOCAL rate_cmd_max_use IS _AUTO_CFG_NUM(
+        "vtol_yaw_cas_rate_cmd_max_dps",
+        AUTO_YAW_CAS_RATE_CMD_MAX_DPS
+      ).
+      LOCAL cmd_max_use IS _AUTO_CFG_NUM("vtol_yaw_cas_cmd_max", AUTO_YAW_CAS_CMD_MAX).
+      LOCAL hdg_db_use IS _AUTO_CFG_NUM("vtol_yaw_cas_hdg_db_deg", AUTO_YAW_CAS_HDG_DB_DEG).
+      LOCAL rate_db_use IS _AUTO_CFG_NUM("vtol_yaw_cas_rate_db_dps", AUTO_YAW_CAS_RATE_DB_DPS).
+      LOCAL hdg_int_lim_use IS _AUTO_CFG_NUM("vtol_yaw_cas_hdg_int_lim", AUTO_YAW_CAS_HDG_INT_LIM).
+      LOCAL rate_int_lim_use IS _AUTO_CFG_NUM("vtol_yaw_cas_rate_int_lim", AUTO_YAW_CAS_RATE_INT_LIM).
+      IF rate_cmd_max_use < 0.2 { SET rate_cmd_max_use TO 0.2. }
+      IF cmd_max_use < 0.05 { SET cmd_max_use TO 0.05. }
+      IF hdg_int_lim_use < 1.0 { SET hdg_int_lim_use TO 1.0. }
+      IF rate_int_lim_use < 0.2 { SET rate_int_lim_use TO 0.2. }
       LOCAL yaw_err_use_deg IS yaw_err_deg.
-      IF ABS(yaw_err_use_deg) < 0.25 {
+      IF ABS(yaw_err_use_deg) < hdg_db_use {
         SET yaw_err_use_deg TO 0.0.
       }
+
+      // Outer loop: heading error -> desired yaw rate.
+      LOCAL yaw_rate_cmd_unsat IS yaw_err_use_deg * hdg_kp_use + yaw_hdg_int_deg_s * hdg_ki_use.
+      LOCAL outer_sat_hi IS yaw_rate_cmd_unsat >= rate_cmd_max_use AND yaw_err_use_deg > 0.
+      LOCAL outer_sat_lo IS yaw_rate_cmd_unsat <= -rate_cmd_max_use AND yaw_err_use_deg < 0.
+      LOCAL outer_integrate IS TRUE.
+      IF outer_sat_hi OR outer_sat_lo { SET outer_integrate TO FALSE. }
+      IF outer_integrate {
+        SET yaw_hdg_int_deg_s TO CLAMP(
+          yaw_hdg_int_deg_s + yaw_err_use_deg * IFC_ACTUAL_DT,
+          -hdg_int_lim_use,
+          hdg_int_lim_use
+        ).
+      } ELSE {
+        LOCAL hdg_unwind IS CLAMP(1.0 - 0.75 * IFC_ACTUAL_DT, 0, 1).
+        SET yaw_hdg_int_deg_s TO yaw_hdg_int_deg_s * hdg_unwind.
+      }
+      SET yaw_rate_cmd_dps TO CLAMP(
+        yaw_err_use_deg * hdg_kp_use + yaw_hdg_int_deg_s * hdg_ki_use,
+        -rate_cmd_max_use,
+        rate_cmd_max_use
+      ).
+
+      // Inner loop: yaw-rate error -> nacelle yaw command.
+      SET yaw_rate_err_dps TO yaw_rate_cmd_dps - yaw_rate_dps.
+      IF ABS(yaw_rate_err_dps) < rate_db_use {
+        SET yaw_rate_err_dps TO 0.0.
+      }
+      LOCAL yaw_cmd_unsat IS yaw_rate_err_dps * rate_kp_use + yaw_rate_int_dps_s * rate_ki_use.
+      LOCAL inner_sat_hi IS yaw_cmd_unsat >= cmd_max_use AND yaw_rate_err_dps > 0.
+      LOCAL inner_sat_lo IS yaw_cmd_unsat <= -cmd_max_use AND yaw_rate_err_dps < 0.
+      LOCAL inner_integrate IS TRUE.
+      IF inner_sat_hi OR inner_sat_lo { SET inner_integrate TO FALSE. }
+      IF inner_integrate {
+        SET yaw_rate_int_dps_s TO CLAMP(
+          yaw_rate_int_dps_s + yaw_rate_err_dps * IFC_ACTUAL_DT,
+          -rate_int_lim_use,
+          rate_int_lim_use
+        ).
+      } ELSE {
+        LOCAL rate_unwind IS CLAMP(1.0 - 1.25 * IFC_ACTUAL_DT, 0, 1).
+        SET yaw_rate_int_dps_s TO yaw_rate_int_dps_s * rate_unwind.
+      }
       SET yaw_cmd_out TO CLAMP(
-        yaw_err_use_deg * yaw_kp_use - yaw_rate_dps * yaw_kd_use,
-        -AUTO_YAW_HOLD_MAX_CMD,
-        AUTO_YAW_HOLD_MAX_CMD
+        yaw_rate_err_dps * rate_kp_use + yaw_rate_int_dps_s * rate_ki_use,
+        -cmd_max_use,
+        cmd_max_use
       ).
     }
+  } ELSE {
+    SET yaw_hdg_int_deg_s TO 0.0.
+    SET yaw_rate_int_dps_s TO 0.0.
   }
-  LOCAL yaw_sign_use IS _AUTO_CFG_NUM("vtol_yaw_sign", 1).
-  IF yaw_sign_use < 0 { SET yaw_sign_use TO -1. } ELSE { SET yaw_sign_use TO 1. }
-  LOCAL yaw_cmd_apply IS CLAMP(yaw_cmd_out * yaw_sign_use, -1, 1).
+  SET yaw_rate_cmd_dps_diag TO yaw_rate_cmd_dps.
+  SET yaw_rate_err_dps_diag TO yaw_rate_err_dps.
+  // Do not apply yaw sign here; _VTOL_APPLY_SERVOS() applies vtol_yaw_sign once.
+  LOCAL yaw_cmd_apply IS CLAMP(yaw_cmd_out, -1, 1).
   LOCAL takeoff_stable IS
     phase_gndspd_ms <= AUTO_TAKEOFF_SETTLE_GNDSPD_MS AND
     ABS(phase_pitch_deg) <= AUTO_TAKEOFF_SETTLE_PITCH_DEG AND
@@ -657,7 +762,7 @@ UNTIL NOT AUTO_RUNNING {
     IF cmd_i_deg > cmd_max_deg { SET cmd_max_deg TO cmd_i_deg. }
     LOCAL srv_mod_i IS VTOL_SRV_LIST[srv_i].
     IF srv_mod_i <> 0 {
-      LOCAL pos_i_deg IS CLAMP(srv_mod_i:GETFIELD("current position"), 0, 180).
+      LOCAL pos_i_deg IS _VTOL_SERVO_CURRENT_POS(srv_mod_i, VTOL_NACELLE_ALPHA_CMD).
       IF pos_i_deg < pos_min_deg { SET pos_min_deg TO pos_i_deg. }
       IF pos_i_deg > pos_max_deg { SET pos_max_deg TO pos_i_deg. }
     }
@@ -722,15 +827,17 @@ UNTIL NOT AUTO_RUNNING {
     PRINT ("VN/VE cmd: " + _AUTO_FMT(VTOL_VN_CMD, 7, 2) +
            " / " + _AUTO_FMT(VTOL_VE_CMD, 7, 2)) AT(0, 8).
     PRINT ("pos err: " + _AUTO_FMT(pos_err_dist_now_m, 7, 2) + " m") AT(0, 9).
-    PRINT ("hdg/err/yaw: " + _AUTO_FMT(yaw_hdg_now_deg, 7, 2) +
+    PRINT ("hdg/err/r/r*: " + _AUTO_FMT(yaw_hdg_now_deg, 7, 2) +
            " / " + _AUTO_FMT(yaw_err_deg, 7, 2) +
-           " / " + _AUTO_FMT(yaw_cmd_out, 6, 3) +
-           " a:" + _AUTO_FMT(yaw_cmd_apply, 6, 3) +
-           " r:" + _AUTO_FMT(yaw_rate_dps, 6, 2)) AT(0, 10).
+           " / " + _AUTO_FMT(yaw_rate_dps, 6, 2) +
+           " / " + _AUTO_FMT(yaw_rate_cmd_dps_diag, 6, 2)) AT(0, 10).
+    PRINT ("yaw u/a/re: " + _AUTO_FMT(yaw_cmd_out, 6, 3) +
+           " / " + _AUTO_FMT(yaw_cmd_apply, 6, 3) +
+           " / " + _AUTO_FMT(yaw_rate_err_dps_diag, 6, 2)) AT(0, 11).
     PRINT ("srv span pos/cmd: " + _AUTO_FMT(srv_pos_span_deg, 6, 2) +
            " / " + _AUTO_FMT(srv_cmd_span_deg, 6, 2) +
-           " mix:" + _AUTO_FMT(srv_mix_sum, 5, 1)) AT(0, 11).
-    PRINT ("ABORT to stop") AT(0, 12).
+           " mix:" + _AUTO_FMT(srv_mix_sum, 5, 1)) AT(0, 12).
+    PRINT ("ABORT to stop") AT(0, 13).
   }
 
   IF log_due {
@@ -749,6 +856,8 @@ UNTIL NOT AUTO_RUNNING {
       ROUND(yaw_hdg_now_deg, 3),
       ROUND(yaw_err_deg, 3),
       ROUND(yaw_rate_dps, 3),
+      ROUND(yaw_rate_cmd_dps_diag, 3),
+      ROUND(yaw_rate_err_dps_diag, 3),
       ROUND(yaw_cmd_out, 4),
       ROUND(yaw_cmd_apply, 4),
       ROUND(srv_pos_span_deg, 4),

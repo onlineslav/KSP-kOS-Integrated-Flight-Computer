@@ -108,21 +108,283 @@ GLOBAL _vtol_upset_entry_ut IS -1.
 GLOBAL VTOL_YAW_INPUT_OVERRIDE_ACTIVE IS FALSE.
 GLOBAL VTOL_YAW_INPUT_OVERRIDE_VAL IS 0.0.
 
+FUNCTION _VTOL_SERVO_CURRENT_FIELDS {
+  RETURN LIST(
+    "current position",
+    "Current Position",
+    "currentPosition",
+    "CurrentPosition",
+    "current angle",
+    "Current Angle",
+    "currentAngle",
+    "CurrentAngle",
+    "position",
+    "Position",
+    "current",
+    "Current",
+    "angle",
+    "Angle"
+  ).
+}
+
+FUNCTION _VTOL_SERVO_TARGET_FIELDS {
+  RETURN LIST(
+    "target position",
+    "Target Position",
+    "targetPosition",
+    "TargetPosition",
+    "target angle",
+    "Target Angle",
+    "targetAngle",
+    "TargetAngle",
+    "target",
+    "Target",
+    "goal",
+    "Goal"
+  ).
+}
+
+FUNCTION _VTOL_SERVO_SPEED_FIELDS {
+  RETURN LIST(
+    "max speed",
+    "Max Speed",
+    "maxSpeed",
+    "MaxSpeed",
+    "speed",
+    "Speed",
+    "motor speed",
+    "Motor Speed",
+    "motorSpeed",
+    "MotorSpeed"
+  ).
+}
+
+FUNCTION _VTOL_SERVO_MODULE_NAMES {
+  RETURN LIST(
+    "ModuleIRServo_v3",
+    "ModuleIRServo",
+    "MuMechToggle",
+    "MuMechServo",
+    "IRServo",
+    "IRServo_v3",
+    "ModuleRoboticServoHinge",
+    "ModuleRoboticServoRotor",
+    "ModuleRoboticServoPiston"
+  ).
+}
+
+FUNCTION _VTOL_LIST_HAS_MODULE {
+  PARAMETER module_list, module_ref.
+  LOCAL i IS 0.
+  UNTIL i >= module_list:LENGTH {
+    IF module_list[i] = module_ref { RETURN TRUE. }
+    SET i TO i + 1.
+  }
+  RETURN FALSE.
+}
+
+FUNCTION _VTOL_MOD_HAS_ANY_FIELD {
+  PARAMETER module_ref, names.
+  IF module_ref = 0 { RETURN FALSE. }
+  LOCAL i IS 0.
+  UNTIL i >= names:LENGTH {
+    IF module_ref:HASFIELD(names[i]) { RETURN TRUE. }
+    SET i TO i + 1.
+  }
+  RETURN FALSE.
+}
+
+FUNCTION _VTOL_MOD_GET_NUM_FIELD {
+  PARAMETER module_ref, names, fallback_val.
+  IF module_ref = 0 { RETURN fallback_val. }
+  LOCAL i IS 0.
+  UNTIL i >= names:LENGTH {
+    LOCAL field_name IS names[i].
+    IF module_ref:HASFIELD(field_name) {
+      RETURN module_ref:GETFIELD(field_name).
+    }
+    SET i TO i + 1.
+  }
+  RETURN fallback_val.
+}
+
+FUNCTION _VTOL_MOD_SET_NUM_FIELD {
+  PARAMETER module_ref, names, set_val.
+  IF module_ref = 0 { RETURN FALSE. }
+  LOCAL i IS 0.
+  UNTIL i >= names:LENGTH {
+    LOCAL field_name IS names[i].
+    IF module_ref:HASFIELD(field_name) {
+      module_ref:SETFIELD(field_name, set_val).
+      RETURN TRUE.
+    }
+    SET i TO i + 1.
+  }
+  RETURN FALSE.
+}
+
+FUNCTION _VTOL_IS_SERVO_MODULE {
+  PARAMETER module_ref.
+  IF module_ref = 0 { RETURN FALSE. }
+  IF NOT _VTOL_MOD_HAS_ANY_FIELD(module_ref, _VTOL_SERVO_CURRENT_FIELDS()) { RETURN FALSE. }
+  IF NOT _VTOL_MOD_HAS_ANY_FIELD(module_ref, _VTOL_SERVO_TARGET_FIELDS()) { RETURN FALSE. }
+  RETURN TRUE.
+}
+
+FUNCTION _VTOL_SERVO_CURRENT_POS {
+  PARAMETER srv_mod, fallback_deg.
+  LOCAL pos_deg IS _VTOL_MOD_GET_NUM_FIELD(
+    srv_mod,
+    _VTOL_SERVO_CURRENT_FIELDS(),
+    fallback_deg
+  ).
+  RETURN CLAMP(pos_deg, 0, 180).
+}
+
+FUNCTION _VTOL_SERVO_SET_TARGET {
+  PARAMETER srv_mod, target_deg.
+  RETURN _VTOL_MOD_SET_NUM_FIELD(
+    srv_mod,
+    _VTOL_SERVO_TARGET_FIELDS(),
+    CLAMP(target_deg, 0, 180)
+  ).
+}
+
+FUNCTION _VTOL_SERVO_SET_SPEED {
+  PARAMETER srv_mod, speed_val.
+  RETURN _VTOL_MOD_SET_NUM_FIELD(
+    srv_mod,
+    _VTOL_SERVO_SPEED_FIELDS(),
+    speed_val
+  ).
+}
+
+FUNCTION _VTOL_COLLECT_ALL_SERVO_MODULES {
+  LOCAL out IS LIST().
+  LOCAL names IS _VTOL_SERVO_MODULE_NAMES().
+  LOCAL ni IS 0.
+  UNTIL ni >= names:LENGTH {
+    LOCAL mods IS SHIP:MODULESNAMED(names[ni]).
+    LOCAL mi IS 0.
+    UNTIL mi >= mods:LENGTH {
+      LOCAL cand IS mods[mi].
+      IF _VTOL_IS_SERVO_MODULE(cand) {
+        IF NOT _VTOL_LIST_HAS_MODULE(out, cand) {
+          out:ADD(cand).
+        }
+      }
+      SET mi TO mi + 1.
+    }
+    SET ni TO ni + 1.
+  }
+  RETURN out.
+}
+
+FUNCTION _VTOL_SERVO_OFFSET_FROM_MOD {
+  PARAMETER srv_mod.
+  IF srv_mod = 0 { RETURN LEXICON("valid", FALSE, "lat", 0, "lng", 0). }
+  IF NOT srv_mod:HASSUFFIX("PART") { RETURN LEXICON("valid", FALSE, "lat", 0, "lng", 0). }
+  LOCAL srv_part IS srv_mod:PART.
+  IF srv_part = 0 { RETURN LEXICON("valid", FALSE, "lat", 0, "lng", 0). }
+  LOCAL off IS _VTOL_PART_OFFSET(srv_part).
+  RETURN LEXICON("valid", TRUE, "lat", off["lat"], "lng", off["lng"]).
+}
+
+FUNCTION _VTOL_FILL_MISSING_SERVOS {
+  PARAMETER raw_offsets.
+  IF VTOL_ENG_LIST:LENGTH = 0 { RETURN. }
+  IF raw_offsets:LENGTH <> VTOL_ENG_LIST:LENGTH { RETURN. }
+  LOCAL all_srv IS _VTOL_COLLECT_ALL_SERVO_MODULES().
+  IF all_srv:LENGTH = 0 { RETURN. }
+
+  LOCAL used IS LIST().
+  LOCAL i IS 0.
+  UNTIL i >= VTOL_SRV_LIST:LENGTH {
+    LOCAL srv_i IS VTOL_SRV_LIST[i].
+    IF srv_i <> 0 {
+      used:ADD(srv_i).
+      SET VTOL_SRV_AVAIL TO TRUE.
+    }
+    SET i TO i + 1.
+  }
+
+  SET i TO 0.
+  UNTIL i >= VTOL_ENG_LIST:LENGTH {
+    IF VTOL_SRV_LIST[i] = 0 {
+      LOCAL eng_off IS raw_offsets[i].
+      LOCAL best_idx IS -1.
+      LOCAL best_d2 IS 1.0E12.
+      LOCAL ai IS 0.
+      UNTIL ai >= all_srv:LENGTH {
+        LOCAL cand IS all_srv[ai].
+        LOCAL already_used IS _VTOL_LIST_HAS_MODULE(used, cand).
+        IF NOT already_used {
+          LOCAL cand_off IS _VTOL_SERVO_OFFSET_FROM_MOD(cand).
+          LOCAL d2 IS 1.0E12.
+          IF cand_off["valid"] {
+            LOCAL d_lat IS cand_off["lat"] - eng_off["lat"].
+            LOCAL d_lng IS cand_off["lng"] - eng_off["lng"].
+            SET d2 TO d_lat * d_lat + d_lng * d_lng.
+          }
+          IF d2 < best_d2 {
+            SET best_d2 TO d2.
+            SET best_idx TO ai.
+          }
+        }
+        SET ai TO ai + 1.
+      }
+      IF best_idx >= 0 {
+        LOCAL picked_srv IS all_srv[best_idx].
+        SET VTOL_SRV_LIST[i] TO picked_srv.
+        used:ADD(picked_srv).
+        SET VTOL_SRV_AVAIL TO TRUE.
+      }
+    }
+    SET i TO i + 1.
+  }
+}
+
 // ?????? Servo discovery via part tag ??????????????????????????????????????????????????????????????????????????????
 FUNCTION _VTOL_FIND_SERVO_MODULE {
   PARAMETER tag_name.
   LOCAL tagged IS SHIP:PARTSTAGGED(tag_name).
   IF tagged:LENGTH = 0 { RETURN 0. }
   LOCAL tagged_part IS tagged[0].
-  LOCAL smods IS tagged_part:MODULESNAMED("ModuleIRServo_v3").
-  IF smods:LENGTH = 0 { RETURN 0. }
-  RETURN smods[0].
+  LOCAL module_name_candidates IS _VTOL_SERVO_MODULE_NAMES().
+  LOCAL name_i IS 0.
+  UNTIL name_i >= module_name_candidates:LENGTH {
+    LOCAL cand_name IS module_name_candidates[name_i].
+    LOCAL smods IS tagged_part:MODULESNAMED(cand_name).
+    IF smods:LENGTH > 0 {
+      RETURN smods[0].
+    }
+    SET name_i TO name_i + 1.
+  }
+  LOCAL all_mods IS tagged_part:MODULES.
+  LOCAL mod_i IS 0.
+  UNTIL mod_i >= all_mods:LENGTH {
+    LOCAL mod_cand IS all_mods[mod_i].
+    IF _VTOL_IS_SERVO_MODULE(mod_cand) {
+      RETURN mod_cand.
+    }
+    SET mod_i TO mod_i + 1.
+  }
+  RETURN 0.
 }
 
 FUNCTION VTOL_IR_DIAG {
-  LOCAL all_srv IS SHIP:MODULESNAMED("ModuleIRServo_v3").
-  IF all_srv:LENGTH = 0 { RETURN "ModuleIRServo_v3: 0 found on vessel.". }
-  RETURN "ModuleIRServo_v3: " + all_srv:LENGTH + " servo(s) found.".
+  LOCAL names IS _VTOL_SERVO_MODULE_NAMES().
+  LOCAL total IS 0.
+  LOCAL i IS 0.
+  UNTIL i >= names:LENGTH {
+    LOCAL mods IS SHIP:MODULESNAMED(names[i]).
+    SET total TO total + mods:LENGTH.
+    SET i TO i + 1.
+  }
+  IF total = 0 {
+    RETURN "VTOL servo modules: 0 found (IR/robotics names checked).".
+  }
+  RETURN "VTOL servo modules found: " + total + ".".
 }
 
 // ?????? Part offset from CoM ?????????????????????????????????????????????????????????????????????????????????????????????????????????
@@ -211,6 +473,28 @@ FUNCTION VTOL_DISCOVER {
   }
   UNTIL VTOL_SRV_LIST:LENGTH >= VTOL_ENG_LIST:LENGTH {
     VTOL_SRV_LIST:ADD(0).
+  }
+  LOCAL srv_missing_before IS 0.
+  SET si TO 0.
+  UNTIL si >= VTOL_SRV_LIST:LENGTH {
+    IF VTOL_SRV_LIST[si] = 0 { SET srv_missing_before TO srv_missing_before + 1. }
+    SET si TO si + 1.
+  }
+  IF srv_missing_before > 0 {
+    _VTOL_FILL_MISSING_SERVOS(raw_offsets).
+    LOCAL srv_missing_after IS 0.
+    SET si TO 0.
+    UNTIL si >= VTOL_SRV_LIST:LENGTH {
+      IF VTOL_SRV_LIST[si] = 0 { SET srv_missing_after TO srv_missing_after + 1. }
+      SET si TO si + 1.
+    }
+    IF srv_missing_after < srv_missing_before {
+      IFC_SET_ALERT(
+        "VTOL: auto-bound " + (srv_missing_before - srv_missing_after) +
+        " untagged servo(s)",
+        "INFO"
+      ).
+    }
   }
 
   IF VTOL_ENG_LIST:LENGTH < 2 {
@@ -544,7 +828,7 @@ FUNCTION _VTOL_APPLY_ENGINES {
       IF vg_i < VTOL_SRV_LIST:LENGTH {
         LOCAL srv_i IS VTOL_SRV_LIST[vg_i].
         IF srv_i <> 0 {
-          SET alpha_i_deg TO srv_i:GETFIELD("current position").
+          SET alpha_i_deg TO _VTOL_SERVO_CURRENT_POS(srv_i, alpha_i_deg).
         }
       }
       SET alpha_i_deg TO CLAMP(alpha_i_deg, 0, 180).
@@ -723,8 +1007,8 @@ FUNCTION _VTOL_APPLY_SERVOS {
       LOCAL tgt_angle IS CLAMP(base_alpha_cmd + yaw_delta_deg, 0, 180).
       LOCAL spd IS srv_speed_base.
       IF yaw_mix <> 0 { SET spd TO srv_speed_yaw. }
-      srv_mod:SETFIELD("max speed", spd).
-      srv_mod:SETFIELD("target position", tgt_angle).
+      _VTOL_SERVO_SET_SPEED(srv_mod, spd).
+      _VTOL_SERVO_SET_TARGET(srv_mod, tgt_angle).
     }
     SET i TO i + 1.
   }
@@ -736,8 +1020,8 @@ FUNCTION _VTOL_STOP_SERVOS {
   UNTIL i >= VTOL_SRV_LIST:LENGTH {
     LOCAL srv_mod IS VTOL_SRV_LIST[i].
     IF srv_mod <> 0 {
-      LOCAL cur_pos IS srv_mod:GETFIELD("current position").
-      srv_mod:SETFIELD("target position", cur_pos).
+      LOCAL cur_pos IS _VTOL_SERVO_CURRENT_POS(srv_mod, VTOL_NACELLE_ALPHA_CMD).
+      _VTOL_SERVO_SET_TARGET(srv_mod, cur_pos).
     }
     SET i TO i + 1.
   }
@@ -1379,7 +1663,7 @@ FUNCTION _VTOL_UPDATE_NACELLE_SCHEDULE {
     UNTIL idx >= VTOL_SRV_LIST:LENGTH {
       LOCAL srv_entry IS VTOL_SRV_LIST[idx].
       IF srv_entry <> 0 {
-        LOCAL alpha_i_deg IS CLAMP(srv_entry:GETFIELD("current position"), 0, 180).
+        LOCAL alpha_i_deg IS _VTOL_SERVO_CURRENT_POS(srv_entry, estimate_alpha_deg).
         SET sum_alpha_deg TO sum_alpha_deg + alpha_i_deg.
         SET sum_lift_frac TO sum_lift_frac + CLAMP(SIN(alpha_i_deg), 0, 1).
         SET sum_count TO sum_count + 1.0.
