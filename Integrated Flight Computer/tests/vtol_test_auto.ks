@@ -38,13 +38,28 @@ GLOBAL AUTO_TAKEOFF_RUNAWAY_DELAY_S IS 20.0.
 GLOBAL AUTO_TAKEOFF_RUNAWAY_GNDSPD_MS IS 8.0.
 GLOBAL AUTO_TAKEOFF_TARGET_ALT_AGL_M IS 45.0.
 GLOBAL AUTO_TAKEOFF_TARGET_VS_MS IS 1.0.
-GLOBAL AUTO_HOVER_HOLD_TIME_S IS 20.0.
-GLOBAL AUTO_HOVER_POS_TOL_M IS 10.0.
-GLOBAL AUTO_HOVER_TIMEOUT_S IS 80.0.
-GLOBAL AUTO_LAND_DESCENT_RATE_MPS IS 0.8.
+GLOBAL AUTO_HOVER_HOLD_TIME_S IS 15.0.
+GLOBAL AUTO_HOVER_POS_TOL_M IS 1.0.
+GLOBAL AUTO_HOVER_TIMEOUT_S IS 60.0.
+GLOBAL AUTO_LAND_FAST_DESCENT_MPS IS 1.4.
+GLOBAL AUTO_LAND_GENTLE_DESCENT_MPS IS 0.35.
+GLOBAL AUTO_LAND_FLARE_START_AGL_M IS 10.0.
+GLOBAL AUTO_LAND_FLARE_END_AGL_M IS 3.0.
 GLOBAL AUTO_LAND_FINAL_AGL_M IS 0.6.
 GLOBAL AUTO_LAND_TOUCHDOWN_VS_MS IS 0.6.
 GLOBAL AUTO_LAND_TOUCHDOWN_GNDSPD_MS IS 1.2.
+GLOBAL AUTO_LAND_STATUS_TOUCHDOWN_AGL_M IS 2.0.
+GLOBAL AUTO_LAND_TOUCHDOWN_ARM_S IS 8.0.
+GLOBAL AUTO_LAND_FINAL_CONFIRM_AGL_M IS 0.25.
+GLOBAL AUTO_LAND_FINAL_CONFIRM_VS_MS IS 0.25.
+GLOBAL AUTO_LAND_FINAL_CONFIRM_GNDSPD_MS IS 0.6.
+GLOBAL AUTO_LAND_ALT_KP_FAST IS 0.50.
+GLOBAL AUTO_LAND_ALT_KP_GENTLE IS 0.24.
+GLOBAL AUTO_LAND_MAX_VS_FAST_MS IS 2.0.
+GLOBAL AUTO_LAND_MAX_VS_GENTLE_MS IS 0.45.
+GLOBAL AUTO_LAND_VS_KP IS 0.30.
+GLOBAL AUTO_LAND_VS_KI IS 0.05.
+GLOBAL AUTO_LAND_VS_CMD_DN_SLEW_MPS2 IS 1.8.
 GLOBAL AUTO_LAND_SETTLE_TIME_S IS 2.0.
 GLOBAL AUTO_LAND_TIMEOUT_S IS 120.0.
 GLOBAL AUTO_TAKEOFF_SETTLE_GNDSPD_MS IS 1.0.
@@ -309,19 +324,19 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_em_ff_max_lead",    0.20,
   "vtol_em_ff_lag_min_s",   0.10,
   "vtol_em_ff_alpha_min",   0.12,
-  "vtol_vel_kp",            0.15,
-  "vtol_vel_ki",            0.005,
-  "vtol_vel_int_lim",       2.0,
-  "vtol_vel_int_deadband",  0.5,
-  "vtol_max_horiz_accel",   1.5,
+  "vtol_vel_kp",            0.22,
+  "vtol_vel_ki",            0.010,
+  "vtol_vel_int_lim",       3.0,
+  "vtol_vel_int_deadband",  0.2,
+  "vtol_max_horiz_accel",   2.1,
   "vtol_max_horiz_speed",   8.0,
-  "vtol_max_fwd_pitch",     12.0,
-  "vtol_max_bank",          12.0,
-  "vtol_pos_kp",            0.08,
-  "vtol_pos_ki",            0.002,
-  "vtol_pos_int_lim",       3.0,
+  "vtol_max_fwd_pitch",     14.5,
+  "vtol_max_bank",          14.5,
+  "vtol_pos_kp",            0.16,
+  "vtol_pos_ki",            0.006,
+  "vtol_pos_int_lim",       5.5,
   "vtol_pos_int_radius",    50.0,
-  "vtol_pos_capture_radius",10.0,
+  "vtol_pos_capture_radius",4.0,
   "vtol_khv_capture_mps",   0.5,
   "vtol_physical_alloc_enabled", FALSE,
   "vtol_trans_start_ias",   8.0,
@@ -413,7 +428,8 @@ _AUTO_LOG_EVENT(VTOL_IR_DIAG()).
 ON ABORT {
   SET AUTO_RUNNING TO FALSE.
   _AUTO_LOG_EVENT("ABORT").
-  UNLOCK THROTTLE.
+  LOCK THROTTLE TO 0.
+  WAIT 0.1.
   VTOL_CLEAR_YAW_INPUT_OVERRIDE().
   SET SHIP:CONTROL:YAW TO 0.
   SET SHIP:CONTROL:ROLL TO 0.
@@ -436,7 +452,10 @@ LOCAL hold_target_lat IS SHIP:LATITUDE.
 LOCAL hold_target_lng IS SHIP:LONGITUDE.
 LOCAL hold_target_hdg_deg IS _AUTO_COMPASS_HDG_NOW().
 LOCAL hover_target_alt_agl IS AUTO_TAKEOFF_TARGET_ALT_AGL_M.
+LOCAL land_cmd_agl_track IS hover_target_alt_agl.
 LOCAL land_touchdown_start_ut IS -1.
+LOCAL hover_on_target_start_ut IS -1.
+LOCAL land_timeout_logged IS FALSE.
 
 LOCAL desired_pitch_deg IS 0.0.
 LOCAL desired_bank_deg IS 0.0.
@@ -640,6 +659,7 @@ UNTIL NOT AUTO_RUNNING {
       SET VTOL_POS_INT_E TO 0.0.
       SET VTOL_VEL_INT_N TO 0.0.
       SET VTOL_VEL_INT_E TO 0.0.
+      SET hover_on_target_start_ut TO -1.
       _AUTO_SET_PHASE("HOVER_HOLD").
     }
   } ELSE IF AUTO_PHASE_NAME = "HOVER_HOLD" {
@@ -673,17 +693,70 @@ UNTIL NOT AUTO_RUNNING {
       SET VTOL_POS_INT_E TO 0.0.
     }
 
-    IF hover_settled AND phase_elapsed_s >= AUTO_HOVER_HOLD_TIME_S AND pos_err_for_phase_m <= AUTO_HOVER_POS_TOL_M {
+    LOCAL hover_on_target_now IS pos_err_for_phase_m <= AUTO_HOVER_POS_TOL_M.
+    IF hover_on_target_now {
+      IF hover_on_target_start_ut < 0 {
+        SET hover_on_target_start_ut TO cycle_now_ut.
+        _AUTO_LOG_EVENT("HOVER_TARGET_WINDOW_START").
+      }
+    } ELSE {
+      IF hover_on_target_start_ut >= 0 {
+        _AUTO_LOG_EVENT("HOVER_TARGET_WINDOW_RESET err_m=" + ROUND(pos_err_for_phase_m, 2)).
+      }
+      SET hover_on_target_start_ut TO -1.
+    }
+
+    LOCAL hover_on_target_hold_s IS 0.0.
+    IF hover_on_target_start_ut >= 0 {
+      SET hover_on_target_hold_s TO cycle_now_ut - hover_on_target_start_ut.
+    }
+
+    IF hover_on_target_hold_s >= AUTO_HOVER_HOLD_TIME_S {
+      _AUTO_LOG_EVENT("HOVER_TARGET_HOLD_COMPLETE").
+      SET land_cmd_agl_track TO agl_now_m.
       SET land_touchdown_start_ut TO -1.
+      SET land_timeout_logged TO FALSE.
       _AUTO_SET_PHASE("LAND_DESCENT").
     } ELSE IF phase_elapsed_s >= AUTO_HOVER_TIMEOUT_S {
       _AUTO_LOG_EVENT("HOVER_TIMEOUT_BEGIN_LAND").
+      SET hover_on_target_start_ut TO -1.
+      SET land_cmd_agl_track TO agl_now_m.
       SET land_touchdown_start_ut TO -1.
+      SET land_timeout_logged TO FALSE.
       _AUTO_SET_PHASE("LAND_DESCENT").
     }
   } ELSE IF AUTO_PHASE_NAME = "LAND_DESCENT" {
+    // Two-stage descent: faster high up, then gentle sink in the flare band.
+    LOCAL flare_denom_m IS AUTO_LAND_FLARE_START_AGL_M - AUTO_LAND_FLARE_END_AGL_M.
+    IF flare_denom_m < 0.5 { SET flare_denom_m TO 0.5. }
+    LOCAL flare_blend IS CLAMP((agl_now_m - AUTO_LAND_FLARE_END_AGL_M) / flare_denom_m, 0, 1).
+    LOCAL land_descent_rate_mps IS AUTO_LAND_GENTLE_DESCENT_MPS +
+      (AUTO_LAND_FAST_DESCENT_MPS - AUTO_LAND_GENTLE_DESCENT_MPS) * flare_blend.
+    LOCAL land_alt_kp_use IS AUTO_LAND_ALT_KP_GENTLE +
+      (AUTO_LAND_ALT_KP_FAST - AUTO_LAND_ALT_KP_GENTLE) * flare_blend.
+    LOCAL land_max_vs_use IS AUTO_LAND_MAX_VS_GENTLE_MS +
+      (AUTO_LAND_MAX_VS_FAST_MS - AUTO_LAND_MAX_VS_GENTLE_MS) * flare_blend.
+    IF land_descent_rate_mps < 0.15 { SET land_descent_rate_mps TO 0.15. }
+    IF land_alt_kp_use < 0.05 { SET land_alt_kp_use TO 0.05. }
+    IF land_max_vs_use < 0.25 { SET land_max_vs_use TO 0.25. }
+
+    // Strengthen VS loop in landing so it tracks descent command instead of hovering.
+    SET ACTIVE_AIRCRAFT["vtol_alt_kp"] TO land_alt_kp_use.
+    SET ACTIVE_AIRCRAFT["vtol_max_vs"] TO land_max_vs_use.
+    SET ACTIVE_AIRCRAFT["vtol_vs_kp"] TO AUTO_LAND_VS_KP.
+    SET ACTIVE_AIRCRAFT["vtol_vs_ki"] TO AUTO_LAND_VS_KI.
+    SET ACTIVE_AIRCRAFT["vtol_vs_cmd_dn_slew_mps2"] TO AUTO_LAND_VS_CMD_DN_SLEW_MPS2.
+
+    // Integrate landing altitude schedule so flare-rate changes are smooth.
+    SET land_cmd_agl_track TO land_cmd_agl_track - land_descent_rate_mps * IFC_ACTUAL_DT.
+    IF land_cmd_agl_track < AUTO_LAND_FINAL_AGL_M {
+      SET land_cmd_agl_track TO AUTO_LAND_FINAL_AGL_M.
+    }
+
     SET VTOL_ALT_HOLD TO TRUE.
-    LOCAL land_cmd_agl IS hover_target_alt_agl - AUTO_LAND_DESCENT_RATE_MPS * phase_elapsed_s.
+    LOCAL land_err_margin_m IS land_descent_rate_mps / land_alt_kp_use.
+    IF land_err_margin_m < 0.8 { SET land_err_margin_m TO 0.8. }
+    LOCAL land_cmd_agl IS MIN(land_cmd_agl_track, agl_now_m - land_err_margin_m).
     IF land_cmd_agl < AUTO_LAND_FINAL_AGL_M { SET land_cmd_agl TO AUTO_LAND_FINAL_AGL_M. }
     SET VTOL_ALT_CMD TO land_cmd_agl.
     SET VTOL_VEL_HOLD_ACTIVE TO TRUE.
@@ -697,29 +770,63 @@ UNTIL NOT AUTO_RUNNING {
 
     LOCAL touchdown_detected IS FALSE.
     LOCAL ship_status IS "".
+    LOCAL touchdown_status_based IS FALSE.
+    LOCAL touchdown_kinematic IS FALSE.
+    LOCAL grounded_confirmed IS FALSE.
     IF SHIP:HASSUFFIX("STATUS") {
       SET ship_status TO SHIP:STATUS.
     }
-    IF ship_status = "LANDED" OR ship_status = "SPLASHED" OR ship_status = "PRELAUNCH" {
-      SET touchdown_detected TO TRUE.
-    } ELSE IF agl_now_m <= AUTO_LAND_FINAL_AGL_M + 0.35 AND
-       ABS(SHIP:VERTICALSPEED) <= AUTO_LAND_TOUCHDOWN_VS_MS AND
-       SHIP:GROUNDSPEED <= AUTO_LAND_TOUCHDOWN_GNDSPD_MS {
-      SET touchdown_detected TO TRUE.
+    IF phase_elapsed_s >= AUTO_LAND_TOUCHDOWN_ARM_S {
+      IF ship_status = "LANDED" OR ship_status = "SPLASHED" {
+        IF agl_now_m <= AUTO_LAND_STATUS_TOUCHDOWN_AGL_M AND
+           SHIP:GROUNDSPEED <= AUTO_LAND_TOUCHDOWN_GNDSPD_MS * 1.5 {
+          SET touchdown_status_based TO TRUE.
+        } ELSE IF agl_now_m > AUTO_LAND_STATUS_TOUCHDOWN_AGL_M + 5 {
+          _AUTO_LOG_EVENT(
+            "LAND_STATUS_HIGH_AGL status=" + ship_status +
+            " agl_m=" + ROUND(agl_now_m, 2)
+          ).
+        }
+      }
+      IF agl_now_m <= AUTO_LAND_FINAL_AGL_M + 0.35 AND
+         ABS(SHIP:VERTICALSPEED) <= AUTO_LAND_TOUCHDOWN_VS_MS AND
+         SHIP:GROUNDSPEED <= AUTO_LAND_TOUCHDOWN_GNDSPD_MS {
+        SET touchdown_kinematic TO TRUE.
+      }
     }
-    IF touchdown_detected {
+    IF ship_status = "LANDED" OR ship_status = "SPLASHED" OR ship_status = "PRELAUNCH" {
+      SET grounded_confirmed TO TRUE.
+    } ELSE IF agl_now_m <= AUTO_LAND_FINAL_CONFIRM_AGL_M AND
+       ABS(SHIP:VERTICALSPEED) <= AUTO_LAND_FINAL_CONFIRM_VS_MS AND
+       SHIP:GROUNDSPEED <= AUTO_LAND_FINAL_CONFIRM_GNDSPD_MS {
+      SET grounded_confirmed TO TRUE.
+    }
+
+    SET touchdown_detected TO touchdown_status_based OR touchdown_kinematic.
+    IF touchdown_detected AND grounded_confirmed {
       IF land_touchdown_start_ut < 0 {
         SET land_touchdown_start_ut TO cycle_now_ut.
       } ELSE IF cycle_now_ut - land_touchdown_start_ut >= AUTO_LAND_SETTLE_TIME_S {
         _AUTO_LOG_EVENT("LANDED").
+        // Explicit shutdown state: cut throttle and release control loops.
+        LOCK THROTTLE TO 0.
+        SET VTOL_ALT_HOLD TO FALSE.
+        SET VTOL_VEL_HOLD_ACTIVE TO FALSE.
+        SET VTOL_KHV_ACTIVE TO FALSE.
+        SET VTOL_POS_HOLD_ACTIVE TO FALSE.
+        SET VTOL_TRANS_ACTIVE TO FALSE.
         SET AUTO_RUNNING TO FALSE.
       }
     } ELSE {
       SET land_touchdown_start_ut TO -1.
     }
     IF phase_elapsed_s >= AUTO_LAND_TIMEOUT_S {
-      _AUTO_LOG_EVENT("LAND_TIMEOUT").
-      SET AUTO_RUNNING TO FALSE.
+      IF NOT land_timeout_logged {
+        _AUTO_LOG_EVENT("LAND_TIMEOUT_CONTINUE_FOR_TOUCHDOWN").
+        SET land_timeout_logged TO TRUE.
+      }
+      // Keep descending; do not terminate until grounded.
+      SET land_cmd_agl_track TO AUTO_LAND_FINAL_AGL_M.
     }
   } ELSE {
     _AUTO_LOG_EVENT("UNKNOWN_PHASE_" + AUTO_PHASE_NAME).
@@ -908,12 +1015,13 @@ UNTIL NOT AUTO_RUNNING {
 
 _AUTO_LOG_EVENT("COMPLETE").
 LOG ("# end t=" + ROUND(TIME:SECONDS - AUTO_MISSION_START_UT, 2)) TO AUTO_LOG_FILE.
-UNLOCK THROTTLE.
+LOCK THROTTLE TO 0.
 VTOL_CLEAR_YAW_INPUT_OVERRIDE().
 SET SHIP:CONTROL:YAW TO 0.
 SET SHIP:CONTROL:ROLL TO 0.
 SET SHIP:CONTROL:PITCH TO 0.
 VTOL_RELEASE().
+WAIT 0.1.
 CLEARSCREEN.
 PRINT "VTOL AUTO TEST COMPLETE".
 PRINT "Log: " + AUTO_LOG_FILE.
