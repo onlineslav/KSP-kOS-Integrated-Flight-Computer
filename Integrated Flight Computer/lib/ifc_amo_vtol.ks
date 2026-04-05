@@ -1675,12 +1675,14 @@ FUNCTION VTOL_TICK_PREARM {
       -pitch_rate_cmd_max_degs,
        pitch_rate_cmd_max_degs
     ).
-    LOCAL pitch_p_term IS pitch_err * pitch_att2rate_kp * pitch_rate_kp.
-    LOCAL pitch_i_term IS VTOL_LEVEL_PITCH_INT * pitch_att2rate_ki * pitch_rate_kp.
-    LOCAL pitch_d_term IS pitch_rate_degs * pitch_rate_kp.
-    LOCAL pitch_unsat IS (pitch_rate_degs - pitch_rate_cmd) * pitch_rate_kp.
-    LOCAL pitch_at_hi IS pitch_unsat >= pitch_cap AND pitch_err > 0.
-    LOCAL pitch_at_lo IS pitch_unsat <= -pitch_cap AND pitch_err < 0.
+    LOCAL pitch_p_term IS pitch_rate_cmd_p * pitch_rate_kp.
+    LOCAL pitch_i_term IS pitch_rate_cmd_i * pitch_rate_kp.
+    LOCAL pitch_d_term IS -pitch_rate_degs * pitch_rate_kp.
+    // Pitch loop sign convention matches roll loop:
+    // positive (nose-down) rate command should increase positive pitch_cmd.
+    LOCAL pitch_unsat IS (pitch_rate_cmd - pitch_rate_degs) * pitch_rate_kp.
+    LOCAL pitch_at_hi IS pitch_unsat >= pitch_cap AND pitch_err < 0.
+    LOCAL pitch_at_lo IS pitch_unsat <= -pitch_cap AND pitch_err > 0.
     IF NOT truly_airborne {
       SET VTOL_LEVEL_PITCH_INT TO 0.
     } ELSE IF alloc_limited_prev OR lag_limited_prev OR pitch_at_hi OR pitch_at_lo {
@@ -1699,10 +1701,10 @@ FUNCTION VTOL_TICK_PREARM {
          pitch_rate_cmd_max_degs
       ).
     }
-    SET pitch_p_term TO pitch_err * pitch_att2rate_kp * pitch_rate_kp.
-    SET pitch_i_term TO VTOL_LEVEL_PITCH_INT * pitch_att2rate_ki * pitch_rate_kp.
-    SET pitch_d_term TO pitch_rate_degs * pitch_rate_kp.
-    SET pitch_unsat TO (pitch_rate_degs - pitch_rate_cmd) * pitch_rate_kp.
+    SET pitch_p_term TO pitch_rate_cmd_p * pitch_rate_kp.
+    SET pitch_i_term TO pitch_rate_cmd_i * pitch_rate_kp.
+    SET pitch_d_term TO -pitch_rate_degs * pitch_rate_kp.
+    SET pitch_unsat TO (pitch_rate_cmd - pitch_rate_degs) * pitch_rate_kp.
     // Positive pitch-rate acceleration (nose-up accelerating) must drive a
     // negative correction with pitch_mix_sign=+1, so use -q_dot*Kd.
     LOCAL pitch_d_accel_cmd IS -VTOL_RATE_Q_DOT_FILT * kd_pitch_accel_use.
@@ -1827,7 +1829,7 @@ FUNCTION VTOL_TICK_PREARM {
       -roll_rate_u_degs * upset_roll_rate_kp,
       -upset_cmd_roll_max, upset_cmd_roll_max).
     SET pitch_cmd TO CLAMP(
-      pitch_rate_u_degs * upset_pitch_rate_kp,
+      -pitch_rate_u_degs * upset_pitch_rate_kp,
       -upset_cmd_pitch_max, upset_cmd_pitch_max).
   }
   SET VTOL_DIAG_CMD_ROLL_POSTUPSET TO roll_cmd.

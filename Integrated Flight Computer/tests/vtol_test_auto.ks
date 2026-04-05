@@ -36,13 +36,15 @@ GLOBAL AUTO_PHASE_NAME IS "INIT".
 GLOBAL AUTO_PHASE_START_UT IS 0.
 GLOBAL AUTO_MISSION_START_UT IS 0.
 GLOBAL AUTO_LAST_LOG_UT IS 0.
-GLOBAL AUTO_LOG_PERIOD IS 0.2.
+GLOBAL AUTO_LOG_PERIOD IS 0.5.
 GLOBAL AUTO_LAST_DISPLAY_UT IS 0.
-GLOBAL AUTO_DISPLAY_PERIOD IS 0.2.
+GLOBAL AUTO_DISPLAY_PERIOD IS 0.5.
 GLOBAL AUTO_ABORT_GUARDS_ENABLED IS FALSE.
 GLOBAL AUTO_TAKEOFF_TIMEOUT_S IS 90.0.
 GLOBAL AUTO_TAKEOFF_RUNAWAY_DELAY_S IS 20.0.
 GLOBAL AUTO_TAKEOFF_RUNAWAY_GNDSPD_MS IS 8.0.
+GLOBAL AUTO_TAKEOFF_TARGET_ALT_AGL_M IS 45.0.
+GLOBAL AUTO_TAKEOFF_TARGET_VS_MS IS 1.0.
 
 FUNCTION _AUTO_CFG_NUM {
   PARAMETER key_name, fallback_val.
@@ -174,8 +176,8 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_upset_engine_limit_floor", 0.02,
   "vtol_upset_guard_agl_m",     20.0,
   "vtol_upset_guard_thr_min",   0.55,
-  "vtol_rate_kd_roll_accel",    0.02,
-  "vtol_rate_kd_pitch_accel",   0.02,
+  "vtol_rate_kd_roll_accel",    0.012,
+  "vtol_rate_kd_pitch_accel",   0.012,
   "vtol_rate_p_alpha",          0.70,
   "vtol_rate_q_alpha",          0.70,
   "vtol_rate_pdot_alpha",       0.35,
@@ -196,10 +198,10 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_trim_active_bank_max",  8.0,
   "vtol_trim_active_roll_rate_max", 16.0,
   "vtol_static_trim_base_min",  0.23,
-  "vtol_vs_kp",             0.30,
-  "vtol_vs_ki",             0.04,
-  "vtol_vs_cmd_up_slew_mps2", 1.0,
-  "vtol_vs_cmd_dn_slew_mps2", 1.4,
+  "vtol_vs_kp",             0.18,
+  "vtol_vs_ki",             0.02,
+  "vtol_vs_cmd_up_slew_mps2", 0.7,
+  "vtol_vs_cmd_dn_slew_mps2", 1.0,
   "vtol_vs_cmd_lag_ref_s",    0.8,
   "vtol_vs_cmd_slew_min_scale", 0.35,
   "vtol_vs_gain_lag_ref_s",   0.8,
@@ -208,13 +210,13 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_vs_aw_alpha_min",     0.95,
   "vtol_vs_aw_lag_s",         0.60,
   "vtol_vs_aw_eff_err_min",   0.05,
-  "vtol_vs_i_unwind_per_s",   1.8,
+  "vtol_vs_i_unwind_per_s",   2.2,
   "vtol_max_vs",            1.0,
-  "vtol_collective_max",    0.86,
-  "vtol_collective_up_slew_per_s", 0.35,
-  "vtol_collective_dn_slew_per_s", 3.00,
-  "vtol_alt_kp",            0.25,
-  "vtol_hover_collective",  0.77,
+  "vtol_collective_max",    0.90,
+  "vtol_collective_up_slew_per_s", 0.22,
+  "vtol_collective_dn_slew_per_s", 0.85,
+  "vtol_alt_kp",            0.20,
+  "vtol_hover_collective",  0.75,
   "vtol_test_fixed_collective_enabled", FALSE,
   "vtol_test_fixed_collective", 0.77,
   "vtol_em_ff_enabled",     TRUE,
@@ -344,14 +346,20 @@ UNTIL NOT AUTO_RUNNING {
 
   IF AUTO_PHASE_NAME = "TAKEOFF_CLIMB" {
     SET VTOL_ALT_HOLD TO TRUE.
-    SET VTOL_ALT_CMD TO 45.0.
+    LOCAL takeoff_alt_kp_cfg IS _AUTO_CFG_NUM("vtol_alt_kp", 0.20).
+    IF takeoff_alt_kp_cfg < 0.05 {
+      SET takeoff_alt_kp_cfg TO 0.05.
+    }
+    LOCAL takeoff_cmd_lead_m IS AUTO_TAKEOFF_TARGET_VS_MS / takeoff_alt_kp_cfg.
+    SET takeoff_cmd_lead_m TO CLAMP(takeoff_cmd_lead_m, 1.0, 12.0).
+    SET VTOL_ALT_CMD TO MIN(AUTO_TAKEOFF_TARGET_ALT_AGL_M, agl_now_m + takeoff_cmd_lead_m).
     // Keep takeoff as a pure vertical profile; horizontal hold engages later.
     SET VTOL_VEL_HOLD_ACTIVE TO FALSE.
     SET VTOL_KHV_ACTIVE TO FALSE.
     SET VTOL_POS_HOLD_ACTIVE TO FALSE.
     SET VTOL_TRANS_ACTIVE TO FALSE.
     SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO FALSE.
-    SET thr_input_use TO 0.62.
+    SET thr_input_use TO 1.0.
     LOCAL takeoff_abort_triggered IS FALSE.
     IF AUTO_ABORT_GUARDS_ENABLED {
       IF phase_elapsed_s > AUTO_TAKEOFF_TIMEOUT_S {
@@ -367,7 +375,7 @@ UNTIL NOT AUTO_RUNNING {
       }
     }
     IF NOT takeoff_abort_triggered AND
-       agl_now_m >= 44 AND
+       agl_now_m >= AUTO_TAKEOFF_TARGET_ALT_AGL_M - 1.0 AND
        ABS(SHIP:VERTICALSPEED) <= 0.8 AND
        NOT VTOL_UPSET_ACTIVE {
       _AUTO_SET_PHASE("HOVER_BASELINE").
@@ -511,25 +519,31 @@ UNTIL NOT AUTO_RUNNING {
     SET desired_pitch_deg TO VTOL_THETA_CMD.
   }
 
-  LOCAL facing_fore_vec IS SHIP:FACING:FOREVECTOR.
-  LOCAL facing_star_vec IS SHIP:FACING:STARVECTOR.
-  LOCAL up_vec_now IS SHIP:UP:VECTOR.
-  LOCAL ang_vel_vec IS SHIP:ANGULARVEL.
-
-  LOCAL pitch_now_deg IS 90 - VANG(facing_fore_vec, up_vec_now).
-  LOCAL bank_now_deg IS ARCSIN(CLAMP(-VDOT(facing_star_vec, up_vec_now), -1, 1)).
-  LOCAL roll_rate_now_dps IS -VDOT(ang_vel_vec, facing_fore_vec) * (180 / CONSTANT:PI).
-  LOCAL pitch_rate_now_dps IS VDOT(ang_vel_vec, facing_star_vec) * (180 / CONSTANT:PI).
+  LOCAL display_due IS cycle_now_ut - AUTO_LAST_DISPLAY_UT >= AUTO_DISPLAY_PERIOD.
+  LOCAL log_due IS cycle_now_ut - AUTO_LAST_LOG_UT >= AUTO_LOG_PERIOD.
+  LOCAL pitch_now_deg IS 0.0.
+  LOCAL bank_now_deg IS 0.0.
+  LOCAL roll_rate_now_dps IS 0.0.
+  LOCAL pitch_rate_now_dps IS 0.0.
+  LOCAL pos_err_dist_now_m IS 0.0.
+  IF display_due OR log_due {
+    LOCAL facing_fore_vec IS SHIP:FACING:FOREVECTOR.
+    LOCAL facing_star_vec IS SHIP:FACING:STARVECTOR.
+    LOCAL up_vec_now IS SHIP:UP:VECTOR.
+    LOCAL ang_vel_vec IS SHIP:ANGULARVEL.
+    SET pitch_now_deg TO 90 - VANG(facing_fore_vec, up_vec_now).
+    SET bank_now_deg TO ARCSIN(CLAMP(-VDOT(facing_star_vec, up_vec_now), -1, 1)).
+    SET roll_rate_now_dps TO -VDOT(ang_vel_vec, facing_fore_vec) * (180 / CONSTANT:PI).
+    SET pitch_rate_now_dps TO VDOT(ang_vel_vec, facing_star_vec) * (180 / CONSTANT:PI).
+    LOCAL tgt_geo_now IS LATLNG(VTOL_TARGET_LAT, VTOL_TARGET_LNG).
+    LOCAL ship_geo_now IS SHIP:GEOPOSITION.
+    SET pos_err_dist_now_m TO GEO_DISTANCE(ship_geo_now, tgt_geo_now).
+  }
 
   LOCAL roll_cmd_out IS VTOL_CMD_ROLL_ACTUAL.
   LOCAL pitch_cmd_out IS VTOL_CMD_PITCH_ACTUAL.
 
-  LOCAL pos_err_dist_now_m IS 0.0.
-  LOCAL tgt_geo_now IS LATLNG(VTOL_TARGET_LAT, VTOL_TARGET_LNG).
-  LOCAL ship_geo_now IS SHIP:GEOPOSITION.
-  SET pos_err_dist_now_m TO GEO_DISTANCE(ship_geo_now, tgt_geo_now).
-
-  IF cycle_now_ut - AUTO_LAST_DISPLAY_UT >= AUTO_DISPLAY_PERIOD {
+  IF display_due {
     SET AUTO_LAST_DISPLAY_UT TO cycle_now_ut.
     CLEARSCREEN.
     PRINT "VTOL AUTO TEST" AT(0, 0).
@@ -556,7 +570,7 @@ UNTIL NOT AUTO_RUNNING {
     PRINT ("ABORT to stop") AT(0, 11).
   }
 
-  IF cycle_now_ut - AUTO_LAST_LOG_UT >= AUTO_LOG_PERIOD {
+  IF log_due {
     SET AUTO_LAST_LOG_UT TO cycle_now_ut.
     LOCAL csv_row IS LIST(
       ROUND(cycle_now_ut - AUTO_MISSION_START_UT, 3),
