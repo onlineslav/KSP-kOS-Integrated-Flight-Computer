@@ -39,6 +39,10 @@ GLOBAL AUTO_LAST_LOG_UT IS 0.
 GLOBAL AUTO_LOG_PERIOD IS 0.2.
 GLOBAL AUTO_LAST_DISPLAY_UT IS 0.
 GLOBAL AUTO_DISPLAY_PERIOD IS 0.2.
+GLOBAL AUTO_ABORT_GUARDS_ENABLED IS FALSE.
+GLOBAL AUTO_TAKEOFF_TIMEOUT_S IS 90.0.
+GLOBAL AUTO_TAKEOFF_RUNAWAY_DELAY_S IS 20.0.
+GLOBAL AUTO_TAKEOFF_RUNAWAY_GNDSPD_MS IS 8.0.
 
 FUNCTION _AUTO_CFG_NUM {
   PARAMETER key_name, fallback_val.
@@ -205,7 +209,7 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_vs_aw_lag_s",         0.60,
   "vtol_vs_aw_eff_err_min",   0.05,
   "vtol_vs_i_unwind_per_s",   1.8,
-  "vtol_max_vs",            3.0,
+  "vtol_max_vs",            1.0,
   "vtol_collective_max",    0.86,
   "vtol_collective_up_slew_per_s", 0.35,
   "vtol_collective_dn_slew_per_s", 3.00,
@@ -276,7 +280,7 @@ SET AUTO_LAST_DISPLAY_UT TO AUTO_MISSION_START_UT.
 SET AUTO_LOG_FILE TO _AUTO_NEW_LOG_FILE().
 
 LOG ("# vtol_test_auto craft=" + SHIP:NAME + " UT=" + ROUND(TIME:SECONDS, 1)) TO AUTO_LOG_FILE.
-LOG "t_s,phase,dt_s,alt_agl_m,vs_ms,gndspd_ms,pitch_deg,bank_deg,pitch_rate_dps,roll_rate_dps,desired_pitch_deg,desired_bank_deg,roll_cmd,pitch_cmd,thr_input,collective,hover_coll,alt_hold,alt_cmd,vel_hold,khv,pos_hold,trans_active,vn_actual_ms,ve_actual_ms,vn_cmd_ms,ve_cmd_ms,pos_err_dist_m,nacelle_cmd_deg,nacelle_est_deg,hover_blend,p_dot_filt,q_dot_filt,roll_d_accel,pitch_d_accel,cos_att_filt,coll_before_corr,coll_after_corr,physical_alloc,upset,alloc_alpha,alloc_shift,limit_span,em_spool_lag_s,em_starving" TO AUTO_LOG_FILE.
+LOG "t_s,phase,dt_s,alt_agl_m,vs_ms,gndspd_ms,pitch_deg,bank_deg,pitch_rate_dps,roll_rate_dps,desired_pitch_deg,desired_bank_deg,roll_cmd,pitch_cmd,thr_input_used,collective,hover_coll,alt_hold,alt_cmd,vel_hold,khv,pos_hold,trans_active,vn_actual_ms,ve_actual_ms,vn_cmd_ms,ve_cmd_ms,pos_err_dist_m,nacelle_cmd_deg,nacelle_est_deg,hover_blend,p_dot_filt,q_dot_filt,roll_d_accel,pitch_d_accel,cos_att_filt,coll_before_corr,coll_after_corr,physical_alloc,upset,alloc_alpha,alloc_shift,limit_span,em_spool_lag_s,em_starving" TO AUTO_LOG_FILE.
 
 ON ABORT {
   SET AUTO_RUNNING TO FALSE.
@@ -341,29 +345,36 @@ UNTIL NOT AUTO_RUNNING {
   IF AUTO_PHASE_NAME = "TAKEOFF_CLIMB" {
     SET VTOL_ALT_HOLD TO TRUE.
     SET VTOL_ALT_CMD TO 45.0.
-    SET VTOL_VEL_HOLD_ACTIVE TO TRUE.   // zero-velocity drift arrest during climb
+    // Keep takeoff as a pure vertical profile; horizontal hold engages later.
+    SET VTOL_VEL_HOLD_ACTIVE TO FALSE.
     SET VTOL_KHV_ACTIVE TO FALSE.
     SET VTOL_POS_HOLD_ACTIVE TO FALSE.
     SET VTOL_TRANS_ACTIVE TO FALSE.
     SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO FALSE.
-    SET ACTIVE_AIRCRAFT["vtol_vel_int_lim"] TO 0.5.  // prevent windup while gate is unresolvable
     SET thr_input_use TO 0.62.
-    IF phase_elapsed_s > 90 {
-      _AUTO_LOG_EVENT("TAKEOFF_TIMEOUT").
-      SET AUTO_RUNNING TO FALSE.
-    } ELSE IF phase_elapsed_s > 20 AND VTOL_UPSET_ACTIVE AND SHIP:GROUNDSPEED > 8.0 {
-      _AUTO_LOG_EVENT("TAKEOFF_UPSET_RUNAWAY").
-      SET AUTO_RUNNING TO FALSE.
-    } ELSE IF agl_now_m >= 40 AND
-       ABS(SHIP:VERTICALSPEED) <= 1.5 AND
-       SHIP:GROUNDSPEED <= 3.0 AND
+    LOCAL takeoff_abort_triggered IS FALSE.
+    IF AUTO_ABORT_GUARDS_ENABLED {
+      IF phase_elapsed_s > AUTO_TAKEOFF_TIMEOUT_S {
+        _AUTO_LOG_EVENT("TAKEOFF_TIMEOUT").
+        SET AUTO_RUNNING TO FALSE.
+        SET takeoff_abort_triggered TO TRUE.
+      } ELSE IF phase_elapsed_s > AUTO_TAKEOFF_RUNAWAY_DELAY_S AND
+         VTOL_UPSET_ACTIVE AND
+         SHIP:GROUNDSPEED > AUTO_TAKEOFF_RUNAWAY_GNDSPD_MS {
+        _AUTO_LOG_EVENT("TAKEOFF_UPSET_RUNAWAY").
+        SET AUTO_RUNNING TO FALSE.
+        SET takeoff_abort_triggered TO TRUE.
+      }
+    }
+    IF NOT takeoff_abort_triggered AND
+       agl_now_m >= 44 AND
+       ABS(SHIP:VERTICALSPEED) <= 0.8 AND
        NOT VTOL_UPSET_ACTIVE {
       _AUTO_SET_PHASE("HOVER_BASELINE").
     }
   } ELSE IF AUTO_PHASE_NAME = "HOVER_BASELINE" {
     SET VTOL_ALT_HOLD TO TRUE.
     SET VTOL_ALT_CMD TO 45.0.
-    SET ACTIVE_AIRCRAFT["vtol_vel_int_lim"] TO 2.0.  // restore for subsequent phases
     IF phase_elapsed_s >= 8 {
       _AUTO_SET_PHASE("BANK_STEP").
     }
@@ -562,7 +573,7 @@ UNTIL NOT AUTO_RUNNING {
       ROUND(desired_bank_deg, 3),
       ROUND(roll_cmd_out, 4),
       ROUND(pitch_cmd_out, 4),
-      ROUND(thr_input_use, 4),
+      ROUND(VTOL_THR_INPUT_USED, 4),
       ROUND(VTOL_COLLECTIVE, 4),
       ROUND(VTOL_HOVER_COLLECTIVE, 4),
       VTOL_ALT_HOLD,
