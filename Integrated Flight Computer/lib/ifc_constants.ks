@@ -528,6 +528,8 @@ GLOBAL VTOL_LEVEL_ON_GROUND_DEFAULT IS FALSE. // TRUE = allow auto-level while L
 GLOBAL VTOL_LEVEL_MIN_AGL_M IS 0.8. // min AGL for auto-level when ground-leveling is disabled
 GLOBAL VTOL_GROUND_CONTACT_AGL_M IS 1.5. // treat as ground-contact only below this AGL
 GLOBAL VTOL_GROUND_CONTACT_VS_MAX IS 0.7. // m/s; must also be below this VS to count as ground-contact
+GLOBAL VTOL_GROUND_LIFTOFF_AGL_M IS 0.8. // if status still reports LANDED, AGL above this implies airborne
+GLOBAL VTOL_GROUND_LIFTOFF_VS_MIN IS 0.35. // m/s upward VS confirming liftoff when status lags
 GLOBAL VTOL_STATIC_TRIM_DISCOVERY_DEFAULT IS TRUE. // TRUE = enable geometry-based static trim at discovery
 GLOBAL VTOL_STATIC_TRIM_BASE_MIN IS 0.23. // discovery trim base lower clamp; computed ~0.23 for forward engines ahead of CoM
 GLOBAL VTOL_DIFF_COLLECTIVE_MIN IS 0.12. // no roll/pitch differential below this collective
@@ -589,10 +591,14 @@ GLOBAL VTOL_VEL_KP IS 0.15. // horiz accel cmd per horizontal velocity error (m/
 GLOBAL VTOL_VEL_KI IS 0.005. // horiz accel cmd per integral velocity error
 GLOBAL VTOL_VEL_INT_LIM IS 2.0. // clamp for velocity integrators
 GLOBAL VTOL_VEL_INT_DEADBAND IS 0.5. // do not integrate horizontal velocity error inside this deadband
+GLOBAL VTOL_VEL_AW_ALPHA_MIN IS 0.95. // freeze/unwind horizontal velocity integrators when allocator authority is constrained
 GLOBAL VTOL_MAX_HORIZ_ACCEL IS 1.5. // max commanded horizontal acceleration
 GLOBAL VTOL_MAX_HORIZ_SPEED IS 8.0. // max commanded horizontal speed
 GLOBAL VTOL_MAX_FWD_PITCH IS 15.0. // max forward pitch command magnitude from velocity loop
 GLOBAL VTOL_MAX_BANK IS 15.0. // max bank command magnitude from velocity loop
+GLOBAL VTOL_VEL_G_EFF_MIN_SCALE IS 0.65. // lower bound on collective-based gravity-denominator scaling in velocity->attitude mapping
+GLOBAL VTOL_VEL_G_EFF_MAX_SCALE IS 1.35. // upper bound on collective-based gravity-denominator scaling in velocity->attitude mapping
+GLOBAL VTOL_VEL_G_EFF_MIN_HOVER_BLEND IS 0.35. // lower bound on hover-blend scaling in velocity->attitude mapping
 GLOBAL VTOL_VEL_GAIN_LAG_REF_S IS 0.8. // s spool-lag reference for velocity-loop gain scheduling
 GLOBAL VTOL_VEL_KP_MIN_SCALE IS 0.55. // lower bound on velocity proportional gain scale under high lag
 GLOBAL VTOL_VEL_KI_MIN_SCALE IS 0.35. // lower bound on velocity integral gain scale under high lag
@@ -603,13 +609,17 @@ GLOBAL VTOL_POS_KI IS 0.002. // position integrator gain
 GLOBAL VTOL_POS_INT_LIM IS 3.0. // clamp for position integrators
 GLOBAL VTOL_POS_INT_RADIUS IS 50.0. // only integrate position error inside this radius (m)
 GLOBAL VTOL_POS_CAPTURE_RADIUS IS 10.0. // decel schedule radius for position hold (m)
+GLOBAL VTOL_POS_AW_ALPHA_MIN IS 0.95. // freeze/unwind position integrators when allocator authority is constrained
+GLOBAL VTOL_OUTER_I_UNWIND_PER_S IS 1.5. // /s integrator bleed used by outer (pos/vel) loops while allocator-limited
+GLOBAL VTOL_POS_BW_RATIO_MAX IS 0.33. // cap position-loop proportional bandwidth as a fraction of velocity-loop proportional bandwidth
+GLOBAL VTOL_POS_KI_BW_RATIO_MAX IS 0.33. // cap position-loop integral bandwidth as a fraction of velocity-loop integral bandwidth
 GLOBAL VTOL_POS_GAIN_LAG_REF_S IS 0.8. // s spool-lag reference for position-loop gain scheduling
 GLOBAL VTOL_POS_KP_MIN_SCALE IS 0.65. // lower bound on position proportional gain scale under high lag
 GLOBAL VTOL_POS_KI_MIN_SCALE IS 0.45. // lower bound on position integral gain scale under high lag
 GLOBAL VTOL_POS_SPEED_MIN_SCALE IS 0.70. // lower bound on position-loop speed-command limit scale under high lag
 GLOBAL VTOL_POS_CAPTURE_MIN_SCALE IS 0.55. // lower bound used to expand capture radius under high lag
 GLOBAL VTOL_KHV_CAPTURE_MPS IS 0.5. // kill-horizontal-velocity completion threshold
-GLOBAL VTOL_PHYSICAL_ALLOC_ENABLED_DEFAULT IS FALSE. // TRUE enables arm-based physical allocation path
+GLOBAL VTOL_PHYSICAL_ALLOC_ENABLED_DEFAULT IS TRUE. // TRUE enables arm-based physical allocation path
 GLOBAL VTOL_INERTIA_RLS_ENABLED_DEFAULT IS TRUE. // TRUE enables online roll/pitch inertia estimation
 GLOBAL VTOL_INERTIA_RLS_ALLOW_GROUND_DEFAULT IS FALSE. // TRUE allows updates while LANDED/PRELAUNCH
 GLOBAL VTOL_INERTIA_RLS_FORGET_LAMBDA IS 0.998. // forgetting factor for slow mass-property tracking
@@ -621,6 +631,10 @@ GLOBAL VTOL_INERTIA_RLS_MAX_IAS IS 35.0. // inhibit updates above this IAS to re
 GLOBAL VTOL_INERTIA_RLS_I_INIT IS 15.0. // initial inertia estimate for both roll and pitch
 GLOBAL VTOL_INERTIA_RLS_I_MIN IS 0.05. // lower clamp for inertia estimate
 GLOBAL VTOL_INERTIA_RLS_I_MAX IS 5000.0. // upper clamp for inertia estimate
+GLOBAL VTOL_INERTIA_GAIN_SCHED_ENABLED_DEFAULT IS TRUE. // TRUE applies rate-loop gain normalization using online inertia estimates
+GLOBAL VTOL_INERTIA_GAIN_NOMINAL IS 15.0. // nominal inertia used as reference for rate-gain normalization
+GLOBAL VTOL_INERTIA_GAIN_MIN_SCALE IS 0.55. // minimum inertia-based multiplier applied to rate-loop gains
+GLOBAL VTOL_INERTIA_GAIN_MAX_SCALE IS 1.80. // maximum inertia-based multiplier applied to rate-loop gains
 GLOBAL VTOL_TRANS_START_IAS IS 30.0. // IAS where nacelle transition begins (m/s)
 GLOBAL VTOL_TRANS_END_IAS IS 80.0. // IAS where nacelle transition reaches cruise angle (m/s)
 GLOBAL VTOL_NACELLE_SLEW_DPS IS 5.0. // max collective nacelle-angle slew rate (deg/s)

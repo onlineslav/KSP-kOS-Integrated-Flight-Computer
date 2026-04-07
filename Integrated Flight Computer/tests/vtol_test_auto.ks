@@ -373,7 +373,7 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_pos_speed_min_scale",0.88,
   "vtol_pos_capture_min_scale",0.88,
   "vtol_khv_capture_mps",   0.35,
-  "vtol_physical_alloc_enabled", FALSE,
+  "vtol_physical_alloc_enabled", TRUE,
   "vtol_trans_start_ias",   8.0,
   "vtol_trans_end_ias",     22.0,
   "vtol_nacelle_slew_dps",  5.0,
@@ -668,7 +668,7 @@ UNTIL NOT AUTO_RUNNING {
     SET VTOL_TARGET_LAT TO hold_target_lat.
     SET VTOL_TARGET_LNG TO hold_target_lng.
     SET VTOL_TARGET_ALT TO AUTO_TAKEOFF_TARGET_ALT_AGL_M.
-    SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO FALSE.
+    SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO TRUE.
     SET ACTIVE_AIRCRAFT["vtol_diff_collective_min"] TO 0.12.
     SET ACTIVE_AIRCRAFT["vtol_engine_limit_floor"] TO 0.10.
     LOCAL takeoff_abort_triggered IS FALSE.
@@ -710,7 +710,7 @@ UNTIL NOT AUTO_RUNNING {
     SET VTOL_TARGET_LAT TO hold_target_lat.
     SET VTOL_TARGET_LNG TO hold_target_lng.
     SET VTOL_TARGET_ALT TO hover_target_alt_agl.
-    SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO FALSE.
+    SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO TRUE.
     SET ACTIVE_AIRCRAFT["vtol_diff_collective_min"] TO 0.12.
     SET ACTIVE_AIRCRAFT["vtol_engine_limit_floor"] TO 0.10.
 
@@ -913,7 +913,7 @@ UNTIL NOT AUTO_RUNNING {
     SET VTOL_TARGET_LAT TO hold_target_lat.
     SET VTOL_TARGET_LNG TO hold_target_lng.
     SET VTOL_TARGET_ALT TO land_cmd_agl.
-    SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO FALSE.
+    SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO TRUE.
 
     LOCAL touchdown_detected IS FALSE.
     LOCAL ship_status IS "".

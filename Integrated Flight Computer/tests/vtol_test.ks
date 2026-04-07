@@ -190,7 +190,7 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_pos_int_radius",    50.0,
   "vtol_pos_capture_radius",10.0,
   "vtol_khv_capture_mps",   0.5,
-  "vtol_physical_alloc_enabled", FALSE,
+  "vtol_physical_alloc_enabled", TRUE,
   "vtol_trans_start_ias",   30.0,
   "vtol_trans_end_ias",     80.0,
   "vtol_nacelle_slew_dps",  5.0,
