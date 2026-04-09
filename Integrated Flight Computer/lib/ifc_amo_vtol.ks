@@ -2484,8 +2484,8 @@ FUNCTION VTOL_TICK_PREARM {
   SET pitch_att2rate_kp TO pitch_att2rate_kp * CLAMP(level_gain_scale, level_kp_min_scale, 1.0).
   SET roll_att2rate_ki TO roll_att2rate_ki * CLAMP(level_gain_scale, level_ki_min_scale, 1.0).
   SET pitch_att2rate_ki TO pitch_att2rate_ki * CLAMP(level_gain_scale, level_ki_min_scale, 1.0).
-  SET roll_rate_kp TO roll_rate_kp * CLAMP(level_gain_scale, level_kd_min_scale, 1.0).
-  SET pitch_rate_kp TO pitch_rate_kp * CLAMP(level_gain_scale, level_kd_min_scale, 1.0).
+  SET roll_rate_kp TO roll_rate_kp * CLAMP(level_gain_scale, level_kp_min_scale, 1.0).
+  SET pitch_rate_kp TO pitch_rate_kp * CLAMP(level_gain_scale, level_kp_min_scale, 1.0).
   LOCAL inertia_gain_sched_enabled IS _AMO_CFG_BOOL(
     "vtol_inertia_gain_sched_enabled",
     VTOL_INERTIA_GAIN_SCHED_ENABLED_DEFAULT

@@ -107,6 +107,17 @@ GLOBAL AUTO_YAW_CAS_RATE_DB_DPS IS 0.20.
 GLOBAL AUTO_YAW_CAS_HDG_INT_LIM IS 40.0.
 GLOBAL AUTO_YAW_CAS_RATE_INT_LIM IS 8.0.
 
+// --- Transit maneuver parameters ---
+GLOBAL AUTO_TRANSIT_DIST_M IS 50.0.          // distance to translate (m)
+GLOBAL AUTO_TRANSIT_HDG_DEG IS 90.0.         // bearing to translate along (deg, 90 = East)
+GLOBAL AUTO_TRANSIT_CAPTURE_M IS 3.0.        // waypoint capture radius (m)
+GLOBAL AUTO_TRANSIT_SETTLE_S IS 5.0.         // dwell at waypoint before next phase (s)
+GLOBAL AUTO_TRANSIT_TIMEOUT_S IS 90.0.       // transit phase timeout (s)
+GLOBAL AUTO_TURN_HDG_TOL_DEG IS 5.0.         // heading error band for turn-complete (deg)
+GLOBAL AUTO_TURN_RATE_TOL_DPS IS 1.0.        // yaw rate threshold for turn-complete (dps)
+GLOBAL AUTO_TURN_SETTLE_S IS 3.0.            // hold time after heading captured (s)
+GLOBAL AUTO_TURN_TIMEOUT_S IS 45.0.          // turn phase timeout (s)
+
 FUNCTION _AUTO_CFG_NUM {
   PARAMETER key_name, fallback_val.
   IF ACTIVE_AIRCRAFT <> 0 AND ACTIVE_AIRCRAFT:HASKEY(key_name) {
@@ -494,6 +505,15 @@ LOCAL hover_pos_mode_latched IS FALSE.
 LOCAL land_descent_gate_open IS FALSE.
 LOCAL land_timeout_logged IS FALSE.
 
+// Transit maneuver state (set when HOVER_HOLD completes).
+LOCAL origin_lat IS hold_target_lat.
+LOCAL origin_lng IS hold_target_lng.
+LOCAL origin_hdg_deg IS hold_target_hdg_deg.
+LOCAL transit_wp_lat IS 0.0.
+LOCAL transit_wp_lng IS 0.0.
+LOCAL transit_on_wp_start_ut IS -1.
+LOCAL turn_on_hdg_start_ut IS -1.
+
 LOCAL desired_pitch_deg IS 0.0.
 LOCAL desired_bank_deg IS 0.0.
 LOCAL desired_vn_ms IS 0.0.
@@ -556,6 +576,10 @@ UNTIL NOT AUTO_RUNNING {
   LOCAL yaw_hold_active IS FALSE.
   IF AUTO_PHASE_NAME = "TAKEOFF_CLIMB" OR
      AUTO_PHASE_NAME = "HOVER_HOLD" OR
+     AUTO_PHASE_NAME = "TRANSIT_EAST" OR
+     AUTO_PHASE_NAME = "TURN_AROUND" OR
+     AUTO_PHASE_NAME = "TRANSIT_RETURN" OR
+     AUTO_PHASE_NAME = "TURN_HOME" OR
      AUTO_PHASE_NAME = "LAND_DESCENT" {
     SET yaw_hold_active TO TRUE.
   }
@@ -762,23 +786,48 @@ UNTIL NOT AUTO_RUNNING {
 
     IF hover_on_target_hold_s >= AUTO_HOVER_HOLD_TIME_S {
       _AUTO_LOG_EVENT("HOVER_TARGET_HOLD_COMPLETE").
-      SET land_cmd_agl_track TO agl_now_m.
-      SET land_touchdown_start_ut TO -1.
-      SET land_descent_gate_open TO FALSE.
-      SET land_timeout_logged TO FALSE.
-      SET VTOL_VS_INTEGRAL TO 0.0.
-      SET VTOL_VS_CMD TO SHIP:VERTICALSPEED.
-      _AUTO_SET_PHASE("LAND_DESCENT").
+      // Latch origin so TRANSIT_RETURN and TURN_HOME can reference it.
+      SET origin_lat TO hold_target_lat.
+      SET origin_lng TO hold_target_lng.
+      SET origin_hdg_deg TO hold_target_hdg_deg.
+      LOCAL transit_dest IS GEO_DESTINATION(
+        LATLNG(hold_target_lat, hold_target_lng),
+        AUTO_TRANSIT_HDG_DEG,
+        AUTO_TRANSIT_DIST_M
+      ).
+      SET transit_wp_lat TO transit_dest:LAT.
+      SET transit_wp_lng TO transit_dest:LNG.
+      SET hold_target_lat TO transit_wp_lat.
+      SET hold_target_lng TO transit_wp_lng.
+      SET VTOL_POS_INT_N TO 0.0.
+      SET VTOL_POS_INT_E TO 0.0.
+      SET VTOL_VEL_INT_N TO 0.0.
+      SET VTOL_VEL_INT_E TO 0.0.
+      SET transit_on_wp_start_ut TO -1.
+      SET turn_on_hdg_start_ut TO -1.
+      _AUTO_SET_PHASE("TRANSIT_EAST").
     } ELSE IF phase_elapsed_s >= AUTO_HOVER_TIMEOUT_S {
-      _AUTO_LOG_EVENT("HOVER_TIMEOUT_BEGIN_LAND").
+      _AUTO_LOG_EVENT("HOVER_TIMEOUT_BEGIN_TRANSIT").
       SET hover_on_target_start_ut TO -1.
-      SET land_cmd_agl_track TO agl_now_m.
-      SET land_touchdown_start_ut TO -1.
-      SET land_descent_gate_open TO FALSE.
-      SET land_timeout_logged TO FALSE.
-      SET VTOL_VS_INTEGRAL TO 0.0.
-      SET VTOL_VS_CMD TO SHIP:VERTICALSPEED.
-      _AUTO_SET_PHASE("LAND_DESCENT").
+      SET origin_lat TO hold_target_lat.
+      SET origin_lng TO hold_target_lng.
+      SET origin_hdg_deg TO hold_target_hdg_deg.
+      LOCAL transit_dest_to IS GEO_DESTINATION(
+        LATLNG(hold_target_lat, hold_target_lng),
+        AUTO_TRANSIT_HDG_DEG,
+        AUTO_TRANSIT_DIST_M
+      ).
+      SET transit_wp_lat TO transit_dest_to:LAT.
+      SET transit_wp_lng TO transit_dest_to:LNG.
+      SET hold_target_lat TO transit_wp_lat.
+      SET hold_target_lng TO transit_wp_lng.
+      SET VTOL_POS_INT_N TO 0.0.
+      SET VTOL_POS_INT_E TO 0.0.
+      SET VTOL_VEL_INT_N TO 0.0.
+      SET VTOL_VEL_INT_E TO 0.0.
+      SET transit_on_wp_start_ut TO -1.
+      SET turn_on_hdg_start_ut TO -1.
+      _AUTO_SET_PHASE("TRANSIT_EAST").
     }
   } ELSE IF AUTO_PHASE_NAME = "LAND_DESCENT" {
     // Two-stage descent: faster high up, then gentle sink in the flare band.
@@ -977,6 +1026,169 @@ UNTIL NOT AUTO_RUNNING {
       // Keep descending; do not terminate until grounded.
       SET land_cmd_agl_track TO AUTO_LAND_FINAL_AGL_M.
     }
+  } ELSE IF AUTO_PHASE_NAME = "TRANSIT_EAST" {
+    // Fly to waypoint 50 m at AUTO_TRANSIT_HDG_DEG from the latch point.
+    SET VTOL_ALT_HOLD TO TRUE.
+    SET VTOL_ALT_CMD TO hover_target_alt_agl.
+    SET VTOL_VEL_HOLD_ACTIVE TO TRUE.
+    SET VTOL_KHV_ACTIVE TO FALSE.
+    SET VTOL_POS_HOLD_ACTIVE TO TRUE.
+    SET VTOL_TRANS_ACTIVE TO FALSE.
+    SET VTOL_TARGET_LAT TO hold_target_lat.
+    SET VTOL_TARGET_LNG TO hold_target_lng.
+    SET VTOL_TARGET_ALT TO hover_target_alt_agl.
+    SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO TRUE.
+    SET ACTIVE_AIRCRAFT["vtol_diff_collective_min"] TO 0.12.
+    SET ACTIVE_AIRCRAFT["vtol_engine_limit_floor"] TO 0.10.
+
+    IF pos_err_for_phase_m <= AUTO_TRANSIT_CAPTURE_M {
+      IF transit_on_wp_start_ut < 0 {
+        SET transit_on_wp_start_ut TO cycle_now_ut.
+        _AUTO_LOG_EVENT("TRANSIT_EAST_CAPTURE err_m=" + ROUND(pos_err_for_phase_m, 2)).
+      }
+    } ELSE {
+      SET transit_on_wp_start_ut TO -1.
+    }
+
+    LOCAL transit_e_hold_s IS 0.0.
+    IF transit_on_wp_start_ut >= 0 {
+      SET transit_e_hold_s TO cycle_now_ut - transit_on_wp_start_ut.
+    }
+
+    IF transit_e_hold_s >= AUTO_TRANSIT_SETTLE_S OR phase_elapsed_s >= AUTO_TRANSIT_TIMEOUT_S {
+      IF transit_e_hold_s >= AUTO_TRANSIT_SETTLE_S {
+        _AUTO_LOG_EVENT("TRANSIT_EAST_COMPLETE err_m=" + ROUND(pos_err_for_phase_m, 2)).
+      } ELSE {
+        _AUTO_LOG_EVENT("TRANSIT_EAST_TIMEOUT err_m=" + ROUND(pos_err_for_phase_m, 2)).
+      }
+      // Point back toward origin (180 deg from transit bearing).
+      SET hold_target_hdg_deg TO MOD(origin_hdg_deg + 180, 360).
+      SET turn_on_hdg_start_ut TO -1.
+      _AUTO_SET_PHASE("TURN_AROUND").
+    }
+
+  } ELSE IF AUTO_PHASE_NAME = "TURN_AROUND" {
+    // Hold at transit waypoint while rotating to face back toward origin.
+    SET VTOL_ALT_HOLD TO TRUE.
+    SET VTOL_ALT_CMD TO hover_target_alt_agl.
+    SET VTOL_VEL_HOLD_ACTIVE TO TRUE.
+    SET VTOL_KHV_ACTIVE TO FALSE.
+    SET VTOL_POS_HOLD_ACTIVE TO TRUE.
+    SET VTOL_TRANS_ACTIVE TO FALSE.
+    SET VTOL_TARGET_LAT TO hold_target_lat.
+    SET VTOL_TARGET_LNG TO hold_target_lng.
+    SET VTOL_TARGET_ALT TO hover_target_alt_agl.
+    SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO TRUE.
+    SET ACTIVE_AIRCRAFT["vtol_diff_collective_min"] TO 0.12.
+    SET ACTIVE_AIRCRAFT["vtol_engine_limit_floor"] TO 0.10.
+
+    IF ABS(yaw_err_deg) <= AUTO_TURN_HDG_TOL_DEG AND ABS(yaw_rate_dps) <= AUTO_TURN_RATE_TOL_DPS {
+      IF turn_on_hdg_start_ut < 0 {
+        SET turn_on_hdg_start_ut TO cycle_now_ut.
+        _AUTO_LOG_EVENT("TURN_AROUND_ON_HDG hdg=" + ROUND(yaw_hdg_now_deg, 1)).
+      }
+    } ELSE {
+      SET turn_on_hdg_start_ut TO -1.
+    }
+
+    LOCAL turn_a_hold_s IS 0.0.
+    IF turn_on_hdg_start_ut >= 0 {
+      SET turn_a_hold_s TO cycle_now_ut - turn_on_hdg_start_ut.
+    }
+
+    IF turn_a_hold_s >= AUTO_TURN_SETTLE_S OR phase_elapsed_s >= AUTO_TURN_TIMEOUT_S {
+      _AUTO_LOG_EVENT("TURN_AROUND_COMPLETE hdg=" + ROUND(yaw_hdg_now_deg, 1)).
+      SET hold_target_lat TO origin_lat.
+      SET hold_target_lng TO origin_lng.
+      SET transit_on_wp_start_ut TO -1.
+      SET VTOL_POS_INT_N TO 0.0.
+      SET VTOL_POS_INT_E TO 0.0.
+      SET VTOL_VEL_INT_N TO 0.0.
+      SET VTOL_VEL_INT_E TO 0.0.
+      _AUTO_SET_PHASE("TRANSIT_RETURN").
+    }
+
+  } ELSE IF AUTO_PHASE_NAME = "TRANSIT_RETURN" {
+    // Fly back to the original hover point.
+    SET VTOL_ALT_HOLD TO TRUE.
+    SET VTOL_ALT_CMD TO hover_target_alt_agl.
+    SET VTOL_VEL_HOLD_ACTIVE TO TRUE.
+    SET VTOL_KHV_ACTIVE TO FALSE.
+    SET VTOL_POS_HOLD_ACTIVE TO TRUE.
+    SET VTOL_TRANS_ACTIVE TO FALSE.
+    SET VTOL_TARGET_LAT TO hold_target_lat.
+    SET VTOL_TARGET_LNG TO hold_target_lng.
+    SET VTOL_TARGET_ALT TO hover_target_alt_agl.
+    SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO TRUE.
+    SET ACTIVE_AIRCRAFT["vtol_diff_collective_min"] TO 0.12.
+    SET ACTIVE_AIRCRAFT["vtol_engine_limit_floor"] TO 0.10.
+
+    IF pos_err_for_phase_m <= AUTO_TRANSIT_CAPTURE_M {
+      IF transit_on_wp_start_ut < 0 {
+        SET transit_on_wp_start_ut TO cycle_now_ut.
+        _AUTO_LOG_EVENT("TRANSIT_RETURN_CAPTURE err_m=" + ROUND(pos_err_for_phase_m, 2)).
+      }
+    } ELSE {
+      SET transit_on_wp_start_ut TO -1.
+    }
+
+    LOCAL transit_r_hold_s IS 0.0.
+    IF transit_on_wp_start_ut >= 0 {
+      SET transit_r_hold_s TO cycle_now_ut - transit_on_wp_start_ut.
+    }
+
+    IF transit_r_hold_s >= AUTO_TRANSIT_SETTLE_S OR phase_elapsed_s >= AUTO_TRANSIT_TIMEOUT_S {
+      IF transit_r_hold_s >= AUTO_TRANSIT_SETTLE_S {
+        _AUTO_LOG_EVENT("TRANSIT_RETURN_COMPLETE err_m=" + ROUND(pos_err_for_phase_m, 2)).
+      } ELSE {
+        _AUTO_LOG_EVENT("TRANSIT_RETURN_TIMEOUT err_m=" + ROUND(pos_err_for_phase_m, 2)).
+      }
+      // Rotate back to original heading before landing.
+      SET hold_target_hdg_deg TO origin_hdg_deg.
+      SET turn_on_hdg_start_ut TO -1.
+      _AUTO_SET_PHASE("TURN_HOME").
+    }
+
+  } ELSE IF AUTO_PHASE_NAME = "TURN_HOME" {
+    // Hold at origin while rotating back to initial heading, then land.
+    SET VTOL_ALT_HOLD TO TRUE.
+    SET VTOL_ALT_CMD TO hover_target_alt_agl.
+    SET VTOL_VEL_HOLD_ACTIVE TO TRUE.
+    SET VTOL_KHV_ACTIVE TO FALSE.
+    SET VTOL_POS_HOLD_ACTIVE TO TRUE.
+    SET VTOL_TRANS_ACTIVE TO FALSE.
+    SET VTOL_TARGET_LAT TO hold_target_lat.
+    SET VTOL_TARGET_LNG TO hold_target_lng.
+    SET VTOL_TARGET_ALT TO hover_target_alt_agl.
+    SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO TRUE.
+    SET ACTIVE_AIRCRAFT["vtol_diff_collective_min"] TO 0.12.
+    SET ACTIVE_AIRCRAFT["vtol_engine_limit_floor"] TO 0.10.
+
+    IF ABS(yaw_err_deg) <= AUTO_TURN_HDG_TOL_DEG AND ABS(yaw_rate_dps) <= AUTO_TURN_RATE_TOL_DPS {
+      IF turn_on_hdg_start_ut < 0 {
+        SET turn_on_hdg_start_ut TO cycle_now_ut.
+        _AUTO_LOG_EVENT("TURN_HOME_ON_HDG hdg=" + ROUND(yaw_hdg_now_deg, 1)).
+      }
+    } ELSE {
+      SET turn_on_hdg_start_ut TO -1.
+    }
+
+    LOCAL turn_h_hold_s IS 0.0.
+    IF turn_on_hdg_start_ut >= 0 {
+      SET turn_h_hold_s TO cycle_now_ut - turn_on_hdg_start_ut.
+    }
+
+    IF turn_h_hold_s >= AUTO_TURN_SETTLE_S OR phase_elapsed_s >= AUTO_TURN_TIMEOUT_S {
+      _AUTO_LOG_EVENT("TURN_HOME_COMPLETE hdg=" + ROUND(yaw_hdg_now_deg, 1)).
+      SET land_cmd_agl_track TO agl_now_m.
+      SET land_touchdown_start_ut TO -1.
+      SET land_descent_gate_open TO FALSE.
+      SET land_timeout_logged TO FALSE.
+      SET VTOL_VS_INTEGRAL TO 0.0.
+      SET VTOL_VS_CMD TO SHIP:VERTICALSPEED.
+      _AUTO_SET_PHASE("LAND_DESCENT").
+    }
+
   } ELSE {
     _AUTO_LOG_EVENT("UNKNOWN_PHASE_" + AUTO_PHASE_NAME).
     SET AUTO_RUNNING TO FALSE.
