@@ -32,6 +32,7 @@ GLOBAL AUTO_LAST_LOG_UT IS 0.
 GLOBAL AUTO_LOG_PERIOD IS 0.5.
 GLOBAL AUTO_LAST_DISPLAY_UT IS 0.
 GLOBAL AUTO_DISPLAY_PERIOD IS 0.5.
+GLOBAL AUTO_MIN_IPU IS 2000.
 GLOBAL AUTO_ABORT_GUARDS_ENABLED IS FALSE.
 GLOBAL AUTO_TAKEOFF_TIMEOUT_S IS 90.0.
 GLOBAL AUTO_TAKEOFF_RUNAWAY_DELAY_S IS 20.0.
@@ -117,6 +118,52 @@ GLOBAL AUTO_TURN_HDG_TOL_DEG IS 5.0.         // heading error band for turn-comp
 GLOBAL AUTO_TURN_RATE_TOL_DPS IS 1.0.        // yaw rate threshold for turn-complete (dps)
 GLOBAL AUTO_TURN_SETTLE_S IS 3.0.            // hold time after heading captured (s)
 GLOBAL AUTO_TURN_TIMEOUT_S IS 45.0.          // turn phase timeout (s)
+GLOBAL AUTO_HOVER_MAX_HORIZ_SPEED_MS IS 3.5.
+GLOBAL AUTO_HOVER_MAX_HORIZ_ACCEL_MS2 IS 1.6.
+GLOBAL AUTO_HOVER_MAX_FWD_PITCH_DEG IS 10.0.
+GLOBAL AUTO_HOVER_MAX_BANK_DEG IS 10.0.
+GLOBAL AUTO_TRANSIT_MAX_HORIZ_SPEED_MS IS 8.2.
+GLOBAL AUTO_TRANSIT_MAX_HORIZ_ACCEL_MS2 IS 2.8.
+GLOBAL AUTO_TRANSIT_MAX_FWD_PITCH_DEG IS 16.5.
+GLOBAL AUTO_TRANSIT_MAX_BANK_DEG IS 16.5.
+GLOBAL AUTO_HOVER_RECOVERY_GNDSPD_MS IS 2.0.
+GLOBAL AUTO_HOVER_TRANSIT_MAX_GNDSPD_MS IS 1.2.
+GLOBAL AUTO_HOVER_TRANSIT_MAX_YAW_ERR_DEG IS 5.0.
+GLOBAL AUTO_HOVER_TIMEOUT_RECHECK_S IS 5.0.
+GLOBAL AUTO_TRANSIT_RECOVERY_GNDSPD_MS IS 12.0.
+GLOBAL AUTO_TRANSIT_RECOVERY_CLEAR_GNDSPD_MS IS 4.0.
+
+FUNCTION _AUTO_SET_HOVER_VEL_LIMITS {
+  SET ACTIVE_AIRCRAFT["vtol_max_horiz_speed"] TO AUTO_HOVER_MAX_HORIZ_SPEED_MS.
+  SET ACTIVE_AIRCRAFT["vtol_max_horiz_accel"] TO AUTO_HOVER_MAX_HORIZ_ACCEL_MS2.
+  SET ACTIVE_AIRCRAFT["vtol_max_fwd_pitch"] TO AUTO_HOVER_MAX_FWD_PITCH_DEG.
+  SET ACTIVE_AIRCRAFT["vtol_max_bank"] TO AUTO_HOVER_MAX_BANK_DEG.
+}
+
+FUNCTION _AUTO_SET_TRANSIT_VEL_LIMITS {
+  SET ACTIVE_AIRCRAFT["vtol_max_horiz_speed"] TO AUTO_TRANSIT_MAX_HORIZ_SPEED_MS.
+  SET ACTIVE_AIRCRAFT["vtol_max_horiz_accel"] TO AUTO_TRANSIT_MAX_HORIZ_ACCEL_MS2.
+  SET ACTIVE_AIRCRAFT["vtol_max_fwd_pitch"] TO AUTO_TRANSIT_MAX_FWD_PITCH_DEG.
+  SET ACTIVE_AIRCRAFT["vtol_max_bank"] TO AUTO_TRANSIT_MAX_BANK_DEG.
+}
+
+FUNCTION _AUTO_HOVER_ATT_RATE_SETTLED {
+  PARAMETER pitch_deg, bank_deg, roll_rate_dps, pitch_rate_dps.
+  LOCAL settled IS
+    ABS(pitch_deg) <= AUTO_HOVER_SETTLE_PITCH_DEG AND
+    ABS(bank_deg) <= AUTO_HOVER_SETTLE_BANK_DEG AND
+    ABS(roll_rate_dps) <= AUTO_HOVER_SETTLE_RATE_DPS AND
+    ABS(pitch_rate_dps) <= AUTO_HOVER_SETTLE_RATE_DPS.
+  RETURN settled.
+}
+
+FUNCTION _AUTO_READY_FOR_TRANSIT {
+  PARAMETER gndspd_ms, pitch_deg, bank_deg, roll_rate_dps, pitch_rate_dps, yaw_err_deg, upset_active.
+  IF upset_active { RETURN FALSE. }
+  IF gndspd_ms > AUTO_HOVER_TRANSIT_MAX_GNDSPD_MS { RETURN FALSE. }
+  IF ABS(yaw_err_deg) > AUTO_HOVER_TRANSIT_MAX_YAW_ERR_DEG { RETURN FALSE. }
+  RETURN _AUTO_HOVER_ATT_RATE_SETTLED(pitch_deg, bank_deg, roll_rate_dps, pitch_rate_dps).
+}
 
 FUNCTION _AUTO_CFG_NUM {
   PARAMETER key_name, fallback_val.
@@ -218,6 +265,14 @@ FUNCTION _AUTO_LOG_EVENT {
        " phase=" + AUTO_PHASE_NAME + " msg=" + event_text) TO AUTO_LOG_FILE.
 }
 
+FUNCTION _AUTO_ENSURE_IPU {
+  PARAMETER min_ipu.
+  IF min_ipu < 100 { SET min_ipu TO 100. }
+  IF CONFIG:IPU < min_ipu {
+    SET CONFIG:IPU TO min_ipu.
+  }
+}
+
 FUNCTION _AUTO_SET_PHASE {
   PARAMETER next_phase_name.
   SET AUTO_PHASE_NAME TO next_phase_name.
@@ -284,21 +339,21 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_ground_contact_agl_m", 1.5,
   "vtol_ground_contact_vs_max", 0.7,
   "vtol_static_trim_discovery", TRUE,
-  "vtol_diff_collective_min",   0.12,
+  "vtol_diff_collective_min",   0.08,
   "vtol_engine_limit_floor",    0.10,
   "vtol_cmd_slew_per_s",        3.0,
   "vtol_cmd_phys_slew_min",     0.45,
   "vtol_cmd_roll_max",          0.55,
   "vtol_cmd_pitch_max",         0.60,
   "vtol_diff_atten_min",        0.25,
-  "vtol_upset_bank_deg",        18.0,
-  "vtol_upset_pitch_deg",       12.0,
-  "vtol_upset_roll_rate_degs",  18.0,
-  "vtol_upset_pitch_rate_degs", 14.0,
-  "vtol_upset_exit_bank_deg",   12.0,
-  "vtol_upset_exit_pitch_deg",  8.0,
-  "vtol_upset_exit_roll_rate_degs", 10.0,
-  "vtol_upset_exit_pitch_rate_degs", 8.0,
+  "vtol_upset_bank_deg",        14.0,
+  "vtol_upset_pitch_deg",       10.0,
+  "vtol_upset_roll_rate_degs",  14.0,
+  "vtol_upset_pitch_rate_degs", 12.0,
+  "vtol_upset_exit_bank_deg",   9.0,
+  "vtol_upset_exit_pitch_deg",  6.0,
+  "vtol_upset_exit_roll_rate_degs", 8.0,
+  "vtol_upset_exit_pitch_rate_degs", 6.0,
   "vtol_upset_hold_s",          2.0,
   "vtol_upset_cmd_max",         0.30,
   "vtol_upset_cmd_roll_max",    0.60,
@@ -309,7 +364,8 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_upset_pitch_slew_bypass", TRUE,
   "vtol_upset_diff_atten_min",  0.55,
   "vtol_upset_engine_limit_floor", 0.02,
-  "vtol_upset_collective_cap",  0.76,
+  "vtol_upset_collective_cap",  -1.0,
+  "vtol_upset_collective_floor", 0.32,
   "vtol_upset_guard_agl_m",     20.0,
   "vtol_upset_guard_thr_min",   0.55,
   "vtol_rate_kd_roll_accel",    0.012,
@@ -349,8 +405,13 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_vs_i_unwind_per_s",   2.2,
   "vtol_max_vs",            1.0,
   "vtol_collective_max",    0.90,
-  "vtol_collective_up_slew_per_s", 0.22,
-  "vtol_collective_dn_slew_per_s", 0.85,
+  "vtol_collective_up_slew_per_s", 0.40,
+  "vtol_collective_dn_slew_per_s", 0.50,
+  "vtol_collective_guard_agl_m", 60.0,
+  "vtol_collective_guard_descend_vs", 1.5,
+  "vtol_collective_guard_floor_frac", 0.45,
+  "vtol_collective_guard_floor_abs", 0.22,
+  "vtol_collective_guard_alt_err_m", 0.5,
   "vtol_alt_kp",            0.20,
   "vtol_hover_collective",  0.75,
   "vtol_test_fixed_collective_enabled", FALSE,
@@ -397,6 +458,7 @@ IFC_INIT_STATE().
 SET IFC_PHASE TO PHASE_PREARM.
 SET IFC_SUBPHASE TO "".
 SET IFC_CYCLE_UT TO TIME:SECONDS.
+SET IFC_RAW_DT TO 0.05.
 SET IFC_ACTUAL_DT TO 0.05.
 SET THROTTLE_CMD TO 0.
 
@@ -404,6 +466,7 @@ SAS OFF.
 RCS OFF.
 
 WAIT UNTIL SHIP:UNPACKED.
+_AUTO_ENSURE_IPU(AUTO_MIN_IPU).
 
 // Ensure consistent terminal visibility/readability even when launched
 // outside the dedicated boot script.
@@ -439,7 +502,7 @@ SET AUTO_LAST_DISPLAY_UT TO AUTO_MISSION_START_UT.
 SET AUTO_LOG_FILE TO _AUTO_NEW_LOG_FILE().
 
 LOG ("# vtol_test_auto craft=" + SHIP:NAME + " UT=" + ROUND(TIME:SECONDS, 1)) TO AUTO_LOG_FILE.
-LOG "t_s,phase,dt_s,alt_agl_m,vs_ms,gndspd_ms,pitch_deg,bank_deg,pitch_rate_dps,roll_rate_dps,yaw_hdg_deg,yaw_err_deg,yaw_rate_dps,yaw_rate_cmd_dps,yaw_rate_err_dps,yaw_cmd_out,yaw_cmd_apply,srv_pos_span_deg,srv_cmd_span_deg,srv_mix_sum,desired_pitch_deg,desired_bank_deg,roll_cmd,pitch_cmd,thr_input_used,collective,hover_coll,alt_hold,alt_cmd,vel_hold,khv,pos_hold,trans_active,vn_actual_ms,ve_actual_ms,vn_cmd_ms,ve_cmd_ms,pos_err_dist_m,nacelle_cmd_deg,nacelle_est_deg,hover_blend,p_dot_filt,q_dot_filt,roll_d_accel,pitch_d_accel,cos_att_filt,coll_before_corr,coll_after_corr,physical_alloc,upset,alloc_alpha,alloc_shift,limit_span,em_spool_lag_s,eff_spool_lag_s,em_starving" TO AUTO_LOG_FILE.
+LOG "t_s,phase,dt_s,raw_dt_s,alt_agl_m,vs_ms,gndspd_ms,pitch_deg,bank_deg,pitch_rate_dps,roll_rate_dps,yaw_hdg_deg,yaw_err_deg,yaw_rate_dps,yaw_rate_cmd_dps,yaw_rate_err_dps,yaw_cmd_out,yaw_cmd_apply,srv_pos_span_deg,srv_cmd_span_deg,srv_mix_sum,desired_pitch_deg,desired_bank_deg,roll_cmd,pitch_cmd,thr_input_used,collective,hover_coll,alt_hold,alt_cmd,vel_hold,khv,pos_hold,trans_active,vn_actual_ms,ve_actual_ms,vn_cmd_ms,ve_cmd_ms,pos_err_dist_m,nacelle_cmd_deg,nacelle_est_deg,hover_blend,p_dot_filt,q_dot_filt,roll_d_accel,pitch_d_accel,cos_att_filt,coll_before_corr,coll_after_corr,physical_alloc,upset,alloc_alpha,alloc_shift,limit_span,em_spool_lag_s,eff_spool_lag_s,em_starving" TO AUTO_LOG_FILE.
 LOCAL srv_mix_sum_init IS 0.0.
 LOCAL init_i IS 0.
 UNTIL init_i >= VTOL_YAW_SRV_MIX:LENGTH {
@@ -453,6 +516,7 @@ _AUTO_LOG_EVENT(
   " yaw_gain=" + ROUND(_AUTO_CFG_NUM("vtol_yaw_gain", VTOL_YAW_SRV_GAIN), 2) +
   " yaw_sign=" + ROUND(_AUTO_CFG_NUM("vtol_yaw_sign", 1), 0)
 ).
+_AUTO_LOG_EVENT("ipu=" + ROUND(CONFIG:IPU, 0)).
 LOCAL srv_tag_hits IS 0.
 LOCAL srv_tag_idx IS 1.
 LOCAL srv_tag_prefix_dbg IS "vtol_srv".
@@ -502,6 +566,9 @@ LOCAL land_cmd_agl_track IS hover_target_alt_agl.
 LOCAL land_touchdown_start_ut IS -1.
 LOCAL hover_on_target_start_ut IS -1.
 LOCAL hover_pos_mode_latched IS FALSE.
+LOCAL hover_timeout_next_check_ut IS -1.
+LOCAL hover_recovery_active IS FALSE.
+LOCAL transit_recovery_active IS FALSE.
 LOCAL land_descent_gate_open IS FALSE.
 LOCAL land_timeout_logged IS FALSE.
 
@@ -541,7 +608,8 @@ _AUTO_SET_PHASE("TAKEOFF_CLIMB").
 
 UNTIL NOT AUTO_RUNNING {
   LOCAL cycle_now_ut IS TIME:SECONDS.
-  SET IFC_ACTUAL_DT TO CLAMP(cycle_now_ut - IFC_CYCLE_UT, 0.01, 0.5).
+  SET IFC_RAW_DT TO MAX(cycle_now_ut - IFC_CYCLE_UT, 0).
+  SET IFC_ACTUAL_DT TO CLAMP(IFC_RAW_DT, 0.01, IFC_ACTUAL_DT_MAX).
   SET IFC_CYCLE_UT TO cycle_now_ut.
 
   EM_TICK().
@@ -693,8 +761,9 @@ UNTIL NOT AUTO_RUNNING {
     SET VTOL_TARGET_LNG TO hold_target_lng.
     SET VTOL_TARGET_ALT TO AUTO_TAKEOFF_TARGET_ALT_AGL_M.
     SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO TRUE.
-    SET ACTIVE_AIRCRAFT["vtol_diff_collective_min"] TO 0.12.
+    SET ACTIVE_AIRCRAFT["vtol_diff_collective_min"] TO 0.08.
     SET ACTIVE_AIRCRAFT["vtol_engine_limit_floor"] TO 0.10.
+    _AUTO_SET_HOVER_VEL_LIMITS().
     LOCAL takeoff_abort_triggered IS FALSE.
     IF AUTO_ABORT_GUARDS_ENABLED {
       IF phase_elapsed_s > AUTO_TAKEOFF_TIMEOUT_S {
@@ -724,6 +793,9 @@ UNTIL NOT AUTO_RUNNING {
       SET VTOL_VEL_INT_E TO 0.0.
       SET hover_on_target_start_ut TO -1.
       SET hover_pos_mode_latched TO FALSE.
+      SET hover_timeout_next_check_ut TO -1.
+      SET hover_recovery_active TO FALSE.
+      SET transit_recovery_active TO FALSE.
       _AUTO_SET_PHASE("HOVER_HOLD").
     }
   } ELSE IF AUTO_PHASE_NAME = "HOVER_HOLD" {
@@ -735,8 +807,9 @@ UNTIL NOT AUTO_RUNNING {
     SET VTOL_TARGET_LNG TO hold_target_lng.
     SET VTOL_TARGET_ALT TO hover_target_alt_agl.
     SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO TRUE.
-    SET ACTIVE_AIRCRAFT["vtol_diff_collective_min"] TO 0.12.
+    SET ACTIVE_AIRCRAFT["vtol_diff_collective_min"] TO 0.08.
     SET ACTIVE_AIRCRAFT["vtol_engine_limit_floor"] TO 0.10.
+    _AUTO_SET_HOVER_VEL_LIMITS().
 
     LOCAL hover_settled IS
       phase_elapsed_s >= AUTO_HOVER_SETTLE_MIN_S AND
@@ -746,6 +819,23 @@ UNTIL NOT AUTO_RUNNING {
       ABS(phase_roll_rate_dps) <= AUTO_HOVER_SETTLE_RATE_DPS AND
       ABS(phase_pitch_rate_dps) <= AUTO_HOVER_SETTLE_RATE_DPS AND
       NOT VTOL_UPSET_ACTIVE.
+    LOCAL hover_recovery_needed IS
+      VTOL_UPSET_ACTIVE OR
+      phase_gndspd_ms > AUTO_HOVER_RECOVERY_GNDSPD_MS.
+    IF hover_recovery_needed {
+      IF NOT hover_recovery_active {
+        _AUTO_LOG_EVENT(
+          "HOVER_RECOVERY_ENTER gs=" + ROUND(phase_gndspd_ms, 2) +
+          " p=" + ROUND(phase_pitch_deg, 2) +
+          " b=" + ROUND(phase_bank_deg, 2)
+        ).
+      }
+      SET hover_recovery_active TO TRUE.
+      SET hover_pos_mode_latched TO FALSE.
+    } ELSE IF hover_recovery_active AND hover_settled {
+      SET hover_recovery_active TO FALSE.
+      _AUTO_LOG_EVENT("HOVER_RECOVERY_EXIT").
+    }
 
     IF NOT hover_pos_mode_latched {
       IF hover_settled {
@@ -783,6 +873,15 @@ UNTIL NOT AUTO_RUNNING {
     IF hover_on_target_start_ut >= 0 {
       SET hover_on_target_hold_s TO cycle_now_ut - hover_on_target_start_ut.
     }
+    LOCAL hover_ready_for_transit IS _AUTO_READY_FOR_TRANSIT(
+      phase_gndspd_ms,
+      phase_pitch_deg,
+      phase_bank_deg,
+      phase_roll_rate_dps,
+      phase_pitch_rate_dps,
+      yaw_err_deg,
+      VTOL_UPSET_ACTIVE
+    ).
 
     IF hover_on_target_hold_s >= AUTO_HOVER_HOLD_TIME_S {
       _AUTO_LOG_EVENT("HOVER_TARGET_HOLD_COMPLETE").
@@ -805,29 +904,51 @@ UNTIL NOT AUTO_RUNNING {
       SET VTOL_VEL_INT_E TO 0.0.
       SET transit_on_wp_start_ut TO -1.
       SET turn_on_hdg_start_ut TO -1.
+      SET transit_recovery_active TO FALSE.
       _AUTO_SET_PHASE("TRANSIT_EAST").
     } ELSE IF phase_elapsed_s >= AUTO_HOVER_TIMEOUT_S {
-      _AUTO_LOG_EVENT("HOVER_TIMEOUT_BEGIN_TRANSIT").
-      SET hover_on_target_start_ut TO -1.
-      SET origin_lat TO hold_target_lat.
-      SET origin_lng TO hold_target_lng.
-      SET origin_hdg_deg TO hold_target_hdg_deg.
-      LOCAL transit_dest_to IS GEO_DESTINATION(
-        LATLNG(hold_target_lat, hold_target_lng),
-        AUTO_TRANSIT_HDG_DEG,
-        AUTO_TRANSIT_DIST_M
-      ).
-      SET transit_wp_lat TO transit_dest_to:LAT.
-      SET transit_wp_lng TO transit_dest_to:LNG.
-      SET hold_target_lat TO transit_wp_lat.
-      SET hold_target_lng TO transit_wp_lng.
-      SET VTOL_POS_INT_N TO 0.0.
-      SET VTOL_POS_INT_E TO 0.0.
-      SET VTOL_VEL_INT_N TO 0.0.
-      SET VTOL_VEL_INT_E TO 0.0.
-      SET transit_on_wp_start_ut TO -1.
-      SET turn_on_hdg_start_ut TO -1.
-      _AUTO_SET_PHASE("TRANSIT_EAST").
+      IF hover_ready_for_transit {
+        _AUTO_LOG_EVENT("HOVER_TIMEOUT_BEGIN_TRANSIT").
+        SET hover_on_target_start_ut TO -1.
+        SET origin_lat TO hold_target_lat.
+        SET origin_lng TO hold_target_lng.
+        SET origin_hdg_deg TO hold_target_hdg_deg.
+        LOCAL transit_dest_to IS GEO_DESTINATION(
+          LATLNG(hold_target_lat, hold_target_lng),
+          AUTO_TRANSIT_HDG_DEG,
+          AUTO_TRANSIT_DIST_M
+        ).
+        SET transit_wp_lat TO transit_dest_to:LAT.
+        SET transit_wp_lng TO transit_dest_to:LNG.
+        SET hold_target_lat TO transit_wp_lat.
+        SET hold_target_lng TO transit_wp_lng.
+        SET VTOL_POS_INT_N TO 0.0.
+        SET VTOL_POS_INT_E TO 0.0.
+        SET VTOL_VEL_INT_N TO 0.0.
+        SET VTOL_VEL_INT_E TO 0.0.
+        SET transit_on_wp_start_ut TO -1.
+        SET turn_on_hdg_start_ut TO -1.
+        SET hover_timeout_next_check_ut TO -1.
+        SET hover_recovery_active TO FALSE.
+        SET transit_recovery_active TO FALSE.
+        _AUTO_SET_PHASE("TRANSIT_EAST").
+      } ELSE {
+        IF hover_timeout_next_check_ut < 0 OR cycle_now_ut >= hover_timeout_next_check_ut {
+          _AUTO_LOG_EVENT(
+            "HOVER_TIMEOUT_DEFER gs=" + ROUND(phase_gndspd_ms, 2) +
+            " yaw=" + ROUND(yaw_err_deg, 2) +
+            " upset=" + VTOL_UPSET_ACTIVE
+          ).
+          SET hover_timeout_next_check_ut TO cycle_now_ut + AUTO_HOVER_TIMEOUT_RECHECK_S.
+        }
+        SET hover_pos_mode_latched TO FALSE.
+        SET VTOL_KHV_ACTIVE TO TRUE.
+        SET VTOL_POS_HOLD_ACTIVE TO FALSE.
+        SET VTOL_POS_INT_N TO 0.0.
+        SET VTOL_POS_INT_E TO 0.0.
+        SET VTOL_VEL_INT_N TO 0.0.
+        SET VTOL_VEL_INT_E TO 0.0.
+      }
     }
   } ELSE IF AUTO_PHASE_NAME = "LAND_DESCENT" {
     // Two-stage descent: faster high up, then gentle sink in the flare band.
@@ -1038,10 +1159,43 @@ UNTIL NOT AUTO_RUNNING {
     SET VTOL_TARGET_LNG TO hold_target_lng.
     SET VTOL_TARGET_ALT TO hover_target_alt_agl.
     SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO TRUE.
-    SET ACTIVE_AIRCRAFT["vtol_diff_collective_min"] TO 0.12.
+    SET ACTIVE_AIRCRAFT["vtol_diff_collective_min"] TO 0.08.
     SET ACTIVE_AIRCRAFT["vtol_engine_limit_floor"] TO 0.10.
-
-    IF pos_err_for_phase_m <= AUTO_TRANSIT_CAPTURE_M {
+    _AUTO_SET_TRANSIT_VEL_LIMITS().
+    LOCAL transit_recovery_needed IS
+      VTOL_UPSET_ACTIVE OR
+      phase_gndspd_ms > AUTO_TRANSIT_RECOVERY_GNDSPD_MS.
+    IF transit_recovery_needed {
+      IF NOT transit_recovery_active {
+        _AUTO_LOG_EVENT(
+          "TRANSIT_RECOVERY_ENTER gs=" + ROUND(phase_gndspd_ms, 2) +
+          " p=" + ROUND(phase_pitch_deg, 2) +
+          " b=" + ROUND(phase_bank_deg, 2)
+        ).
+      }
+      SET transit_recovery_active TO TRUE.
+    } ELSE IF transit_recovery_active AND
+       phase_gndspd_ms <= AUTO_TRANSIT_RECOVERY_CLEAR_GNDSPD_MS AND
+       _AUTO_HOVER_ATT_RATE_SETTLED(
+         phase_pitch_deg,
+         phase_bank_deg,
+         phase_roll_rate_dps,
+         phase_pitch_rate_dps
+       ) {
+      SET transit_recovery_active TO FALSE.
+      SET VTOL_POS_INT_N TO 0.0.
+      SET VTOL_POS_INT_E TO 0.0.
+      SET VTOL_VEL_INT_N TO 0.0.
+      SET VTOL_VEL_INT_E TO 0.0.
+      _AUTO_LOG_EVENT("TRANSIT_RECOVERY_EXIT").
+    }
+    IF transit_recovery_active {
+      SET VTOL_KHV_ACTIVE TO TRUE.
+      SET VTOL_POS_HOLD_ACTIVE TO FALSE.
+      SET VTOL_POS_INT_N TO 0.0.
+      SET VTOL_POS_INT_E TO 0.0.
+      SET transit_on_wp_start_ut TO -1.
+    } ELSE IF pos_err_for_phase_m <= AUTO_TRANSIT_CAPTURE_M {
       IF transit_on_wp_start_ut < 0 {
         SET transit_on_wp_start_ut TO cycle_now_ut.
         _AUTO_LOG_EVENT("TRANSIT_EAST_CAPTURE err_m=" + ROUND(pos_err_for_phase_m, 2)).
@@ -1055,16 +1209,18 @@ UNTIL NOT AUTO_RUNNING {
       SET transit_e_hold_s TO cycle_now_ut - transit_on_wp_start_ut.
     }
 
-    IF transit_e_hold_s >= AUTO_TRANSIT_SETTLE_S OR phase_elapsed_s >= AUTO_TRANSIT_TIMEOUT_S {
-      IF transit_e_hold_s >= AUTO_TRANSIT_SETTLE_S {
-        _AUTO_LOG_EVENT("TRANSIT_EAST_COMPLETE err_m=" + ROUND(pos_err_for_phase_m, 2)).
-      } ELSE {
-        _AUTO_LOG_EVENT("TRANSIT_EAST_TIMEOUT err_m=" + ROUND(pos_err_for_phase_m, 2)).
+    IF NOT transit_recovery_active {
+      IF transit_e_hold_s >= AUTO_TRANSIT_SETTLE_S OR phase_elapsed_s >= AUTO_TRANSIT_TIMEOUT_S {
+        IF transit_e_hold_s >= AUTO_TRANSIT_SETTLE_S {
+          _AUTO_LOG_EVENT("TRANSIT_EAST_COMPLETE err_m=" + ROUND(pos_err_for_phase_m, 2)).
+        } ELSE {
+          _AUTO_LOG_EVENT("TRANSIT_EAST_TIMEOUT err_m=" + ROUND(pos_err_for_phase_m, 2)).
+        }
+        // Point back toward origin (180 deg from transit bearing).
+        SET hold_target_hdg_deg TO MOD(origin_hdg_deg + 180, 360).
+        SET turn_on_hdg_start_ut TO -1.
+        _AUTO_SET_PHASE("TURN_AROUND").
       }
-      // Point back toward origin (180 deg from transit bearing).
-      SET hold_target_hdg_deg TO MOD(origin_hdg_deg + 180, 360).
-      SET turn_on_hdg_start_ut TO -1.
-      _AUTO_SET_PHASE("TURN_AROUND").
     }
 
   } ELSE IF AUTO_PHASE_NAME = "TURN_AROUND" {
@@ -1079,7 +1235,7 @@ UNTIL NOT AUTO_RUNNING {
     SET VTOL_TARGET_LNG TO hold_target_lng.
     SET VTOL_TARGET_ALT TO hover_target_alt_agl.
     SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO TRUE.
-    SET ACTIVE_AIRCRAFT["vtol_diff_collective_min"] TO 0.12.
+    SET ACTIVE_AIRCRAFT["vtol_diff_collective_min"] TO 0.08.
     SET ACTIVE_AIRCRAFT["vtol_engine_limit_floor"] TO 0.10.
 
     IF ABS(yaw_err_deg) <= AUTO_TURN_HDG_TOL_DEG AND ABS(yaw_rate_dps) <= AUTO_TURN_RATE_TOL_DPS {
@@ -1120,7 +1276,7 @@ UNTIL NOT AUTO_RUNNING {
     SET VTOL_TARGET_LNG TO hold_target_lng.
     SET VTOL_TARGET_ALT TO hover_target_alt_agl.
     SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO TRUE.
-    SET ACTIVE_AIRCRAFT["vtol_diff_collective_min"] TO 0.12.
+    SET ACTIVE_AIRCRAFT["vtol_diff_collective_min"] TO 0.08.
     SET ACTIVE_AIRCRAFT["vtol_engine_limit_floor"] TO 0.10.
 
     IF pos_err_for_phase_m <= AUTO_TRANSIT_CAPTURE_M {
@@ -1161,7 +1317,7 @@ UNTIL NOT AUTO_RUNNING {
     SET VTOL_TARGET_LNG TO hold_target_lng.
     SET VTOL_TARGET_ALT TO hover_target_alt_agl.
     SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO TRUE.
-    SET ACTIVE_AIRCRAFT["vtol_diff_collective_min"] TO 0.12.
+    SET ACTIVE_AIRCRAFT["vtol_diff_collective_min"] TO 0.08.
     SET ACTIVE_AIRCRAFT["vtol_engine_limit_floor"] TO 0.10.
 
     IF ABS(yaw_err_deg) <= AUTO_TURN_HDG_TOL_DEG AND ABS(yaw_rate_dps) <= AUTO_TURN_RATE_TOL_DPS {
@@ -1314,6 +1470,7 @@ UNTIL NOT AUTO_RUNNING {
       ROUND(cycle_now_ut - AUTO_MISSION_START_UT, 3),
       AUTO_PHASE_NAME,
       ROUND(IFC_ACTUAL_DT, 4),
+      ROUND(IFC_RAW_DT, 4),
       ROUND(agl_now_m, 3),
       ROUND(SHIP:VERTICALSPEED, 3),
       ROUND(SHIP:GROUNDSPEED, 3),

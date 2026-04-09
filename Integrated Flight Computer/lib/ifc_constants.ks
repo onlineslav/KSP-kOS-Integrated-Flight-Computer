@@ -9,6 +9,8 @@
 // Loop timing
 // ----------------------------
 GLOBAL IFC_LOOP_DT         IS 0.02.   // s  (50 Hz)
+GLOBAL IFC_ACTUAL_DT_MAX   IS 1.50.   // s  max control dt used by IFC loops (raw dt is logged separately)
+GLOBAL IFC_MIN_IPU         IS 2000.   // kOS instruction budget floor to prevent control-loop cadence collapse
 GLOBAL IFC_TELEMETRY_PERIOD IS 1.0.   // s  between HUD refreshes
 GLOBAL IFC_DEBUG_GS_DRAW_LEN_M IS 60000. // m log-projection length from threshold along GS track
 GLOBAL IFC_DEBUG_GS_DRAW_WIDTH_M IS 3.0. // m draw width for glideslope visual line
@@ -576,8 +578,14 @@ GLOBAL VTOL_UPSET_PITCH_SLEW_BYPASS IS TRUE. // TRUE = bypass pitch command slew
 GLOBAL VTOL_UPSET_DIFF_ATTEN_MIN IS 0.55. // minimum differential authority scale while upset is active
 GLOBAL VTOL_UPSET_ENGINE_LIMIT_FLOOR IS 0.02. // per-engine limiter floor while upset is active
 GLOBAL VTOL_UPSET_COLLECTIVE_CAP IS -1.0. // <0 disables; otherwise caps applied collective during upset to prioritize attitude recovery over altitude
+GLOBAL VTOL_UPSET_COLLECTIVE_FLOOR IS -1.0. // <0 disables; otherwise minimum collective applied during upset to preserve lift/authority
 GLOBAL VTOL_UPSET_GUARD_AGL_M IS 20.0. // below this AGL, upset + low pilot throttle is clamped to preserve lift
 GLOBAL VTOL_UPSET_GUARD_THR_MIN IS 0.55. // minimum pilot throttle surrogate when low-alt upset guard is active
+GLOBAL VTOL_COLLECTIVE_GUARD_AGL_M IS 60.0. // below this AGL, vertical-channel guard may enforce a minimum collective
+GLOBAL VTOL_COLLECTIVE_GUARD_DESCEND_VS IS 1.5. // m/s downward VS threshold that enables collective guard
+GLOBAL VTOL_COLLECTIVE_GUARD_FLOOR_FRAC IS 0.45. // fraction of hover collective used as guarded collective floor
+GLOBAL VTOL_COLLECTIVE_GUARD_FLOOR_ABS IS 0.22. // absolute minimum collective floor used by low-alt guard
+GLOBAL VTOL_COLLECTIVE_GUARD_ALT_ERR_M IS 0.5. // m positive altitude error threshold to keep guard active in alt-hold
 GLOBAL VTOL_RATE_KD_ROLL_ACCEL IS 0.02. // roll D-term gain on filtered roll acceleration
 GLOBAL VTOL_RATE_KD_PITCH_ACCEL IS 0.02. // pitch D-term gain on filtered pitch acceleration
 GLOBAL VTOL_RATE_P_ALPHA IS 0.70. // EMA alpha for roll-rate filtering

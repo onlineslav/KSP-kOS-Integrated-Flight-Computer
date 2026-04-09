@@ -773,7 +773,7 @@ FUNCTION _VTOL_APPLY_ENGINES {
   SET VTOL_DIAG_DIFF_SCALE_RAW TO diff_scale.
   SET diff_scale TO diff_scale * _VTOL_DIFF_ATTENUATION(starvec, forevec, upvec, angvel).
   SET VTOL_DIAG_DIFF_SCALE_ATTN TO diff_scale.
-  IF VTOL_UPSET_ACTIVE AND collective_in > diff_min {
+  IF VTOL_UPSET_ACTIVE {
     LOCAL upset_diff_min IS _AMO_CFG_NUM(
       "vtol_upset_diff_atten_min",
       VTOL_UPSET_DIFF_ATTEN_MIN,
@@ -792,7 +792,7 @@ FUNCTION _VTOL_APPLY_ENGINES {
   IF collective_in > diff_min {
     SET lim_floor_use TO MIN(lim_floor_cfg, collective_in * 0.60).
   }
-  IF VTOL_UPSET_ACTIVE AND collective_in > diff_min {
+  IF VTOL_UPSET_ACTIVE {
     LOCAL upset_floor IS _AMO_CFG_NUM(
       "vtol_upset_engine_limit_floor",
       VTOL_UPSET_ENGINE_LIMIT_FLOOR,
@@ -800,7 +800,13 @@ FUNCTION _VTOL_APPLY_ENGINES {
     ).
     IF upset_floor < 0 { SET upset_floor TO 0. }
     IF upset_floor > 0.45 { SET upset_floor TO 0.45. }
-    IF upset_floor < lim_floor_use { SET lim_floor_use TO upset_floor. }
+    IF collective_in > diff_min {
+      // In normal upset handling, lower floor to recover differential authority.
+      IF upset_floor < lim_floor_use { SET lim_floor_use TO upset_floor. }
+    } ELSE {
+      // Below diff_min, keep a small thrust floor so the mixer still has leverage.
+      IF upset_floor > lim_floor_use { SET lim_floor_use TO upset_floor. }
+    }
   }
   SET VTOL_DIAG_LIM_FLOOR_USE TO lim_floor_use.
 
@@ -1932,11 +1938,12 @@ FUNCTION _VTOL_VS_HOLD {
   }
 
   LOCAL vs_cmd_target IS (thr_input - 0.5) * 2.0 * max_vs.
+  LOCAL alt_err_m IS 0.0.
 
   IF VTOL_ALT_HOLD {
     LOCAL alt_kp  IS _AMO_CFG_NUM("vtol_alt_kp", VTOL_ALT_KP, 0).
-    LOCAL alt_err IS VTOL_ALT_CMD - GET_AGL().
-    SET vs_cmd_target TO CLAMP(alt_err * alt_kp, -max_vs, max_vs).
+    SET alt_err_m TO VTOL_ALT_CMD - GET_AGL().
+    SET vs_cmd_target TO CLAMP(alt_err_m * alt_kp, -max_vs, max_vs).
   } ELSE {
     SET vs_cmd_target TO CLAMP(vs_cmd_target, -max_vs, max_vs).
   }
@@ -2033,6 +2040,57 @@ FUNCTION _VTOL_VS_HOLD {
   SET VTOL_COS_ATT_FILT TO VTOL_COS_ATT_FILT + (cos_att_raw - VTOL_COS_ATT_FILT) * cos_att_alpha.
   LOCAL cos_att_use IS CLAMP(VTOL_COS_ATT_FILT, cos_att_floor, 1.0).
   SET target_collective TO CLAMP(target_collective / cos_att_use, 0, coll_max).
+
+  // Low-altitude collective guard:
+  // keep some thrust in hand while close to terrain so a brief VS overshoot
+  // cannot collapse authority to near-zero and trigger unrecoverable roll.
+  LOCAL guard_agl_m IS _AMO_CFG_NUM(
+    "vtol_collective_guard_agl_m",
+    VTOL_COLLECTIVE_GUARD_AGL_M,
+    0
+  ).
+  LOCAL guard_descend_vs IS _AMO_CFG_NUM(
+    "vtol_collective_guard_descend_vs",
+    VTOL_COLLECTIVE_GUARD_DESCEND_VS,
+    0
+  ).
+  LOCAL guard_floor_frac IS _AMO_CFG_NUM(
+    "vtol_collective_guard_floor_frac",
+    VTOL_COLLECTIVE_GUARD_FLOOR_FRAC,
+    0
+  ).
+  LOCAL guard_floor_abs IS _AMO_CFG_NUM(
+    "vtol_collective_guard_floor_abs",
+    VTOL_COLLECTIVE_GUARD_FLOOR_ABS,
+    0
+  ).
+  LOCAL guard_alt_err_m IS _AMO_CFG_NUM(
+    "vtol_collective_guard_alt_err_m",
+    VTOL_COLLECTIVE_GUARD_ALT_ERR_M,
+    0
+  ).
+  IF guard_agl_m < 0 { SET guard_agl_m TO 0. }
+  IF guard_descend_vs < 0 { SET guard_descend_vs TO 0. }
+  IF guard_floor_frac < 0 { SET guard_floor_frac TO 0. }
+  IF guard_floor_frac > 1 { SET guard_floor_frac TO 1. }
+  IF guard_floor_abs < 0 { SET guard_floor_abs TO 0. }
+  IF guard_floor_abs > 1 { SET guard_floor_abs TO 1. }
+  IF guard_alt_err_m < 0 { SET guard_alt_err_m TO 0. }
+  LOCAL guard_floor_active IS FALSE.
+  LOCAL agl_now_m IS GET_AGL().
+  IF guard_agl_m > 0 AND agl_now_m <= guard_agl_m {
+    IF SHIP:VERTICALSPEED <= -guard_descend_vs { SET guard_floor_active TO TRUE. }
+    IF VTOL_ALT_HOLD AND alt_err_m >= guard_alt_err_m { SET guard_floor_active TO TRUE. }
+    IF VTOL_UPSET_ACTIVE { SET guard_floor_active TO TRUE. }
+  }
+  IF guard_floor_active {
+    LOCAL hover_ref_guard IS VTOL_HOVER_COLLECTIVE.
+    IF hover_ref_guard < 0.05 { SET hover_ref_guard TO 0.05. }
+    LOCAL guard_floor_use IS MAX(guard_floor_abs, hover_ref_guard * guard_floor_frac).
+    IF guard_floor_use > coll_max { SET guard_floor_use TO coll_max. }
+    IF target_collective < guard_floor_use { SET target_collective TO guard_floor_use. }
+  }
+
   SET VTOL_DIAG_COS_ATT_FILT TO VTOL_COS_ATT_FILT.
   SET VTOL_DIAG_COLL_AFTER_CORR TO target_collective.
 
@@ -2922,9 +2980,18 @@ FUNCTION VTOL_TICK_PREARM {
     VTOL_UPSET_COLLECTIVE_CAP,
     -1
   ).
+  LOCAL upset_collective_floor IS _AMO_CFG_NUM(
+    "vtol_upset_collective_floor",
+    VTOL_UPSET_COLLECTIVE_FLOOR,
+    -1
+  ).
   IF upset_active AND upset_collective_cap >= 0 {
     IF upset_collective_cap > 1 { SET upset_collective_cap TO 1.0. }
     SET collective_apply TO MIN(collective_apply, upset_collective_cap).
+  }
+  IF upset_active AND upset_collective_floor >= 0 {
+    IF upset_collective_floor > 1 { SET upset_collective_floor TO 1.0. }
+    SET collective_apply TO MAX(collective_apply, upset_collective_floor).
   }
   SET VTOL_COLLECTIVE TO collective_apply.
   _VTOL_APPLY_ENGINES(collective_apply, roll_cmd, pitch_cmd, _starvec, _forevec, _upvec, _angvel).
