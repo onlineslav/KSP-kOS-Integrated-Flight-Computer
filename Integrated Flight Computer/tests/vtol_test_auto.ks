@@ -106,6 +106,14 @@ GLOBAL AUTO_YAW_CAS_HDG_DB_DEG IS 0.40.
 GLOBAL AUTO_YAW_CAS_RATE_DB_DPS IS 0.20.
 GLOBAL AUTO_YAW_CAS_HDG_INT_LIM IS 40.0.
 GLOBAL AUTO_YAW_CAS_RATE_INT_LIM IS 8.0.
+GLOBAL AUTO_NAV_WP_DIST_M IS 100.0.         // metres to fly down-runway to nav waypoint
+GLOBAL AUTO_NAV_WP_HOLD_TIME_S IS 5.0.     // settle dwell at each nav waypoint before advancing
+GLOBAL AUTO_ROTATE_HDG_TOL_DEG IS 8.0.     // heading error band that counts as "on target"
+GLOBAL AUTO_ROTATE_SETTLE_TIME_S IS 3.0.   // seconds within heading band before advancing
+GLOBAL AUTO_NAV_MAX_SPEED_MPS IS 3.5.      // max horizontal speed during NAV_TO_WP1 / NAV_RETURN
+GLOBAL AUTO_NAV_MAX_ACCEL_MPS2 IS 1.2.     // max horizontal accel during nav (limits bank, keeps below upset threshold)
+GLOBAL AUTO_NAV_CAPTURE_RADIUS_M IS 15.0.  // pos-controller capture radius during nav (braking starts here)
+GLOBAL AUTO_NAV_ARRIVE_TOL_M IS 3.0.       // position tolerance for nav arrival timer
 
 FUNCTION _AUTO_CFG_NUM {
   PARAMETER key_name, fallback_val.
@@ -330,8 +338,8 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_vs_cmd_lag_ref_s",    1.2,
   "vtol_vs_cmd_slew_min_scale", 0.35,
   "vtol_vs_gain_lag_ref_s",   1.2,
-  "vtol_vs_kp_min_scale",     0.65,
-  "vtol_vs_ki_min_scale",     0.45,
+  "vtol_vs_kp_min_scale",     0.20,  // was 0.65; reduced to allow proper gain scheduling at 10+ s spool lag
+  "vtol_vs_ki_min_scale",     0.10,  // was 0.45; reduces integrator windup during ground contact
   "vtol_vs_aw_alpha_min",     0.95,
   "vtol_vs_aw_lag_s",         0.60,
   "vtol_vs_aw_eff_err_min",   0.05,
@@ -352,14 +360,14 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_vel_kp",            0.30,
   "vtol_vel_ki",            0.012,
   "vtol_vel_int_lim",       3.0,
-  "vtol_vel_int_deadband",  0.10,
+  "vtol_vel_int_deadband",  0.35,  // was 0.10; wider deadband prevents KHV integrator chasing small errors
   "vtol_max_horiz_accel",   2.8,
   "vtol_max_horiz_speed",   8.2,
   "vtol_max_fwd_pitch",     16.5,
   "vtol_max_bank",          16.5,
   "vtol_vel_gain_lag_ref_s", 1.8,
-  "vtol_vel_kp_min_scale",   0.80,
-  "vtol_vel_ki_min_scale",   0.62,
+  "vtol_vel_kp_min_scale",   0.30,  // was 0.80; high floor prevented lag-scheduling at 10s spool lag
+  "vtol_vel_ki_min_scale",   0.15,  // was 0.62; integrator was too aggressive → KHV oscillation
   "vtol_vel_accel_min_scale",0.84,
   "vtol_vel_angle_min_scale",0.90,
   "vtol_pos_kp",            0.23,
@@ -372,7 +380,7 @@ SET ACTIVE_AIRCRAFT TO LEXICON(
   "vtol_pos_ki_min_scale",   0.66,
   "vtol_pos_speed_min_scale",0.88,
   "vtol_pos_capture_min_scale",0.88,
-  "vtol_khv_capture_mps",   0.35,
+  "vtol_khv_capture_mps",   1.0,   // was 0.35; wider capture prevents overshoot-then-oscillate under high lag
   "vtol_physical_alloc_enabled", TRUE,
   "vtol_trans_start_ias",   8.0,
   "vtol_trans_end_ias",     22.0,
@@ -503,6 +511,13 @@ LOCAL pilot_pitch_cmd_out IS 0.0.
 LOCAL yaw_hdg_int_deg_s IS 0.0.
 LOCAL yaw_rate_int_dps_s IS 0.0.
 LOCAL yaw_rate_cmd_dps_diag IS 0.0.
+LOCAL nav_wp1_lat IS 0.0.
+LOCAL nav_wp1_lng IS 0.0.
+LOCAL nav_origin_lat IS hold_target_lat.
+LOCAL nav_origin_lng IS hold_target_lng.
+LOCAL nav_original_hdg_deg IS hold_target_hdg_deg.
+LOCAL nav_rotate_settled_start_ut IS -1.
+LOCAL nav_wp_on_target_start_ut IS -1.
 LOCAL yaw_rate_err_dps_diag IS 0.0.
 LOCAL max_horiz_speed_cfg IS _AUTO_CFG_NUM("vtol_max_horiz_speed", 10.0).
 LOCAL max_fwd_pitch_cfg IS _AUTO_CFG_NUM("vtol_max_fwd_pitch", 12.0).
@@ -556,6 +571,10 @@ UNTIL NOT AUTO_RUNNING {
   LOCAL yaw_hold_active IS FALSE.
   IF AUTO_PHASE_NAME = "TAKEOFF_CLIMB" OR
      AUTO_PHASE_NAME = "HOVER_HOLD" OR
+     AUTO_PHASE_NAME = "NAV_TO_WP1" OR
+     AUTO_PHASE_NAME = "HOVER_WP1" OR
+     AUTO_PHASE_NAME = "NAV_RETURN" OR
+     AUTO_PHASE_NAME = "HOVER_ORIGIN" OR
      AUTO_PHASE_NAME = "LAND_DESCENT" {
     SET yaw_hold_active TO TRUE.
   }
@@ -760,18 +779,177 @@ UNTIL NOT AUTO_RUNNING {
       SET hover_on_target_hold_s TO cycle_now_ut - hover_on_target_start_ut.
     }
 
-    IF hover_on_target_hold_s >= AUTO_HOVER_HOLD_TIME_S {
-      _AUTO_LOG_EVENT("HOVER_TARGET_HOLD_COMPLETE").
-      SET land_cmd_agl_track TO agl_now_m.
-      SET land_touchdown_start_ut TO -1.
-      SET land_descent_gate_open TO FALSE.
-      SET land_timeout_logged TO FALSE.
-      SET VTOL_VS_INTEGRAL TO 0.0.
-      SET VTOL_VS_CMD TO SHIP:VERTICALSPEED.
-      _AUTO_SET_PHASE("LAND_DESCENT").
-    } ELSE IF phase_elapsed_s >= AUTO_HOVER_TIMEOUT_S {
-      _AUTO_LOG_EVENT("HOVER_TIMEOUT_BEGIN_LAND").
-      SET hover_on_target_start_ut TO -1.
+    IF hover_on_target_hold_s >= AUTO_HOVER_HOLD_TIME_S OR
+       phase_elapsed_s >= AUTO_HOVER_TIMEOUT_S {
+      IF hover_on_target_hold_s >= AUTO_HOVER_HOLD_TIME_S {
+        _AUTO_LOG_EVENT("HOVER_TARGET_HOLD_COMPLETE").
+      } ELSE {
+        _AUTO_LOG_EVENT("HOVER_TIMEOUT_BEGIN_NAV").
+      }
+      // Compute waypoint 100 m ahead along the current heading.
+      LOCAL wp1_geo IS GEO_DESTINATION(
+        SHIP:GEOPOSITION, hold_target_hdg_deg, AUTO_NAV_WP_DIST_M
+      ).
+      SET nav_wp1_lat TO wp1_geo:LAT.
+      SET nav_wp1_lng TO wp1_geo:LNG.
+      SET nav_original_hdg_deg TO hold_target_hdg_deg.
+      SET hold_target_lat TO nav_wp1_lat.
+      SET hold_target_lng TO nav_wp1_lng.
+      SET nav_wp_on_target_start_ut TO -1.
+      SET VTOL_POS_INT_N TO 0.0.
+      SET VTOL_POS_INT_E TO 0.0.
+      SET VTOL_VEL_INT_N TO 0.0.
+      SET VTOL_VEL_INT_E TO 0.0.
+      _AUTO_SET_PHASE("NAV_TO_WP1").
+    }
+  } ELSE IF AUTO_PHASE_NAME = "NAV_TO_WP1" {
+    // Fly to the waypoint 100 m down the runway.
+    SET VTOL_ALT_HOLD TO TRUE.
+    SET VTOL_ALT_CMD TO hover_target_alt_agl.
+    SET VTOL_VEL_HOLD_ACTIVE TO TRUE.
+    SET VTOL_KHV_ACTIVE TO FALSE.
+    SET VTOL_POS_HOLD_ACTIVE TO TRUE.
+    SET VTOL_TRANS_ACTIVE TO FALSE.
+    SET VTOL_TARGET_LAT TO nav_wp1_lat.
+    SET VTOL_TARGET_LNG TO nav_wp1_lng.
+    SET VTOL_TARGET_ALT TO hover_target_alt_agl.
+    SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO TRUE.
+    SET ACTIVE_AIRCRAFT["vtol_diff_collective_min"] TO 0.12.
+    SET ACTIVE_AIRCRAFT["vtol_engine_limit_floor"] TO 0.10.
+    // Conservative nav speed: keeps bank below upset threshold and ensures
+    // braking distance fits within the capture radius.
+    SET ACTIVE_AIRCRAFT["vtol_max_horiz_speed"] TO AUTO_NAV_MAX_SPEED_MPS.
+    SET ACTIVE_AIRCRAFT["vtol_max_horiz_accel"] TO AUTO_NAV_MAX_ACCEL_MPS2.
+    SET ACTIVE_AIRCRAFT["vtol_pos_capture_radius"] TO AUTO_NAV_CAPTURE_RADIUS_M.
+
+    IF pos_err_for_phase_m <= AUTO_NAV_ARRIVE_TOL_M {
+      IF nav_wp_on_target_start_ut < 0 {
+        SET nav_wp_on_target_start_ut TO cycle_now_ut.
+        _AUTO_LOG_EVENT("NAV_WP1_WINDOW_START").
+      }
+    } ELSE {
+      SET nav_wp_on_target_start_ut TO -1.
+    }
+    LOCAL nav_wp1_hold_s IS 0.0.
+    IF nav_wp_on_target_start_ut >= 0 {
+      SET nav_wp1_hold_s TO cycle_now_ut - nav_wp_on_target_start_ut.
+    }
+    IF nav_wp1_hold_s >= AUTO_NAV_WP_HOLD_TIME_S {
+      _AUTO_LOG_EVENT("NAV_WP1_ARRIVED").
+      // Command 180-degree rotation: flip heading target.
+      SET hold_target_hdg_deg TO MOD(nav_original_hdg_deg + 180, 360).
+      SET nav_rotate_settled_start_ut TO -1.
+      _AUTO_SET_PHASE("HOVER_WP1").
+    }
+
+  } ELSE IF AUTO_PHASE_NAME = "HOVER_WP1" {
+    // Hold position at WP1 while rotating 180 degrees.
+    SET VTOL_ALT_HOLD TO TRUE.
+    SET VTOL_ALT_CMD TO hover_target_alt_agl.
+    SET VTOL_VEL_HOLD_ACTIVE TO TRUE.
+    SET VTOL_KHV_ACTIVE TO FALSE.
+    SET VTOL_POS_HOLD_ACTIVE TO TRUE.
+    SET VTOL_TRANS_ACTIVE TO FALSE.
+    SET VTOL_TARGET_LAT TO nav_wp1_lat.
+    SET VTOL_TARGET_LNG TO nav_wp1_lng.
+    SET VTOL_TARGET_ALT TO hover_target_alt_agl.
+    SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO TRUE.
+    SET ACTIVE_AIRCRAFT["vtol_diff_collective_min"] TO 0.12.
+    SET ACTIVE_AIRCRAFT["vtol_engine_limit_floor"] TO 0.10.
+
+    LOCAL rotate_wp1_hdg_err IS ABS(_AUTO_ANGLE_ERR(hold_target_hdg_deg, yaw_hdg_now_deg)).
+    IF rotate_wp1_hdg_err <= AUTO_ROTATE_HDG_TOL_DEG {
+      IF nav_rotate_settled_start_ut < 0 {
+        SET nav_rotate_settled_start_ut TO cycle_now_ut.
+        _AUTO_LOG_EVENT("HOVER_WP1_HDG_SETTLED").
+      }
+    } ELSE {
+      SET nav_rotate_settled_start_ut TO -1.
+    }
+    LOCAL rotate_wp1_settled_s IS 0.0.
+    IF nav_rotate_settled_start_ut >= 0 {
+      SET rotate_wp1_settled_s TO cycle_now_ut - nav_rotate_settled_start_ut.
+    }
+    IF rotate_wp1_settled_s >= AUTO_ROTATE_SETTLE_TIME_S {
+      _AUTO_LOG_EVENT("HOVER_WP1_ROTATE_COMPLETE").
+      SET hold_target_lat TO nav_origin_lat.
+      SET hold_target_lng TO nav_origin_lng.
+      SET nav_wp_on_target_start_ut TO -1.
+      SET VTOL_POS_INT_N TO 0.0.
+      SET VTOL_POS_INT_E TO 0.0.
+      SET VTOL_VEL_INT_N TO 0.0.
+      SET VTOL_VEL_INT_E TO 0.0.
+      _AUTO_SET_PHASE("NAV_RETURN").
+    }
+
+  } ELSE IF AUTO_PHASE_NAME = "NAV_RETURN" {
+    // Fly back to the original hover position.
+    SET VTOL_ALT_HOLD TO TRUE.
+    SET VTOL_ALT_CMD TO hover_target_alt_agl.
+    SET VTOL_VEL_HOLD_ACTIVE TO TRUE.
+    SET VTOL_KHV_ACTIVE TO FALSE.
+    SET VTOL_POS_HOLD_ACTIVE TO TRUE.
+    SET VTOL_TRANS_ACTIVE TO FALSE.
+    SET VTOL_TARGET_LAT TO nav_origin_lat.
+    SET VTOL_TARGET_LNG TO nav_origin_lng.
+    SET VTOL_TARGET_ALT TO hover_target_alt_agl.
+    SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO TRUE.
+    SET ACTIVE_AIRCRAFT["vtol_diff_collective_min"] TO 0.12.
+    SET ACTIVE_AIRCRAFT["vtol_engine_limit_floor"] TO 0.10.
+    SET ACTIVE_AIRCRAFT["vtol_max_horiz_speed"] TO AUTO_NAV_MAX_SPEED_MPS.
+    SET ACTIVE_AIRCRAFT["vtol_max_horiz_accel"] TO AUTO_NAV_MAX_ACCEL_MPS2.
+    SET ACTIVE_AIRCRAFT["vtol_pos_capture_radius"] TO AUTO_NAV_CAPTURE_RADIUS_M.
+
+    IF pos_err_for_phase_m <= AUTO_NAV_ARRIVE_TOL_M {
+      IF nav_wp_on_target_start_ut < 0 {
+        SET nav_wp_on_target_start_ut TO cycle_now_ut.
+        _AUTO_LOG_EVENT("NAV_RETURN_WINDOW_START").
+      }
+    } ELSE {
+      SET nav_wp_on_target_start_ut TO -1.
+    }
+    LOCAL nav_return_hold_s IS 0.0.
+    IF nav_wp_on_target_start_ut >= 0 {
+      SET nav_return_hold_s TO cycle_now_ut - nav_wp_on_target_start_ut.
+    }
+    IF nav_return_hold_s >= AUTO_NAV_WP_HOLD_TIME_S {
+      _AUTO_LOG_EVENT("NAV_RETURN_ARRIVED").
+      // Rotate back to original heading.
+      SET hold_target_hdg_deg TO nav_original_hdg_deg.
+      SET nav_rotate_settled_start_ut TO -1.
+      _AUTO_SET_PHASE("HOVER_ORIGIN").
+    }
+
+  } ELSE IF AUTO_PHASE_NAME = "HOVER_ORIGIN" {
+    // Hold position at origin while rotating back to original heading.
+    SET VTOL_ALT_HOLD TO TRUE.
+    SET VTOL_ALT_CMD TO hover_target_alt_agl.
+    SET VTOL_VEL_HOLD_ACTIVE TO TRUE.
+    SET VTOL_KHV_ACTIVE TO FALSE.
+    SET VTOL_POS_HOLD_ACTIVE TO TRUE.
+    SET VTOL_TRANS_ACTIVE TO FALSE.
+    SET VTOL_TARGET_LAT TO nav_origin_lat.
+    SET VTOL_TARGET_LNG TO nav_origin_lng.
+    SET VTOL_TARGET_ALT TO hover_target_alt_agl.
+    SET ACTIVE_AIRCRAFT["vtol_physical_alloc_enabled"] TO TRUE.
+    SET ACTIVE_AIRCRAFT["vtol_diff_collective_min"] TO 0.12.
+    SET ACTIVE_AIRCRAFT["vtol_engine_limit_floor"] TO 0.10.
+
+    LOCAL rotate_orig_hdg_err IS ABS(_AUTO_ANGLE_ERR(hold_target_hdg_deg, yaw_hdg_now_deg)).
+    IF rotate_orig_hdg_err <= AUTO_ROTATE_HDG_TOL_DEG {
+      IF nav_rotate_settled_start_ut < 0 {
+        SET nav_rotate_settled_start_ut TO cycle_now_ut.
+        _AUTO_LOG_EVENT("HOVER_ORIGIN_HDG_SETTLED").
+      }
+    } ELSE {
+      SET nav_rotate_settled_start_ut TO -1.
+    }
+    LOCAL rotate_orig_settled_s IS 0.0.
+    IF nav_rotate_settled_start_ut >= 0 {
+      SET rotate_orig_settled_s TO cycle_now_ut - nav_rotate_settled_start_ut.
+    }
+    IF rotate_orig_settled_s >= AUTO_ROTATE_SETTLE_TIME_S {
+      _AUTO_LOG_EVENT("HOVER_ORIGIN_ROTATE_COMPLETE").
       SET land_cmd_agl_track TO agl_now_m.
       SET land_touchdown_start_ut TO -1.
       SET land_descent_gate_open TO FALSE.
@@ -780,6 +958,7 @@ UNTIL NOT AUTO_RUNNING {
       SET VTOL_VS_CMD TO SHIP:VERTICALSPEED.
       _AUTO_SET_PHASE("LAND_DESCENT").
     }
+
   } ELSE IF AUTO_PHASE_NAME = "LAND_DESCENT" {
     // Two-stage descent: faster high up, then gentle sink in the flare band.
     LOCAL flare_denom_m IS AUTO_LAND_FLARE_START_AGL_M - AUTO_LAND_FLARE_END_AGL_M.

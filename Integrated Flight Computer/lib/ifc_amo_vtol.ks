@@ -103,6 +103,7 @@ GLOBAL _vtol_em_lag_filt_s IS -1.
 GLOBAL _vtol_em_lag_filt_cycle_ut IS -1.
 GLOBAL _vtol_roll_lag_filt_s IS -1.
 GLOBAL _vtol_pitch_lag_filt_s IS -1.
+GLOBAL _vtol_prev_mean_cmd_eff IS -1. // tracks mean(throttle*lim) to remove uniform ramp from lag estimate
 GLOBAL _vtol_upset_latched IS FALSE.
 GLOBAL _vtol_upset_entry_ut IS -1.
 GLOBAL _vtol_prev_vel_hold_active IS FALSE.
@@ -418,6 +419,7 @@ FUNCTION VTOL_DISCOVER {
   VTOL_ENG_EFF_ACT_EST:CLEAR().
   VTOL_ENG_LAG_EST_S:CLEAR().
   SET VTOL_EFF_LAG_WORST_S TO 0.0.
+  SET _vtol_prev_mean_cmd_eff TO -1.
   SET VTOL_ARM_ROLL_M TO 0.0.
   SET VTOL_ARM_PITCH_M TO 0.0.
   SET VTOL_DIFF_AVAILABLE TO FALSE.
@@ -1166,6 +1168,8 @@ FUNCTION _VTOL_UPDATE_EFFECTIVE_SPOOL_MODEL {
 
   IF VTOL_ENG_EFF_ACT_EST:LENGTH <> VTOL_ENG_LIST:LENGTH {
     VTOL_ENG_EFF_ACT_EST:CLEAR().
+    // Reset prev-mean so the first differential pass starts from a clean slate.
+    SET _vtol_prev_mean_cmd_eff TO -1.
     LOCAL init_i IS 0.
     UNTIL init_i >= VTOL_ENG_LIST:LENGTH {
       VTOL_ENG_EFF_ACT_EST:ADD(CLAMP(throttle_frac * lim_vec[init_i], 0, 1)).
@@ -1180,6 +1184,29 @@ FUNCTION _VTOL_UPDATE_EFFECTIVE_SPOOL_MODEL {
       SET lag_i_init TO lag_i_init + 1.
     }
   }
+
+  // Remove the uniform collective ramp from the lag estimate.
+  // The slew-limited collective ramp is intentional: the engines follow it
+  // without lag.  Only per-engine differential deviations (from unequal
+  // limiter commands) represent true spool lag.  Pre-apply the mean cmd_eff
+  // delta to all act_eff[i] so the tracker sees zero error for uniform
+  // collective changes and only accumulates error for differential steps.
+  LOCAL mean_cmd_eff IS 0.
+  LOCAL mci IS 0.
+  UNTIL mci >= VTOL_ENG_LIST:LENGTH {
+    SET mean_cmd_eff TO mean_cmd_eff + CLAMP(throttle_frac * lim_vec[mci], 0, 1).
+    SET mci TO mci + 1.
+  }
+  SET mean_cmd_eff TO mean_cmd_eff / VTOL_ENG_LIST:LENGTH.
+  IF _vtol_prev_mean_cmd_eff >= 0 {
+    LOCAL uniform_delta IS mean_cmd_eff - _vtol_prev_mean_cmd_eff.
+    LOCAL udi IS 0.
+    UNTIL udi >= VTOL_ENG_LIST:LENGTH {
+      SET VTOL_ENG_EFF_ACT_EST[udi] TO CLAMP(VTOL_ENG_EFF_ACT_EST[udi] + uniform_delta, 0, 1).
+      SET udi TO udi + 1.
+    }
+  }
+  SET _vtol_prev_mean_cmd_eff TO mean_cmd_eff.
 
   LOCAL worst_lag IS MAX(0, TELEM_EM_WORST_SPOOL_LAG).
   LOCAL i IS 0.
@@ -1755,7 +1782,16 @@ FUNCTION _VTOL_VEL_HOLD {
     ABS(vel_cmd_unsat_north - vel_clamped_north) > 0.000001 OR
     ABS(vel_cmd_unsat_east - vel_clamped_east) > 0.000001.
   LOCAL alloc_limited_prev IS VTOL_ALLOC_ALPHA < vel_aw_alpha_min OR VTOL_DIAG_ALPHA_LIMITED.
-  IF alloc_limited_prev OR vel_saturated {
+  // Ground-contact guard: clear velocity integrators while landed/pre-launch,
+  // matching the same protection the level-attitude integrators already have.
+  // Without this, pre-liftoff ground-roll winds up VEL_INT and causes pitch
+  // divergence immediately after gear breaks contact.
+  LOCAL vel_status_str IS SHIP:STATUS.
+  LOCAL vel_truly_airborne IS (vel_status_str <> "LANDED" AND vel_status_str <> "PRELAUNCH").
+  IF NOT vel_truly_airborne {
+    SET VTOL_VEL_INT_N TO 0.0.
+    SET VTOL_VEL_INT_E TO 0.0.
+  } ELSE IF alloc_limited_prev OR vel_saturated {
     LOCAL vel_unwind_fac IS CLAMP(1.0 - outer_i_unwind_per_s * IFC_ACTUAL_DT, 0, 1).
     SET VTOL_VEL_INT_N TO VTOL_VEL_INT_N * vel_unwind_fac.
     SET VTOL_VEL_INT_E TO VTOL_VEL_INT_E * vel_unwind_fac.
@@ -3053,6 +3089,7 @@ FUNCTION VTOL_RELEASE {
   SET _vtol_prev_vel_hold_active TO FALSE.
   SET _vtol_prev_pos_hold_active TO FALSE.
   SET _vtol_prev_khv_active TO FALSE.
+  SET _vtol_prev_mean_cmd_eff TO -1.
   SET VTOL_ACTIVE TO FALSE.
 }
 
